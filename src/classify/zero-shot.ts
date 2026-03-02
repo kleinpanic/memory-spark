@@ -1,25 +1,6 @@
 /**
- * Zero-Shot Classifier
- *
- * Used by auto-capture to decide whether a conversation turn contains
- * something worth storing as a persistent memory.
- *
- * Uses Spark 18113 (bart-large-mnli) — a zero-shot classification model
- * that doesn't need training data, just label strings.
- *
- * Labels we classify against:
- *   "fact"          — a factual statement about the user, system, or world
- *   "preference"    — user expressed a preference or taste
- *   "decision"      — a decision was made or committed to
- *   "code-snippet"  — a useful code example or command
- *   "none"          — nothing worth storing
- *
- * Returns the winning label and its confidence score (0–1).
- * If confidence < minConfidence (default 0.75), treat as "none".
- *
- * API: Spark zero-shot is HuggingFace text-classification endpoint.
- * POST { inputs: "text", parameters: { candidate_labels: [...], multi_label: false } }
- * Returns: { sequence: "...", labels: [...], scores: [...] }
+ * Zero-Shot Classifier — Spark 18113 (bart-large-mnli).
+ * Returns { label: "none", score: 0 } on failure (safe default).
  */
 
 import type { MemorySparkConfig } from "../config.js";
@@ -31,38 +12,39 @@ export interface ClassifyResult {
   score: number;
 }
 
-/** Default labels for capture classification */
 export const CAPTURE_LABELS: CaptureCategory[] = [
-  "fact",
-  "preference",
-  "decision",
-  "code-snippet",
-  "none",
+  "fact", "preference", "decision", "code-snippet", "none",
 ];
 
-/**
- * Classify text into a capture category.
- * Returns { label: "none", score: 0 } on failure (safe default = don't capture).
- */
 export async function classifyForCapture(
   text: string,
   cfg: MemorySparkConfig,
   minConfidence = 0.75,
 ): Promise<ClassifyResult> {
-  // TODO:
-  // const resp = await fetch(`${cfg.spark.zeroShot}`, {
-  //   method: "POST",
-  //   headers: { "Content-Type": "application/json" },
-  //   body: JSON.stringify({
-  //     inputs: text,
-  //     parameters: { candidate_labels: CAPTURE_LABELS, multi_label: false }
-  //   }),
-  // });
-  // const result = await resp.json();
-  // const topLabel = result.labels[0] as CaptureCategory;
-  // const topScore = result.scores[0] as number;
-  // if (topScore < minConfidence) return { label: "none", score: topScore };
-  // return { label: topLabel, score: topScore };
+  try {
+    const resp = await fetch(cfg.spark.zeroShot, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        inputs: text.slice(0, 2000),
+        parameters: {
+          candidate_labels: CAPTURE_LABELS,
+          multi_label: false,
+        },
+      }),
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!resp.ok) return { label: "none", score: 0 };
 
-  return { label: "none", score: 0 }; // safe default until implemented
+    const data = await resp.json() as { labels: string[]; scores: number[] };
+    const topLabel = data.labels[0] as CaptureCategory;
+    const topScore = data.scores[0]!;
+
+    if (topScore < minConfidence || topLabel === "none") {
+      return { label: "none", score: topScore };
+    }
+    return { label: topLabel, score: topScore };
+  } catch {
+    return { label: "none", score: 0 };
+  }
 }

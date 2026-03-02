@@ -1,20 +1,6 @@
 /**
- * Embedding Provider
- *
- * Provider chain: spark → openai → gemini (fallback in order on failure)
- * All providers expose the same EmbedProvider interface.
- *
- * Spark endpoint is OpenAI-compatible (/v1/embeddings).
- * So "spark" is just "openai" with a custom baseUrl — no new protocol needed.
- *
- * Dimensions by model:
- *   Qwen/Qwen3-Embedding-4B         → 2560 dims
- *   nvidia/llama-embed-nemotron-8b  → 4096 dims (higher quality, slower)
- *   text-embedding-3-small          → 1536 dims (OpenAI fallback)
- *   gemini-embedding-001            → 3072 dims (Gemini fallback)
- *
- * IMPORTANT: All chunks in a table must share the same dims.
- * Migration must re-embed everything when switching providers.
+ * Embedding Provider — Spark → OpenAI → Gemini fallback chain.
+ * All use OpenAI-compatible /v1/embeddings endpoint.
  */
 
 import type { EmbedConfig } from "../config.js";
@@ -23,126 +9,163 @@ export interface EmbedProvider {
   id: string;
   model: string;
   dims: number;
-  /** Embed a single query (optimized for search queries, may use task_type="query") */
   embedQuery(text: string): Promise<number[]>;
-  /** Embed a batch of document chunks */
   embedBatch(texts: string[]): Promise<number[][]>;
-  /** Probe availability — resolves to true if reachable */
   probe(): Promise<boolean>;
 }
 
-/**
- * Create an EmbedProvider from config.
- * Tries providers in order until one probes successfully.
- */
-export async function createEmbedProvider(cfg: EmbedConfig): Promise<EmbedProvider> {
-  const chain: EmbedProvider[] = [];
+const DIMS: Record<string, number> = {
+  "Qwen/Qwen3-Embedding-4B": 2560,
+  "nvidia/llama-embed-nemotron-8b": 4096,
+  "text-embedding-3-small": 1536,
+  "text-embedding-3-large": 3072,
+  "text-embedding-ada-002": 1536,
+  "gemini-embedding-001": 3072,
+};
 
-  if (cfg.provider === "spark" && cfg.spark) {
-    chain.push(createOpenAiCompatProvider({
-      id: "spark",
-      baseUrl: cfg.spark.baseUrl,
-      apiKey: cfg.spark.apiKey ?? "none",
-      model: cfg.spark.model,
-    }));
+export async function createEmbedProvider(cfg: EmbedConfig): Promise<EmbedProvider> {
+  const providers: Array<() => EmbedProvider> = [];
+
+  if (cfg.spark) {
+    providers.push(() => makeOpenAiCompat("spark", cfg.spark!.baseUrl, cfg.spark!.apiKey ?? "none", cfg.spark!.model));
   }
 
   if (cfg.openai) {
-    chain.push(createOpenAiCompatProvider({
-      id: "openai",
-      baseUrl: "https://api.openai.com/v1",
-      apiKey: cfg.openai.apiKey ?? process.env["OPENAI_API_KEY"] ?? "",
-      model: cfg.openai.model,
-    }));
+    const key = cfg.openai.apiKey ?? process.env["OPENAI_API_KEY"] ?? "";
+    if (key) {
+      providers.push(() => makeOpenAiCompat("openai", "https://api.openai.com/v1", key, cfg.openai!.model));
+    }
   }
 
   if (cfg.gemini) {
-    chain.push(createGeminiProvider({ model: cfg.gemini.model }));
+    const key = process.env["GOOGLE_API_KEY"] ?? process.env["GEMINI_API_KEY"] ?? "";
+    if (key) {
+      providers.push(() => makeGemini(cfg.gemini!.model, key));
+    }
   }
 
-  for (const provider of chain) {
+  // Try each provider in order
+  for (const factory of providers) {
+    const provider = factory();
     try {
       const ok = await provider.probe();
       if (ok) return provider;
     } catch {
-      // try next
+      // Try next
     }
   }
 
-  throw new Error(
-    `memory-spark: no embedding provider available. Tried: ${chain.map((p) => p.id).join(", ")}`
-  );
+  // If nothing probed, return the first one anyway (will fail at embed time with a clearer error)
+  if (providers.length > 0) return providers[0]!();
+  throw new Error("memory-spark: no embedding provider configured");
 }
 
 // ---------------------------------------------------------------------------
-// OpenAI-compatible provider (covers Spark + standard OpenAI)
+// OpenAI-compatible provider (covers Spark + OpenAI)
 // ---------------------------------------------------------------------------
 
-interface OpenAiCompatOptions {
-  id: string;
-  baseUrl: string;
-  apiKey: string;
-  model: string;
-}
+function makeOpenAiCompat(id: string, baseUrl: string, apiKey: string, model: string): EmbedProvider {
+  const dims = DIMS[model] ?? 1536;
 
-function createOpenAiCompatProvider(opts: OpenAiCompatOptions): EmbedProvider {
-  // Model → dims lookup (extend as needed)
-  const DIMS: Record<string, number> = {
-    "Qwen/Qwen3-Embedding-4B": 2560,
-    "nvidia/llama-embed-nemotron-8b": 4096,
-    "text-embedding-3-small": 1536,
-    "text-embedding-3-large": 3072,
-    "text-embedding-ada-002": 1536,
-  };
-
-  const dims = DIMS[opts.model] ?? 1536;
-
-  async function request(input: string | string[]): Promise<number[][]> {
-    // TODO: fetch(`${opts.baseUrl}/embeddings`, { method: "POST", ... })
-    throw new Error(`OpenAiCompatProvider(${opts.id}).request() not yet implemented`);
+  async function embed(input: string | string[]): Promise<number[][]> {
+    const resp = await fetch(`${baseUrl}/embeddings`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${apiKey}`,
+      },
+      body: JSON.stringify({ model, input }),
+    });
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "");
+      throw new Error(`Embed ${id} failed (${resp.status}): ${body.slice(0, 200)}`);
+    }
+    const data = await resp.json() as { data: Array<{ embedding: number[]; index: number }> };
+    // Sort by index to preserve order
+    return data.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
   }
 
   return {
-    id: opts.id,
-    model: opts.model,
+    id,
+    model,
     dims,
     async embedQuery(text) {
-      const results = await request(text);
+      const results = await embed(text);
       return results[0]!;
     },
     async embedBatch(texts) {
-      // TODO: batch into groups of ≤2048 tokens (tiktoken check)
-      return request(texts);
+      if (texts.length === 0) return [];
+      // Batch in groups of 100 to avoid payload limits
+      const results: number[][] = [];
+      for (let i = 0; i < texts.length; i += 100) {
+        const batch = texts.slice(i, i + 100);
+        const vectors = await embed(batch);
+        results.push(...vectors);
+      }
+      return results;
     },
     async probe() {
-      // TODO: send a short probe embed, check 200
-      return false;
+      try {
+        const vectors = await embed("probe");
+        return vectors.length === 1 && vectors[0]!.length > 0;
+      } catch {
+        return false;
+      }
     },
   };
 }
 
 // ---------------------------------------------------------------------------
-// Gemini provider (fallback)
+// Gemini provider (uses Google AI Generative API)
 // ---------------------------------------------------------------------------
 
-interface GeminiOptions {
-  model: string;
-}
+function makeGemini(model: string, apiKey: string): EmbedProvider {
+  const dims = DIMS[model] ?? 3072;
+  const baseUrl = "https://generativelanguage.googleapis.com/v1beta";
 
-function createGeminiProvider(_opts: GeminiOptions): EmbedProvider {
   return {
     id: "gemini",
-    model: _opts.model,
-    dims: 3072,
-    async embedQuery(_text) {
-      // TODO: use openclaw's existing gemini embedding client
-      throw new Error("GeminiProvider.embedQuery() not yet implemented");
+    model,
+    dims,
+    async embedQuery(text) {
+      const url = `${baseUrl}/models/${model}:embedContent?key=${apiKey}`;
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: `models/${model}`,
+          content: { parts: [{ text }] },
+          taskType: "RETRIEVAL_QUERY",
+        }),
+      });
+      if (!resp.ok) throw new Error(`Gemini embed failed: ${resp.status}`);
+      const data = await resp.json() as { embedding: { values: number[] } };
+      return data.embedding.values;
     },
-    async embedBatch(_texts) {
-      throw new Error("GeminiProvider.embedBatch() not yet implemented");
+    async embedBatch(texts) {
+      // Gemini batch embed
+      const requests = texts.map((text) => ({
+        model: `models/${model}`,
+        content: { parts: [{ text }] },
+        taskType: "RETRIEVAL_DOCUMENT",
+      }));
+      const url = `${baseUrl}/models/${model}:batchEmbedContents?key=${apiKey}`;
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ requests }),
+      });
+      if (!resp.ok) throw new Error(`Gemini batch embed failed: ${resp.status}`);
+      const data = await resp.json() as { embeddings: Array<{ values: number[] }> };
+      return data.embeddings.map((e) => e.values);
     },
     async probe() {
-      return false;
+      try {
+        const v = await this.embedQuery("probe");
+        return v.length > 0;
+      } catch {
+        return false;
+      }
     },
   };
 }

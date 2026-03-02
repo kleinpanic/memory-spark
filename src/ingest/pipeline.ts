@@ -1,20 +1,5 @@
 /**
- * Ingest Pipeline
- *
- * Central pipeline for processing a file into storage:
- *   1. Extract text (format-specific parser)
- *   2. If large doc (>8k tokens): summarize via Spark 18110 before chunking
- *   3. Chunk (format-aware, token-bounded)
- *   4. NER tag entities per chunk via Spark 18112
- *   5. Embed batch via provider
- *   6. Upsert into storage backend (replaces old chunks for this path)
- *
- * Supported formats (dispatch by file extension):
- *   .md / .txt    → plain text (no extraction needed)
- *   .pdf          → pdftotext → Spark OCR 18097 fallback for scanned pages
- *   .docx         → mammoth HTML → strip tags → plain text
- *   .epub         → epub-parser → plain text (TODO: phase 2)
- *   .mp3/.wav/.m4a → Spark STT 18094 (parakeet) → transcript text
+ * Ingest Pipeline — extract → chunk → NER → embed → store.
  */
 
 import type { MemorySparkConfig } from "../config.js";
@@ -43,70 +28,83 @@ export interface IngestResult {
   error?: string;
 }
 
-/**
- * Full ingest pipeline for a single file.
- * Idempotent: safe to run on already-indexed files (will delta-update).
- */
 export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult> {
   const start = Date.now();
 
-  // 1. Extract text from file
-  const ext = path.extname(opts.filePath).replace(".", "").toLowerCase();
-  const rawText = await extractText(opts.filePath, ext, opts.cfg);
+  try {
+    const ext = path.extname(opts.filePath).replace(".", "").toLowerCase();
 
-  // 2. Chunk
-  const rawChunks = chunkDocument({
-    text: rawText,
-    path: opts.filePath,
-    agentId: opts.agentId,
-    source: "ingest",
-    ext,
-  });
+    // 1. Extract text
+    const rawText = await extractText(opts.filePath, ext, opts.cfg);
+    if (!rawText.trim()) {
+      return { filePath: opts.filePath, chunksAdded: 0, chunksRemoved: 0, durationMs: Date.now() - start };
+    }
 
-  if (rawChunks.length === 0) {
-    return { filePath: opts.filePath, chunksAdded: 0, chunksRemoved: 0, durationMs: Date.now() - start };
+    // 2. Chunk
+    const rawChunks = chunkDocument({
+      text: rawText,
+      path: opts.filePath,
+      source: "ingest",
+      ext,
+    });
+
+    if (rawChunks.length === 0) {
+      return { filePath: opts.filePath, chunksAdded: 0, chunksRemoved: 0, durationMs: Date.now() - start };
+    }
+
+    // 3. NER tag (best-effort, parallel)
+    const entitiesPerChunk = await Promise.all(
+      rawChunks.map((c) => tagEntities(c.text, opts.cfg).catch(() => [] as string[]))
+    );
+
+    // 4. Embed batch
+    const vectors = await opts.embed.embedBatch(rawChunks.map((c) => c.text));
+
+    // 5. Build MemoryChunk objects
+    const now = new Date().toISOString();
+    const agentId = opts.agentId ?? "shared";
+    const chunks: MemoryChunk[] = rawChunks.map((raw, i) => ({
+      id: chunkId(opts.filePath, raw.startLine, agentId),
+      path: opts.filePath,
+      source: "ingest" as const,
+      agent_id: agentId,
+      start_line: raw.startLine,
+      end_line: raw.endLine,
+      text: raw.text,
+      vector: vectors[i]!,
+      updated_at: now,
+      entities: JSON.stringify(entitiesPerChunk[i] ?? []),
+    }));
+
+    // 6. Remove old chunks for this path, then upsert new
+    const removed = await opts.backend.deleteByPath(opts.filePath, agentId);
+    await opts.backend.upsert(chunks);
+
+    opts.logger?.info(`memory-spark: ingested ${opts.filePath} → ${chunks.length} chunks`);
+
+    return {
+      filePath: opts.filePath,
+      chunksAdded: chunks.length,
+      chunksRemoved: removed,
+      durationMs: Date.now() - start,
+    };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    opts.logger?.error(`memory-spark: ingest failed for ${opts.filePath}: ${error}`);
+    return {
+      filePath: opts.filePath,
+      chunksAdded: 0,
+      chunksRemoved: 0,
+      durationMs: Date.now() - start,
+      error,
+    };
   }
-
-  // 3. NER tag (best-effort, skip on failure)
-  const entitiesPerChunk = await Promise.all(
-    rawChunks.map((c) => tagEntities(c.text, opts.cfg).catch(() => [] as string[]))
-  );
-
-  // 4. Embed batch
-  const vectors = await opts.embed.embedBatch(rawChunks.map((c) => c.text));
-
-  // 5. Build MemoryChunk objects
-  const now = new Date().toISOString();
-  const chunks: MemoryChunk[] = rawChunks.map((raw, i) => ({
-    id: chunkId(opts.filePath, raw.startLine, opts.agentId),
-    path: opts.filePath,
-    source: "ingest",
-    agentId: opts.agentId,
-    startLine: raw.startLine,
-    endLine: raw.endLine,
-    text: raw.text,
-    ftsText: raw.text,
-    vector: vectors[i]!,
-    updatedAt: now,
-    entities: entitiesPerChunk[i],
-  }));
-
-  // 6. Remove old chunks for this path, upsert new
-  const removed = await opts.backend.deleteByPath(opts.filePath, opts.agentId);
-  await opts.backend.upsert(chunks);
-
-  return {
-    filePath: opts.filePath,
-    chunksAdded: chunks.length,
-    chunksRemoved: removed,
-    durationMs: Date.now() - start,
-  };
 }
 
-function chunkId(filePath: string, startLine: number, agentId?: string): string {
+function chunkId(filePath: string, startLine: number, agentId: string): string {
   return crypto
     .createHash("sha1")
-    .update(`${agentId ?? ""}:${filePath}:${startLine}`)
+    .update(`${agentId}:${filePath}:${startLine}`)
     .digest("hex")
     .slice(0, 16);
 }

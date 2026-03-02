@@ -1,29 +1,11 @@
 /**
- * Smart Chunker
- *
- * Splits documents into embedding-ready chunks with:
- *   - Token-aware sizing (tiktoken cl100k_base)
- *   - Overlapping windows for context continuity
- *   - Markdown-aware splitting (respect headers, code blocks)
- *   - Metadata extraction per chunk (line numbers, heading path)
- *
- * Default chunk sizes:
- *   maxTokens:     400   (stays well under 512 token limit)
- *   overlapTokens: 50    (context continuity across chunk boundaries)
- *
- * Markdown splitting priority:
- *   1. Split on ## / ### headers (natural semantic boundary)
- *   2. Split on blank lines between paragraphs
- *   3. Hard split at maxTokens if no boundary found
- *   4. Never split inside a fenced code block
+ * Smart Chunker — token-aware, markdown-aware document splitting.
  */
 
 export interface ChunkInput {
   text: string;
   path: string;
-  agentId?: string;
   source: "memory" | "sessions" | "ingest" | "capture";
-  /** File extension hint for format-aware splitting */
   ext?: string;
 }
 
@@ -31,49 +13,146 @@ export interface RawChunk {
   text: string;
   startLine: number;
   endLine: number;
-  /** Markdown heading path for this chunk, e.g. "## Setup > ### Config" */
-  headingPath?: string;
 }
 
 export interface ChunkerOptions {
   maxTokens?: number;      // default: 400
   overlapTokens?: number;  // default: 50
-  minTokens?: number;      // default: 20 (discard tiny chunks)
+  minTokens?: number;      // default: 20
+}
+
+/** Approximate tokens from character count (4 chars ≈ 1 token for English) */
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
 }
 
 /**
  * Split a document into overlapping chunks ready for embedding.
  */
 export function chunkDocument(input: ChunkInput, opts: ChunkerOptions = {}): RawChunk[] {
-  // TODO:
-  // 1. If ext is "md" → markdownAwareChunk()
-  // 2. Else → plainTextChunk()
-  // 3. Apply overlap sliding window
-  // 4. Filter out chunks below minTokens
-  throw new Error("chunkDocument() not yet implemented");
+  const maxTokens = opts.maxTokens ?? 400;
+  const overlapTokens = opts.overlapTokens ?? 50;
+  const minTokens = opts.minTokens ?? 20;
+  const maxChars = maxTokens * 4;
+  const overlapChars = overlapTokens * 4;
+  const minChars = minTokens * 4;
+
+  if (!input.text.trim()) return [];
+
+  const ext = input.ext ?? "txt";
+  const isMarkdown = ext === "md" || ext === "rst";
+
+  // Step 1: Split into sections
+  const sections = isMarkdown
+    ? splitMarkdownSections(input.text)
+    : splitParagraphs(input.text);
+
+  // Step 2: Split oversized sections + merge tiny ones
+  const chunks: RawChunk[] = [];
+  let lineOffset = 0;
+
+  for (const section of sections) {
+    const sectionLines = section.split("\n");
+
+    if (section.length <= maxChars) {
+      if (section.trim().length >= minChars) {
+        chunks.push({
+          text: section.trim(),
+          startLine: lineOffset + 1,
+          endLine: lineOffset + sectionLines.length,
+        });
+      }
+    } else {
+      // Hard-split oversized section with overlap
+      const subChunks = hardSplitWithOverlap(section, maxChars, overlapChars, lineOffset);
+      for (const sc of subChunks) {
+        if (sc.text.trim().length >= minChars) {
+          chunks.push(sc);
+        }
+      }
+    }
+
+    lineOffset += sectionLines.length;
+  }
+
+  return chunks;
 }
 
 /**
- * Markdown-aware splitter — respects headers, code fences, tables.
+ * Split markdown on heading boundaries (## or ###).
+ * Keeps code blocks intact.
  */
-function markdownAwareChunk(_text: string, _opts: ChunkerOptions): RawChunk[] {
-  // TODO: parse markdown AST, split at heading boundaries
-  throw new Error("markdownAwareChunk() not yet implemented");
+function splitMarkdownSections(text: string): string[] {
+  const lines = text.split("\n");
+  const sections: string[] = [];
+  let current: string[] = [];
+  let inCodeBlock = false;
+
+  for (const line of lines) {
+    if (line.trim().startsWith("```")) {
+      inCodeBlock = !inCodeBlock;
+      current.push(line);
+      continue;
+    }
+
+    if (!inCodeBlock && /^#{1,3}\s/.test(line) && current.length > 0) {
+      sections.push(current.join("\n"));
+      current = [line];
+    } else {
+      current.push(line);
+    }
+  }
+
+  if (current.length > 0) {
+    sections.push(current.join("\n"));
+  }
+
+  return sections;
 }
 
 /**
- * Plain text splitter — splits on paragraph breaks, then hard-splits at token limit.
+ * Split plain text on double newlines (paragraph breaks).
  */
-function plainTextChunk(_text: string, _opts: ChunkerOptions): RawChunk[] {
-  // TODO: split on \n\n, then token-window
-  throw new Error("plainTextChunk() not yet implemented");
+function splitParagraphs(text: string): string[] {
+  const paras = text.split(/\n\s*\n/);
+  return paras.filter((p) => p.trim().length > 0);
 }
 
 /**
- * Count approximate tokens in a string (fast estimate, not exact BPE).
- * For exact counts use tiktoken, but this saves 50ms for small inputs.
+ * Hard-split a string at character boundaries with overlap.
  */
-export function estimateTokens(text: string): number {
-  // ~4 chars per token is a good approximation for English
-  return Math.ceil(text.length / 4);
+function hardSplitWithOverlap(text: string, maxChars: number, overlapChars: number, baseLineOffset: number): RawChunk[] {
+  const chunks: RawChunk[] = [];
+  let offset = 0;
+
+  while (offset < text.length) {
+    const end = Math.min(offset + maxChars, text.length);
+    // Try to break at a newline or space
+    let breakPoint = end;
+    if (end < text.length) {
+      const lastNewline = text.lastIndexOf("\n", end);
+      if (lastNewline > offset + maxChars / 2) {
+        breakPoint = lastNewline + 1;
+      } else {
+        const lastSpace = text.lastIndexOf(" ", end);
+        if (lastSpace > offset + maxChars / 2) {
+          breakPoint = lastSpace + 1;
+        }
+      }
+    }
+
+    const chunk = text.slice(offset, breakPoint);
+    const startLine = baseLineOffset + text.slice(0, offset).split("\n").length;
+    const endLine = baseLineOffset + text.slice(0, breakPoint).split("\n").length;
+
+    chunks.push({ text: chunk, startLine, endLine });
+
+    // Next chunk starts overlapChars before the breakpoint
+    offset = breakPoint - overlapChars;
+    if (offset <= (chunks.length > 1 ? breakPoint - maxChars : 0)) {
+      offset = breakPoint; // Prevent infinite loop
+    }
+  }
+
+  return chunks;
 }
