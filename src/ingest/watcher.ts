@@ -216,60 +216,85 @@ async function runBootPass(
   const indexedMap = new Map(indexed.map((i) => [i.path, i.updatedAt]));
   let total = 0;
   let ingested = 0;
+  let skipped = 0;
+
+  // Build queue of all files to ingest
+  const queue: Array<{ absPath: string; agentId: string; wsDir: string; source: "memory" | "sessions" }> = [];
 
   for (const agentId of agents) {
     const wsFiles = await discoverWorkspaceFiles(agentId);
 
-    // Index memory files
     for (const absPath of wsFiles.memoryFiles) {
       total++;
       try {
         const stat = await fs.stat(absPath);
         const relPath = toRelativePath(absPath, wsFiles.workspaceDir);
         const existing = indexedMap.get(relPath);
-        if (existing && existing >= stat.mtime.toISOString()) continue;
-
-        await ingestFile({
-          filePath: absPath,
-          agentId,
-          workspaceDir: wsFiles.workspaceDir,
-          backend: opts.backend,
-          embed: opts.embed,
-          cfg: opts.cfg,
-          source: "memory",
-          logger: opts.logger,
-        });
-        ingested++;
-      } catch (err) {
-        opts.logger.warn(`memory-spark boot: skip ${absPath}: ${err}`);
+        if (existing && existing >= stat.mtime.toISOString()) {
+          skipped++;
+          continue;
+        }
+        queue.push({ absPath, agentId, wsDir: wsFiles.workspaceDir, source: "memory" });
+      } catch {
+        skipped++;
       }
     }
 
-    // Index session files
     for (const absPath of wsFiles.sessionFiles) {
       total++;
       try {
         const stat = await fs.stat(absPath);
         const relPath = toRelativePath(absPath, wsFiles.workspaceDir);
         const existing = indexedMap.get(relPath);
-        if (existing && existing >= stat.mtime.toISOString()) continue;
-
-        await ingestFile({
-          filePath: absPath,
-          agentId,
-          workspaceDir: wsFiles.workspaceDir,
-          backend: opts.backend,
-          embed: opts.embed,
-          cfg: opts.cfg,
-          source: "sessions",
-          logger: opts.logger,
-        });
-        ingested++;
-      } catch (err) {
-        opts.logger.warn(`memory-spark boot: skip session ${absPath}: ${err}`);
+        if (existing && existing >= stat.mtime.toISOString()) {
+          skipped++;
+          continue;
+        }
+        queue.push({ absPath, agentId, wsDir: wsFiles.workspaceDir, source: "sessions" });
+      } catch {
+        skipped++;
       }
     }
   }
 
-  opts.logger.info(`memory-spark boot pass: indexed ${ingested}/${total} files across ${agents.length} agents`);
+  opts.logger.info(`memory-spark boot pass: ${queue.length} files to index (${skipped} up-to-date, ${total} total)`);
+
+  // Process files with concurrency limit of 3
+  const CONCURRENCY = 3;
+  let errors = 0;
+
+  for (let i = 0; i < queue.length; i += CONCURRENCY) {
+    const batch = queue.slice(i, i + CONCURRENCY);
+    const results = await Promise.allSettled(
+      batch.map((item) =>
+        ingestFile({
+          filePath: item.absPath,
+          agentId: item.agentId,
+          workspaceDir: item.wsDir,
+          backend: opts.backend,
+          embed: opts.embed,
+          cfg: opts.cfg,
+          source: item.source,
+          logger: opts.logger,
+        })
+      )
+    );
+
+    for (const r of results) {
+      if (r.status === "fulfilled" && !r.value.error) {
+        ingested++;
+      } else {
+        errors++;
+        const err = r.status === "rejected" ? r.reason : r.value.error;
+        opts.logger.warn(`memory-spark boot: file failed: ${err}`);
+      }
+    }
+
+    // Progress log every 10 files
+    if ((i + CONCURRENCY) % 30 === 0 || i + CONCURRENCY >= queue.length) {
+      opts.logger.info(`memory-spark boot: ${ingested}/${queue.length} indexed, ${errors} errors`);
+    }
+  }
+
+  opts.logger.info(`memory-spark boot pass complete: ${ingested}/${queue.length} indexed, ${errors} errors, ${skipped} skipped (${agents.length} agents)`);
 }

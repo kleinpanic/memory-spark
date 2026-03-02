@@ -324,11 +324,12 @@ const memorySpark = {
           // No status file — first boot
         }
 
-        api.logger.info("memory-spark: first boot — starting migration in background");
-        // Import and run migration asynchronously (non-blocking)
-        import("./scripts/migrate.js").catch((err) => {
-          api.logger.warn(`memory-spark: migration import failed: ${err}`);
-        });
+        api.logger.info("memory-spark: first boot — migration delegated to boot pass");
+        import("./scripts/migrate.js")
+          .then((m) => m.runMigration?.())
+          .catch((err) => {
+            api.logger.warn(`memory-spark: migration import failed: ${err}`);
+          });
       } catch (err) {
         api.logger.warn(`memory-spark: migration check failed: ${err}`);
       }
