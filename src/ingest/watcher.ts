@@ -175,18 +175,24 @@ export function createWatcher(opts: {
       }
 
       // 4. Start chokidar
+      // NOTE: Do NOT use /(^|[/\\])\./ — it would match .openclaw in the path
+      // and silently drop all events. Use a function instead to only ignore
+      // hidden basenames, not dotted directories in the watch path.
+      const shouldIgnore = (filePath: string): boolean => {
+        const basename = path.basename(filePath);
+        // Ignore hidden files/dirs (starting with dot) EXCEPT the root watch paths themselves
+        if (basename.startsWith(".") && !watchPaths.includes(filePath)) return true;
+        // Ignore common noise dirs
+        if (basename === "node_modules" || basename === ".git") return true;
+        if (filePath.includes("/dist/") || filePath.includes("/archive/")) return true;
+        return false;
+      };
       fsWatcher = chokidar.watch(watchPaths, {
         ignoreInitial: true,
         persistent: true,
         depth: 5,
         awaitWriteFinish: { stabilityThreshold: 1000, pollInterval: 200 },
-        ignored: [
-          /(^|[/\\])\./,
-          /node_modules/,
-          /\.git/,
-          /dist\//,
-          /archive\//,
-        ],
+        ignored: shouldIgnore,
       });
 
       fsWatcher.on("ready", () => {
