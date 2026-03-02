@@ -147,11 +147,14 @@ function hardSplitWithOverlap(text: string, maxChars: number, overlapChars: numb
 
     chunks.push({ text: chunk, startLine, endLine });
 
-    // Next chunk starts overlapChars before the breakpoint
-    offset = breakPoint - overlapChars;
-    if (offset <= (chunks.length > 1 ? breakPoint - maxChars : 0)) {
-      offset = breakPoint; // Prevent infinite loop
+    // We've reached the end
+    if (breakPoint >= text.length) {
+      break;
     }
+
+    // Next chunk starts overlapChars before the breakpoint, but MUST advance forward
+    const nextOffset = breakPoint - overlapChars;
+    offset = Math.max(nextOffset, offset + 1);
   }
 
   return chunks;
