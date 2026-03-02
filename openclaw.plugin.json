@@ -1,0 +1,12 @@
+{
+  "id": "memory-spark",
+  "name": "Memory Spark",
+  "description": "Autonomous Spark-powered memory plugin: LanceDB storage, local embedding + reranking, auto-recall, auto-capture, and multi-format ingestion. Drop-in replacement for memory-core.",
+  "version": "0.1.0",
+  "kind": "memory",
+  "configSchema": {
+    "type": "object",
+    "properties": {},
+    "additionalProperties": true
+  }
+}
