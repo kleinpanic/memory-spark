@@ -150,28 +150,28 @@ All are standard HTTP REST:
 
 **Embed (18091)** — OpenAI-compatible:
 ```
-POST http://dgx-spark.local:18091/v1/embeddings
+POST http://localhost:18091/v1/embeddings
 { "model": "Qwen/Qwen3-Embedding-4B", "input": ["text1", "text2"] }
 → { "data": [{ "embedding": [0.1, ...], "index": 0 }, ...] }
 ```
 
 **Rerank (18096)** — Cohere-compatible:
 ```
-POST http://dgx-spark.local:18096/v1/rerank
+POST http://localhost:18096/v1/rerank
 { "model": "nvidia/llama-nemotron-rerank-1b-v2", "query": "...", "documents": ["doc1", "doc2"], "top_n": 5 }
 → { "results": [{ "index": 0, "relevance_score": 0.95 }, ...] }
 ```
 
 **NER (18112)** — HuggingFace pipeline:
 ```
-POST http://dgx-spark.local:18112
+POST http://localhost:18112
 { "inputs": "text here" }
 → [{ "entity_group": "PER", "score": 0.99, "word": "Klein" }, ...]
 ```
 
 **Zero-shot (18113)** — HuggingFace pipeline:
 ```
-POST http://dgx-spark.local:18113
+POST http://localhost:18113
 { "inputs": "text", "parameters": { "candidate_labels": ["fact","preference","decision","code-snippet","none"] } }
 → { "labels": ["fact", ...], "scores": [0.85, ...] }
 ```
