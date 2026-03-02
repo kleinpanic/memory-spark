@@ -106,7 +106,7 @@ const memorySpark = {
   kind: "memory" as const,
   configSchema: emptyPluginConfigSchema(),
 
-  async register(api: OpenClawPluginApi) {
+  register(api: OpenClawPluginApi) {
     const cfg = resolveConfig(api.pluginConfig as Partial<MemorySparkConfig> | undefined);
 
     // -------------------------------------------------------------------
