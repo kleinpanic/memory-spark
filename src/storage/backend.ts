@@ -49,7 +49,7 @@ export interface StorageBackend {
   deleteById(ids: string[]): Promise<void>;
   vectorSearch(queryVector: number[], opts: SearchOptions): Promise<SearchResult[]>;
   ftsSearch(query: string, opts: SearchOptions): Promise<SearchResult[]>;
-  listPaths(agentId?: string): Promise<Array<{ path: string; updatedAt: string; chunkCount: number }>>;
+  listPaths(agentId?: string): Promise<Array<{ path: string; agentId: string; updatedAt: string; chunkCount: number }>>;
   getById(id: string): Promise<MemoryChunk | null>;
   readFile(params: { path: string; from?: number; lines?: number; agentId?: string }): Promise<{ text: string; path: string }>;
   status(): Promise<BackendStatus>;
