@@ -54,7 +54,7 @@ export class SqliteVecBackend implements StorageBackend {
     return [];
   }
 
-  async listPaths(_agentId?: string): Promise<Array<{ path: string; updatedAt: string; chunkCount: number }>> {
+  async listPaths(_agentId?: string): Promise<Array<{ path: string; agentId: string; updatedAt: string; chunkCount: number }>> {
     return [];
   }
 

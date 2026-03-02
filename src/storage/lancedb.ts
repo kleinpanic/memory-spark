@@ -197,21 +197,24 @@ export class LanceDBBackend implements StorageBackend {
     }
   }
 
-  async listPaths(agentId?: string): Promise<Array<{ path: string; updatedAt: string; chunkCount: number }>> {
+  async listPaths(agentId?: string): Promise<Array<{ path: string; agentId: string; updatedAt: string; chunkCount: number }>> {
     if (!this.table) return [];
 
-    let q = this.table.query().select(["path", "updated_at"]);
+    let q = this.table.query().select(["path", "agent_id", "updated_at"]);
     if (agentId) {
       q = q.where(`agent_id = '${escapeSql(agentId)}'`);
     }
     const rows = await q.toArray();
 
-    // Group by path
-    const groups = new Map<string, { updatedAt: string; count: number }>();
+    // Group by agentId::path to avoid cross-agent collisions on same relative paths
+    const groups = new Map<string, { path: string; agentId: string; updatedAt: string; count: number }>();
     for (const row of rows) {
-      const existing = groups.get(row.path);
+      const key = `${row.agent_id}::${row.path}`;
+      const existing = groups.get(key);
       if (!existing || row.updated_at > existing.updatedAt) {
-        groups.set(row.path, {
+        groups.set(key, {
+          path: row.path,
+          agentId: row.agent_id,
           updatedAt: row.updated_at,
           count: (existing?.count ?? 0) + 1,
         });
@@ -220,8 +223,9 @@ export class LanceDBBackend implements StorageBackend {
       }
     }
 
-    return Array.from(groups.entries()).map(([p, v]) => ({
-      path: p,
+    return Array.from(groups.values()).map((v) => ({
+      path: v.path,
+      agentId: v.agentId,
       updatedAt: v.updatedAt,
       chunkCount: v.count,
     }));

@@ -237,8 +237,10 @@ async function runBootPass(
   agents: string[],
   opts: { cfg: MemorySparkConfig; backend: StorageBackend; embed: Embedder; logger: WatcherLogger },
 ): Promise<void> {
+  // Key by agentId::path to avoid cross-agent false-skip when multiple agents
+  // share the same relative path (e.g. all agents have memory/learnings.md).
   const indexed = await opts.backend.listPaths();
-  const indexedMap = new Map(indexed.map((i) => [i.path, i.updatedAt]));
+  const indexedMap = new Map(indexed.map((i) => [`${i.agentId ?? ""}::${i.path}`, i.updatedAt]));
   let total = 0;
   let ingested = 0;
   let skipped = 0;
@@ -254,7 +256,7 @@ async function runBootPass(
       try {
         const stat = await fs.stat(absPath);
         const relPath = toRelativePath(absPath, wsFiles.workspaceDir);
-        const existing = indexedMap.get(relPath);
+        const existing = indexedMap.get(`${agentId}::${relPath}`);
         if (existing && existing >= stat.mtime.toISOString()) {
           skipped++;
           continue;
@@ -270,7 +272,7 @@ async function runBootPass(
       try {
         const stat = await fs.stat(absPath);
         const relPath = toRelativePath(absPath, wsFiles.workspaceDir);
-        const existing = indexedMap.get(relPath);
+        const existing = indexedMap.get(`${agentId}::${relPath}`);
         if (existing && existing >= stat.mtime.toISOString()) {
           skipped++;
           continue;
