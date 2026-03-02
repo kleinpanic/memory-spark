@@ -98,8 +98,11 @@ export class LanceDBBackend implements StorageBackend {
       .distanceType("cosine")
       .limit(limit);
 
-    if (opts.agentId) {
-      q = q.where(`agent_id = '${escapeSql(opts.agentId)}'`);
+    const filters: string[] = [];
+    if (opts.agentId) filters.push(`agent_id = '${escapeSql(opts.agentId)}'`);
+    if (opts.source) filters.push(`source = '${escapeSql(opts.source)}'`);
+    if (filters.length > 0) {
+      q = q.where(filters.join(" AND "));
     }
 
     const rows = await q.toArray();
@@ -126,8 +129,11 @@ export class LanceDBBackend implements StorageBackend {
     const limit = opts.maxResults ?? 20;
     try {
       let q = this.table.search(query, "fts", "text").limit(limit);
-      if (opts.agentId) {
-        q = q.where(`agent_id = '${escapeSql(opts.agentId)}'`);
+      const filters: string[] = [];
+      if (opts.agentId) filters.push(`agent_id = '${escapeSql(opts.agentId)}'`);
+      if (opts.source) filters.push(`source = '${escapeSql(opts.source)}'`);
+      if (filters.length > 0) {
+        q = q.where(filters.join(" AND "));
       }
       const rows = await q.toArray();
       return rows.map(rowToSearchResult);

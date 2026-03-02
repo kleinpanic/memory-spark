@@ -1,7 +1,8 @@
 /**
  * Auto-Capture — agent_end hook.
- * Classifies conversation turns and stores relevant facts/preferences.
- * Fire-and-forget: never throws, never blocks.
+ * Captures from USER messages only (no self-poisoning from assistant output).
+ * Deduplicates against existing memories (>0.92 similarity = skip).
+ * Max 3 captures per turn. Includes importance scoring.
  */
 
 import type { AutoCaptureConfig, MemorySparkConfig } from "../config.js";
@@ -9,11 +10,14 @@ import type { StorageBackend, MemoryChunk } from "../storage/backend.js";
 import type { EmbedProvider } from "../embed/provider.js";
 import { classifyForCapture } from "../classify/zero-shot.js";
 import { tagEntities } from "../classify/ner.js";
+import { looksLikePromptInjection } from "../security.js";
 import crypto from "node:crypto";
 
-// Structural types matching OC's hook events
 type AgentEndEvent = { messages: unknown[]; success: boolean; error?: string; durationMs?: number };
 type HookContext = { agentId?: string; sessionKey?: string };
+
+const MAX_CAPTURES_PER_TURN = 3;
+const DEDUP_THRESHOLD = 0.92;
 
 export interface AutoCaptureDeps {
   cfg: AutoCaptureConfig;
@@ -33,62 +37,106 @@ export function createAutoCaptureHandler(deps: AutoCaptureDeps) {
     const agentId = ctx.agentId ?? "unknown";
     if (!cfg.agents.includes("*") && !cfg.agents.includes(agentId)) return;
 
-    const turnText = extractTurnText(event.messages);
-    if (!turnText || turnText.length < 30) return;
+    // Extract ONLY user messages (no assistant — prevents self-poisoning)
+    const userTexts = extractUserMessages(event.messages);
+    if (userTexts.length === 0) return;
 
-    try {
-      // Classify
-      const result = await classifyForCapture(turnText, globalCfg, cfg.minConfidence);
-      if (result.label === "none") return;
-      if (!cfg.categories.includes(result.label)) return;
+    let captured = 0;
 
-      // NER + embed in parallel
-      const [entities, vector] = await Promise.all([
-        tagEntities(turnText, globalCfg).catch(() => [] as string[]),
-        embed.embedQuery(turnText),
-      ]);
+    for (const text of userTexts) {
+      if (captured >= MAX_CAPTURES_PER_TURN) break;
+      if (text.length < 30) continue;
 
-      const now = new Date();
-      const dateStr = now.toISOString().slice(0, 10);
-      const chunk: MemoryChunk = {
-        id: crypto.randomUUID().slice(0, 16),
-        path: `capture/${agentId}/${dateStr}`,
-        source: "capture",
-        agent_id: agentId,
-        start_line: 0,
-        end_line: 0,
-        text: turnText,
-        vector,
-        updated_at: now.toISOString(),
-        category: result.label,
-        entities: JSON.stringify(entities),
-        confidence: result.score,
-      };
+      // Skip prompt injection attempts
+      if (looksLikePromptInjection(text)) continue;
 
-      await backend.upsert([chunk]);
-    } catch {
-      // Always non-fatal
+      try {
+        // Classify
+        const result = await classifyForCapture(text, globalCfg, cfg.minConfidence);
+        if (result.label === "none") continue;
+        if (!cfg.categories.includes(result.label)) continue;
+
+        // Embed
+        const vector = await embed.embedQuery(text);
+
+        // Duplicate detection: search for similar existing memories
+        const existing = await backend.vectorSearch(vector, {
+          query: text,
+          maxResults: 1,
+          minScore: DEDUP_THRESHOLD,
+          agentId,
+          source: "capture",
+        }).catch(() => []);
+
+        if (existing.length > 0 && existing[0]!.score >= DEDUP_THRESHOLD) {
+          continue; // Duplicate — skip
+        }
+
+        // NER tag
+        const entities = await tagEntities(text, globalCfg).catch(() => [] as string[]);
+
+        // Importance scoring: confidence from classifier + category weight
+        const categoryWeights: Record<string, number> = {
+          "decision": 0.9,
+          "preference": 0.8,
+          "fact": 0.7,
+          "code-snippet": 0.6,
+        };
+        const importance = (result.score + (categoryWeights[result.label] ?? 0.5)) / 2;
+
+        const now = new Date();
+        const dateStr = now.toISOString().slice(0, 10);
+        const chunk: MemoryChunk = {
+          id: crypto.randomUUID().slice(0, 16),
+          path: `capture/${agentId}/${dateStr}`,
+          source: "capture",
+          agent_id: agentId,
+          start_line: 0,
+          end_line: 0,
+          text,
+          vector,
+          updated_at: now.toISOString(),
+          category: result.label,
+          entities: JSON.stringify(entities),
+          confidence: importance,
+        };
+
+        await backend.upsert([chunk]);
+        captured++;
+      } catch {
+        // Non-fatal
+      }
     }
   };
 }
 
-function extractTurnText(messages: unknown[]): string {
-  if (!Array.isArray(messages) || messages.length === 0) return "";
+/**
+ * Extract only user messages — never capture assistant output.
+ * Returns individual user message texts, deduplicated.
+ */
+function extractUserMessages(messages: unknown[]): string[] {
+  if (!Array.isArray(messages)) return [];
 
-  // Find last assistant + last user messages
-  const reversed = [...messages].reverse();
-  const lastAssistant = reversed.find(isRole("assistant"));
-  const lastUser = reversed.find(isRole("user"));
+  const texts: string[] = [];
+  const seen = new Set<string>();
 
-  const parts: string[] = [];
-  if (lastUser) parts.push(extractContent(lastUser));
-  if (lastAssistant) parts.push(extractContent(lastAssistant));
-  return parts.filter(Boolean).join("\n\n").slice(0, 2000);
-}
+  for (const msg of messages) {
+    if (!msg || typeof msg !== "object") continue;
+    const obj = msg as Record<string, unknown>;
+    if (obj.role !== "user") continue;
 
-function isRole(role: string) {
-  return (m: unknown): m is Record<string, unknown> =>
-    typeof m === "object" && m !== null && (m as Record<string, unknown>).role === role;
+    const text = extractContent(obj).trim();
+    if (!text || text.length < 30) continue;
+
+    // Deduplicate within this turn
+    const key = text.slice(0, 100);
+    if (seen.has(key)) continue;
+    seen.add(key);
+
+    texts.push(text.slice(0, 2000));
+  }
+
+  return texts;
 }
 
 function extractContent(msg: Record<string, unknown>): string {

@@ -86,6 +86,15 @@ const GetParams = Type.Object({
   lines: Type.Optional(Type.Number({ description: "Lines to read (default 50)" })),
 });
 
+const StoreParams = Type.Object({
+  text: Type.String({ description: "The information to remember" }),
+  category: Type.Optional(Type.String({ description: "Category: fact, preference, decision, code-snippet" })),
+});
+
+const ForgetParams = Type.Object({
+  query: Type.String({ description: "What to forget — matches and removes similar memories" }),
+});
+
 // ---------------------------------------------------------------------------
 // Plugin definition
 // ---------------------------------------------------------------------------
@@ -147,9 +156,71 @@ const memorySpark = {
           },
         };
 
-        return [searchTool, getTool] as any;
+        const storeTool = {
+          name: "memory_store",
+          description: "Explicitly store a piece of information in long-term memory. Use for facts, preferences, or decisions the user wants remembered.",
+          label: "Memory Store",
+          parameters: StoreParams,
+          execute: async (_toolCallId: string, params: { text: string; category?: string }) => {
+            const s = await getState(cfg, api.logger);
+            const { looksLikePromptInjection } = await import("./src/security.js");
+            if (looksLikePromptInjection(params.text)) {
+              return { content: [{ type: "text" as const, text: "Refused: text contains suspicious patterns." }], details: {} };
+            }
+            const vector = await s.embed.embedQuery(params.text);
+            // Duplicate check
+            const existing = await s.backend.vectorSearch(vector, {
+              query: params.text, maxResults: 1, minScore: 0.92, agentId, source: "capture",
+            }).catch(() => []);
+            if (existing.length > 0 && existing[0]!.score >= 0.92) {
+              return { content: [{ type: "text" as const, text: "Already stored (similar memory exists)." }], details: {} };
+            }
+            const { tagEntities } = await import("./src/classify/ner.js");
+            const entities = await tagEntities(params.text, cfg).catch(() => [] as string[]);
+            const crypto = await import("node:crypto");
+            const now = new Date();
+            await s.backend.upsert([{
+              id: crypto.randomUUID().slice(0, 16),
+              path: `capture/${agentId}/${now.toISOString().slice(0, 10)}`,
+              source: "capture",
+              agent_id: agentId,
+              start_line: 0,
+              end_line: 0,
+              text: params.text,
+              vector,
+              updated_at: now.toISOString(),
+              category: params.category ?? "fact",
+              entities: JSON.stringify(entities),
+              confidence: 1.0,
+            }]);
+            return { content: [{ type: "text" as const, text: `Stored in memory: "${params.text.slice(0, 80)}..."` }], details: {} };
+          },
+        };
+
+        const forgetTool = {
+          name: "memory_forget",
+          description: "Remove memories matching a query. Use when the user wants to correct or delete stored information.",
+          label: "Memory Forget",
+          parameters: ForgetParams,
+          execute: async (_toolCallId: string, params: { query: string }) => {
+            const s = await getState(cfg, api.logger);
+            const vector = await s.embed.embedQuery(params.query);
+            const matches = await s.backend.vectorSearch(vector, {
+              query: params.query, maxResults: 5, minScore: 0.7, agentId, source: "capture",
+            }).catch(() => []);
+            if (matches.length === 0) {
+              return { content: [{ type: "text" as const, text: "No matching memories found to forget." }], details: {} };
+            }
+            const ids = matches.map((m) => m.chunk.id);
+            await s.backend.deleteById(ids);
+            const previews = matches.map((m) => `• "${m.chunk.text.slice(0, 60)}..."`).join("\n");
+            return { content: [{ type: "text" as const, text: `Forgot ${ids.length} memories:\n${previews}` }], details: { deleted: ids.length } };
+          },
+        };
+
+        return [searchTool, getTool, storeTool, forgetTool] as any;
       },
-      { names: ["memory_search", "memory_get"] },
+      { names: ["memory_search", "memory_get", "memory_store", "memory_forget"] },
     );
 
     // -------------------------------------------------------------------
