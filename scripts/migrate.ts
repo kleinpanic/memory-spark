@@ -1,11 +1,7 @@
 /**
- * Migration: memory-core SQLite-vec → memory-spark LanceDB
- *
- * Reads existing memory workspace .md files for each agent,
- * chunks and embeds them with the configured provider, stores in LanceDB.
- *
- * Run via: node dist/scripts/migrate.js
- * Or auto-run on first boot if config.migrate.autoMigrateOnFirstBoot = true
+ * Migration: existing workspace memory → LanceDB
+ * Reads all agent workspace memory .md files + session transcripts,
+ * chunks, embeds, stores in LanceDB with relative paths.
  */
 
 import fs from "node:fs/promises";
@@ -14,18 +10,17 @@ import os from "node:os";
 import { resolveConfig } from "../src/config.js";
 import { LanceDBBackend } from "../src/storage/lancedb.js";
 import { createEmbedProvider } from "../src/embed/provider.js";
-import { chunkDocument } from "../src/embed/chunker.js";
-import { tagEntities } from "../src/classify/ner.js";
-import crypto from "node:crypto";
+import { ingestFile } from "../src/ingest/pipeline.js";
+import { discoverAllAgents, discoverWorkspaceFiles } from "../src/ingest/workspace.js";
 
 interface MigrationStatus {
   version: 1;
   startedAt: string;
   completedAt?: string;
-  agents: Record<string, { status: string; files: number; chunks: number; error?: string }>;
+  agents: Record<string, { status: string; memoryFiles: number; sessionFiles: number; chunks: number; error?: string }>;
 }
 
-async function main() {
+export async function runMigration(): Promise<void> {
   const cfg = resolveConfig();
   const statusFile = cfg.migrate.statusFile;
 
@@ -33,11 +28,11 @@ async function main() {
   try {
     const existing = JSON.parse(await fs.readFile(statusFile, "utf-8")) as MigrationStatus;
     if (existing.completedAt) {
-      console.log(`Migration already completed at ${existing.completedAt}. Skipping.`);
+      console.log(`Migration already completed at ${existing.completedAt}`);
       return;
     }
   } catch {
-    // No status file = first run
+    // First run
   }
 
   console.log("memory-spark migration: starting");
@@ -46,7 +41,7 @@ async function main() {
   await backend.open();
 
   const embed = await createEmbedProvider(cfg.embed);
-  console.log(`Using embed provider: ${embed.id}/${embed.model}`);
+  console.log(`Embed: ${embed.id}/${embed.model} (${embed.dims}d)`);
 
   const status: MigrationStatus = {
     version: 1,
@@ -54,97 +49,63 @@ async function main() {
     agents: {},
   };
 
-  // Discover agent workspace directories with memory folders
-  const openclawDir = path.join(os.homedir(), ".openclaw");
-  const entries = await fs.readdir(openclawDir, { withFileTypes: true });
-  const workspaceDirs = entries
-    .filter((e) => e.isDirectory() && e.name.startsWith("workspace-"))
-    .map((e) => ({
-      agentId: e.name.replace("workspace-", ""),
-      memoryDir: path.join(openclawDir, e.name, "memory"),
-      workspaceDir: path.join(openclawDir, e.name),
-    }));
+  const agents = await discoverAllAgents();
+  console.log(`Found ${agents.length} agents: ${agents.join(", ")}`);
 
-  // Also include the shared memory dir
-  workspaceDirs.push({
-    agentId: "shared",
-    memoryDir: path.join(openclawDir, "memory"),
-    workspaceDir: openclawDir,
-  });
-
-  for (const { agentId, memoryDir, workspaceDir } of workspaceDirs) {
+  for (const agentId of agents) {
     try {
-      const stat = await fs.stat(memoryDir).catch(() => null);
-      if (!stat?.isDirectory()) continue;
-
-      console.log(`Migrating agent: ${agentId} (${memoryDir})`);
-
-      // Find all .md files in memory dir
-      const mdFiles = await walkMdFiles(memoryDir);
-
-      // Also find MEMORY.md, SOUL.md, USER.md in workspace root
-      const rootFiles = ["MEMORY.md", "SOUL.md", "USER.md", "AGENTS.md", "HEARTBEAT.md"];
-      for (const f of rootFiles) {
-        const fp = path.join(workspaceDir, f);
-        try {
-          await fs.access(fp);
-          mdFiles.push(fp);
-        } catch {
-          // File doesn't exist
-        }
-      }
-
+      const wsFiles = await discoverWorkspaceFiles(agentId);
       let totalChunks = 0;
 
-      for (const filePath of mdFiles) {
+      // Index memory files
+      for (const absPath of wsFiles.memoryFiles) {
         try {
-          const text = await fs.readFile(filePath, "utf-8");
-          if (!text.trim()) continue;
-
-          const chunks = chunkDocument({
-            text,
-            path: filePath,
+          const result = await ingestFile({
+            filePath: absPath,
+            agentId,
+            workspaceDir: wsFiles.workspaceDir,
+            backend,
+            embed,
+            cfg,
             source: "memory",
-            ext: "md",
           });
-
-          if (chunks.length === 0) continue;
-
-          // NER (best-effort)
-          const entitiesPerChunk = await Promise.all(
-            chunks.map((c) => tagEntities(c.text, cfg).catch(() => [] as string[]))
-          );
-
-          // Embed
-          const vectors = await embed.embedBatch(chunks.map((c) => c.text));
-
-          const now = new Date().toISOString();
-          const memoryChunks = chunks.map((raw, i) => ({
-            id: crypto.createHash("sha1").update(`${agentId}:${filePath}:${raw.startLine}`).digest("hex").slice(0, 16),
-            path: filePath,
-            source: "memory" as const,
-            agent_id: agentId,
-            start_line: raw.startLine,
-            end_line: raw.endLine,
-            text: raw.text,
-            vector: vectors[i]!,
-            updated_at: now,
-            entities: JSON.stringify(entitiesPerChunk[i] ?? []),
-          }));
-
-          await backend.upsert(memoryChunks);
-          totalChunks += memoryChunks.length;
-          console.log(`  ${filePath}: ${memoryChunks.length} chunks`);
+          totalChunks += result.chunksAdded;
+          if (result.chunksAdded > 0) {
+            console.log(`  ${agentId}: ${result.filePath} → ${result.chunksAdded} chunks`);
+          }
         } catch (err) {
-          console.warn(`  SKIP ${filePath}: ${err}`);
+          console.warn(`  SKIP ${absPath}: ${err}`);
         }
       }
 
-      status.agents[agentId] = { status: "done", files: mdFiles.length, chunks: totalChunks };
-      console.log(`  ${agentId}: ${mdFiles.length} files → ${totalChunks} chunks`);
+      // Index session files
+      for (const absPath of wsFiles.sessionFiles) {
+        try {
+          const result = await ingestFile({
+            filePath: absPath,
+            agentId,
+            workspaceDir: wsFiles.workspaceDir,
+            backend,
+            embed,
+            cfg,
+            source: "sessions",
+          });
+          totalChunks += result.chunksAdded;
+        } catch {
+          // Skip bad sessions silently
+        }
+      }
+
+      status.agents[agentId] = {
+        status: "done",
+        memoryFiles: wsFiles.memoryFiles.length,
+        sessionFiles: wsFiles.sessionFiles.length,
+        chunks: totalChunks,
+      };
+      console.log(`${agentId}: ${wsFiles.memoryFiles.length} memory + ${wsFiles.sessionFiles.length} sessions → ${totalChunks} chunks`);
     } catch (err) {
-      status.agents[agentId] = { status: "error", files: 0, chunks: 0, error: String(err) };
-      console.error(`  ${agentId} FAILED: ${err}`);
+      status.agents[agentId] = { status: "error", memoryFiles: 0, sessionFiles: 0, chunks: 0, error: String(err) };
+      console.error(`${agentId} FAILED: ${err}`);
     }
   }
 
@@ -153,29 +114,11 @@ async function main() {
   await fs.writeFile(statusFile, JSON.stringify(status, null, 2));
 
   await backend.close();
-  console.log(`Migration complete. Status written to ${statusFile}`);
+  console.log(`Migration complete → ${statusFile}`);
 }
 
-async function walkMdFiles(dir: string): Promise<string[]> {
-  const results: string[] = [];
-  try {
-    const entries = await fs.readdir(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      if (entry.name.startsWith(".")) continue;
-      const fullPath = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        results.push(...await walkMdFiles(fullPath));
-      } else if (entry.name.endsWith(".md")) {
-        results.push(fullPath);
-      }
-    }
-  } catch {
-    // Skip inaccessible dirs
-  }
-  return results;
-}
-
-main().catch((err) => {
+// Run if executed directly
+runMigration().catch((err) => {
   console.error("Migration failed:", err);
   process.exit(1);
 });

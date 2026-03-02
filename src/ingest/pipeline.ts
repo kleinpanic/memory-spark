@@ -1,5 +1,6 @@
 /**
  * Ingest Pipeline — extract → chunk → NER → embed → store.
+ * Handles both regular files AND session JSONL transcripts.
  */
 
 import type { MemorySparkConfig } from "../config.js";
@@ -7,16 +8,21 @@ import type { StorageBackend, MemoryChunk } from "../storage/backend.js";
 import type { EmbedProvider } from "../embed/provider.js";
 import { chunkDocument } from "../embed/chunker.js";
 import { extractText } from "./parsers.js";
+import { extractSessionText } from "./sessions.js";
+import { toRelativePath } from "./workspace.js";
 import { tagEntities } from "../classify/ner.js";
 import crypto from "node:crypto";
 import path from "node:path";
 
 export interface IngestFileOptions {
   filePath: string;
-  agentId?: string;
+  agentId: string;
+  workspaceDir: string;
   backend: StorageBackend;
   embed: EmbedProvider;
   cfg: MemorySparkConfig;
+  /** "memory" for workspace files, "sessions" for JSONL transcripts, "ingest" for external */
+  source?: "memory" | "sessions" | "ingest";
   logger?: { info: (m: string) => void; warn: (m: string) => void; error: (m: string) => void };
 }
 
@@ -33,41 +39,55 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
 
   try {
     const ext = path.extname(opts.filePath).replace(".", "").toLowerCase();
+    const isSession = ext === "jsonl" || opts.source === "sessions";
 
     // 1. Extract text
-    const rawText = await extractText(opts.filePath, ext, opts.cfg);
+    let rawText: string;
+    if (isSession) {
+      const entry = await extractSessionText(opts.filePath);
+      if (!entry || !entry.text.trim()) {
+        return { filePath: opts.filePath, chunksAdded: 0, chunksRemoved: 0, durationMs: Date.now() - start };
+      }
+      rawText = entry.text;
+    } else {
+      rawText = await extractText(opts.filePath, ext, opts.cfg);
+    }
+
     if (!rawText.trim()) {
       return { filePath: opts.filePath, chunksAdded: 0, chunksRemoved: 0, durationMs: Date.now() - start };
     }
 
-    // 2. Chunk
+    // 2. Convert to relative path for storage
+    const relPath = toRelativePath(opts.filePath, opts.workspaceDir);
+    const source = opts.source ?? (isSession ? "sessions" : "memory");
+
+    // 3. Chunk
     const rawChunks = chunkDocument({
       text: rawText,
-      path: opts.filePath,
-      source: "ingest",
-      ext,
+      path: relPath,
+      source,
+      ext: isSession ? "txt" : ext,
     });
 
     if (rawChunks.length === 0) {
       return { filePath: opts.filePath, chunksAdded: 0, chunksRemoved: 0, durationMs: Date.now() - start };
     }
 
-    // 3. NER tag (best-effort, parallel)
+    // 4. NER tag (best-effort, parallel)
     const entitiesPerChunk = await Promise.all(
       rawChunks.map((c) => tagEntities(c.text, opts.cfg).catch(() => [] as string[]))
     );
 
-    // 4. Embed batch
+    // 5. Embed batch
     const vectors = await opts.embed.embedBatch(rawChunks.map((c) => c.text));
 
-    // 5. Build MemoryChunk objects
+    // 6. Build MemoryChunk objects with RELATIVE paths
     const now = new Date().toISOString();
-    const agentId = opts.agentId ?? "shared";
     const chunks: MemoryChunk[] = rawChunks.map((raw, i) => ({
-      id: chunkId(opts.filePath, raw.startLine, agentId),
-      path: opts.filePath,
-      source: "ingest" as const,
-      agent_id: agentId,
+      id: chunkId(relPath, raw.startLine, opts.agentId),
+      path: relPath,
+      source,
+      agent_id: opts.agentId,
       start_line: raw.startLine,
       end_line: raw.endLine,
       text: raw.text,
@@ -76,11 +96,11 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
       entities: JSON.stringify(entitiesPerChunk[i] ?? []),
     }));
 
-    // 6. Remove old chunks for this path, then upsert new
-    const removed = await opts.backend.deleteByPath(opts.filePath, agentId);
+    // 7. Remove old chunks for this path, then upsert new
+    const removed = await opts.backend.deleteByPath(relPath, opts.agentId);
     await opts.backend.upsert(chunks);
 
-    opts.logger?.info(`memory-spark: ingested ${opts.filePath} → ${chunks.length} chunks`);
+    opts.logger?.info(`memory-spark: ${source} ${relPath} → ${chunks.length} chunks`);
 
     return {
       filePath: opts.filePath,
@@ -101,10 +121,10 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
   }
 }
 
-function chunkId(filePath: string, startLine: number, agentId: string): string {
+function chunkId(relPath: string, startLine: number, agentId: string): string {
   return crypto
     .createHash("sha1")
-    .update(`${agentId}:${filePath}:${startLine}`)
+    .update(`${agentId}:${relPath}:${startLine}`)
     .digest("hex")
     .slice(0, 16);
 }
