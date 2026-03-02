@@ -41,9 +41,30 @@ export class LanceDBBackend implements StorageBackend {
     this.db = null;
   }
 
+  private ensureTablePromise: Promise<Table> | null = null;
+
   private async ensureTable(dims: number): Promise<Table> {
     if (this.table) return this.table;
+    // Mutex: only one createTable attempt at a time
+    if (this.ensureTablePromise) return this.ensureTablePromise;
+
+    this.ensureTablePromise = this._createTable(dims);
+    try {
+      return await this.ensureTablePromise;
+    } finally {
+      this.ensureTablePromise = null;
+    }
+  }
+
+  private async _createTable(dims: number): Promise<Table> {
     if (!this.db) throw new Error("LanceDB not connected");
+
+    // Check if table was created between our check and now
+    const names = await this.db.tableNames();
+    if (names.includes(TABLE_NAME)) {
+      this.table = await this.db.openTable(TABLE_NAME);
+      return this.table;
+    }
 
     // Create table with a seed record that includes ALL fields (schema-defining).
     // LanceDB locks schema on creation — missing fields cause append errors.
