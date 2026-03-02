@@ -1,5 +1,6 @@
 /**
  * Zero-Shot Classifier — Spark 18113 (bart-large-mnli).
+ * Endpoint: POST /v1/classify with {"text": "...", "labels": [...]}
  * Returns { label: "none", score: 0 } on failure (safe default).
  */
 
@@ -22,17 +23,18 @@ export async function classifyForCapture(
   minConfidence = 0.75,
 ): Promise<ClassifyResult> {
   try {
-    const resp = await fetch(cfg.spark.zeroShot, {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (cfg.embed.spark?.apiKey) {
+      headers["Authorization"] = `Bearer ${cfg.embed.spark.apiKey}`;
+    }
+    const resp = await fetch(`${cfg.spark.zeroShot}/v1/classify`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify({
-        inputs: text.slice(0, 2000),
-        parameters: {
-          candidate_labels: CAPTURE_LABELS,
-          multi_label: false,
-        },
+        text: text.slice(0, 2000),
+        labels: CAPTURE_LABELS.filter((l) => l !== "none"),
       }),
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(10000),
     });
     if (!resp.ok) return { label: "none", score: 0 };
 
@@ -40,7 +42,7 @@ export async function classifyForCapture(
     const topLabel = data.labels[0] as CaptureCategory;
     const topScore = data.scores[0]!;
 
-    if (topScore < minConfidence || topLabel === "none") {
+    if (topScore < minConfidence) {
       return { label: "none", score: topScore };
     }
     return { label: topLabel, score: topScore };

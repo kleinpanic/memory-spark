@@ -20,7 +20,7 @@ export interface SparkEndpoints {
 
 export interface EmbedConfig {
   provider: EmbedProviderId;
-  spark?: { baseUrl: string; apiKey?: string; model: string };
+  spark?: { baseUrl: string; apiKey?: string; model: string; dimensions?: number };
   openai?: { apiKey?: string; model: string };
   gemini?: { model: string };
 }
@@ -78,6 +78,24 @@ export interface MemorySparkConfig {
   spark: SparkEndpoints;
 }
 
+import fs from "node:fs";
+
+/**
+ * Load Spark bearer token from ~/.openclaw/.env
+ */
+function loadSparkToken(): string | undefined {
+  try {
+    const envPath = path.join(os.homedir(), ".openclaw", ".env");
+    const content = fs.readFileSync(envPath, "utf-8");
+    const match = content.match(/SPARK_BEARER_TOKEN=["']?([^"'\s\n]+)/);
+    return match?.[1];
+  } catch {
+    return undefined;
+  }
+}
+
+const SPARK_TOKEN = loadSparkToken();
+
 export const DEFAULT_CONFIG: MemorySparkConfig = {
   backend: "lancedb",
   lancedbDir: path.join(os.homedir(), ".openclaw", "data", "memory-spark", "lancedb"),
@@ -85,8 +103,10 @@ export const DEFAULT_CONFIG: MemorySparkConfig = {
   embed: {
     provider: "spark",
     spark: {
-      baseUrl: "http://dgx-spark.local:18091/v1",
-      model: "Qwen/Qwen3-Embedding-4B",
+      baseUrl: "http://localhost:18091/v1",
+      apiKey: SPARK_TOKEN,
+      model: "nvidia/llama-embed-nemotron-8b",
+      dimensions: 4096,
     },
     openai: { model: "text-embedding-3-small" },
     gemini: { model: "gemini-embedding-001" },
@@ -94,7 +114,8 @@ export const DEFAULT_CONFIG: MemorySparkConfig = {
   rerank: {
     enabled: true,
     spark: {
-      baseUrl: "http://dgx-spark.local:18096/v1",
+      baseUrl: "http://localhost:18096/v1",
+      apiKey: SPARK_TOKEN,
       model: "nvidia/llama-nemotron-rerank-1b-v2",
     },
     topN: 20,
@@ -124,13 +145,13 @@ export const DEFAULT_CONFIG: MemorySparkConfig = {
     statusFile: path.join(os.homedir(), ".openclaw", "runtime", "state", "memory-spark-migrate.json"),
   },
   spark: {
-    embed: "http://dgx-spark.local:18091/v1",
-    rerank: "http://dgx-spark.local:18096/v1",
-    ocr: "http://dgx-spark.local:18097",
-    ner: "http://dgx-spark.local:18112",
-    zeroShot: "http://dgx-spark.local:18113",
-    summarizer: "http://dgx-spark.local:18110",
-    stt: "http://dgx-spark.local:18094",
+    embed: "http://localhost:18091/v1",
+    rerank: "http://localhost:18096/v1",
+    ocr: "http://localhost:18097",
+    ner: "http://localhost:18112",
+    zeroShot: "http://localhost:18113",
+    summarizer: "http://localhost:18110",
+    stt: "http://localhost:18094",
   },
 };
 
