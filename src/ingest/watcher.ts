@@ -265,10 +265,21 @@ async function runBootPass(
   const CONCURRENCY = 1;
   let errors = 0;
 
-  for (let i = 0; i < queue.length; i += CONCURRENCY) {
-    const batch = queue.slice(i, i + CONCURRENCY);
-    const results = await Promise.allSettled(
-      batch.map((item) =>
+  const FILE_TIMEOUT_MS = 60_000; // 60s per file max
+
+  function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`Timeout after ${ms}ms: ${label}`)), ms);
+      promise
+        .then((v) => { clearTimeout(timer); resolve(v); })
+        .catch((e) => { clearTimeout(timer); reject(e); });
+    });
+  }
+
+  for (let i = 0; i < queue.length; i++) {
+    const item = queue[i]!;
+    try {
+      const result = await withTimeout(
         ingestFile({
           filePath: item.absPath,
           agentId: item.agentId,
@@ -278,22 +289,24 @@ async function runBootPass(
           cfg: opts.cfg,
           source: item.source,
           logger: opts.logger,
-        })
-      )
-    );
-
-    for (const r of results) {
-      if (r.status === "fulfilled" && !r.value.error) {
-        ingested++;
-      } else {
+        }),
+        FILE_TIMEOUT_MS,
+        item.absPath,
+      );
+      if (result.error) {
         errors++;
-        const err = r.status === "rejected" ? r.reason : r.value.error;
-        opts.logger.warn(`memory-spark boot: file failed: ${err}`);
+        opts.logger.warn(`memory-spark boot: ${path.basename(item.absPath)}: ${result.error}`);
+      } else {
+        ingested++;
       }
+    } catch (err) {
+      errors++;
+      const msg = err instanceof Error ? err.message : String(err);
+      opts.logger.warn(`memory-spark boot: ${path.basename(item.absPath)}: ${msg}`);
     }
 
-    // Progress log every 10 files
-    if ((i + CONCURRENCY) % 30 === 0 || i + CONCURRENCY >= queue.length) {
+    // Progress log every 20 files
+    if ((i + 1) % 20 === 0 || i + 1 === queue.length) {
       opts.logger.info(`memory-spark boot: ${ingested}/${queue.length} indexed, ${errors} errors`);
     }
   }
