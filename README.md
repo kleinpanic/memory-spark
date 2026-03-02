@@ -1,130 +1,145 @@
 # memory-spark
 
-Autonomous Spark-powered memory plugin for OpenClaw.
-Drop-in replacement for `memory-core` — same tools, massively upgraded pipeline.
+An OpenClaw memory plugin with LanceDB vector storage and NVIDIA Spark GPU-accelerated embeddings. Drop-in replacement for `memory-core` with autonomous recall, capture, file ingestion, and hybrid search.
 
-## What it does
+## Features
 
-- **Auto-indexes** files dropped into configured paths. No commands. No cron.
-- **Auto-recalls** relevant memories before every agent turn via `before_prompt_build` hook injection.
-- **Auto-captures** facts, preferences, and decisions from conversations via `agent_end` hook.
-- **LanceDB** primary storage with native vector ANN + Tantivy FTS + hybrid search.
-- **Spark-backed** embed (18091), reranker (18096), OCR (18097), NER (18112), zero-shot (18113), STT (18094).
-- **Portable**: provider falls back Spark → OpenAI → Gemini. Works on setups without a DGX node.
-- **Auto-migrates** existing memory-core SQLite-vec data on first boot (re-embeds with new provider).
+- **Auto-recall** — injects relevant memories before every agent turn (`before_prompt_build` hook)
+- **Auto-capture** — extracts and stores facts/preferences from conversations (`agent_end` hook)
+- **File watcher** — auto-indexes your workspace memory dirs, sessions, and watched paths on boot and on change
+- **PDF / DOCX / audio ingest** — parse and embed documents via `pdftotext`, `mammoth`, and STT
+- **Hybrid search + rerank** — vector search + BM25 full-text, reranked by Cohere-compatible cross-encoder
+- **NVIDIA Spark GPU embeddings** — `nvidia/llama-embed-nemotron-8b` (4096d), 0.25s/call on Blackwell GPU
+- **Serialized embed queue** — retry with exponential backoff, health monitoring, auto-cooldown
+- **Dimension lock** — refuses to start if provider/dims mismatch, preventing silent vector corruption
+- **Zero-touch** — configure once, everything else is automatic
 
 ## Architecture
 
 ```
-~/.openclaw/extensions/memory-spark/
-├── index.ts                   ← plugin entry, registers everything with OC
+memory-spark/
+├── index.ts                 # Plugin entry: register(), tool handlers, hooks
 ├── src/
-│   ├── config.ts              ← config schema + defaults
-│   ├── manager.ts             ← MemorySearchManager (OC tool interface)
-│   ├── embed/
-│   │   ├── provider.ts        ← Spark/OpenAI/Gemini embedding with fallback chain
-│   │   └── chunker.ts         ← token-aware, markdown-aware chunking
-│   ├── rerank/
-│   │   └── reranker.ts        ← Spark cross-encoder reranking (Cohere-compatible API)
-│   ├── storage/
-│   │   ├── backend.ts         ← StorageBackend interface
-│   │   ├── lancedb.ts         ← LanceDB primary backend
-│   │   └── sqlite-vec.ts      ← SQLite-vec migration source + fallback
-│   ├── ingest/
-│   │   ├── watcher.ts         ← chokidar file watcher (gateway service)
-│   │   ├── pipeline.ts        ← file → chunk → NER → embed → store pipeline
-│   │   └── parsers.ts         ← .md/.txt, .pdf (pdftotext+OCR), .docx, audio/STT
+│   ├── config.ts            # Config schema + defaults + .env loader
+│   ├── manager.ts           # MemorySearchManager: search, store, forget
 │   ├── auto/
-│   │   ├── recall.ts          ← before_prompt_build: inject top-K memories
-│   │   └── capture.ts         ← agent_end: classify + store turn facts
-│   └── classify/
-│       ├── ner.ts             ← Spark NER entity tagging per chunk
-│       └── zero-shot.ts       ← Spark zero-shot: fact/pref/decision/snippet/none
-└── scripts/
-    └── migrate.ts             ← one-time migration from memory-core
+│   │   ├── recall.ts        # before_prompt_build hook — injects memories
+│   │   └── capture.ts       # agent_end hook — classifies + stores new facts
+│   ├── embed/
+│   │   ├── provider.ts      # EmbedProvider: Spark → OpenAI → Gemini fallback
+│   │   ├── queue.ts         # EmbedQueue: serial requests, retry, health tracking
+│   │   ├── chunker.ts       # Markdown-aware token-bounded chunking with overlap
+│   │   └── dims-lock.ts     # Dimension lock: validates provider/model/dims on startup
+│   ├── ingest/
+│   │   ├── pipeline.ts      # extract → chunk → NER → embed → upsert
+│   │   ├── watcher.ts       # Chokidar watcher + boot pass across all agent workspaces
+│   │   ├── workspace.ts     # Agent workspace discovery, session scanning
+│   │   └── parsers.ts       # PDF (pdftotext+OCR), DOCX (mammoth), audio (STT), text
+│   ├── classify/
+│   │   ├── ner.ts           # NER via Spark 18112 (dslim/bert-base-NER)
+│   │   └── zero-shot.ts     # Zero-shot classifier via Spark 18113 (bart-large-mnli)
+│   ├── rerank/
+│   │   └── reranker.ts      # Cohere-compatible reranker via Spark 18096
+│   └── storage/
+│       ├── backend.ts       # StorageBackend interface
+│       └── lancedb.ts       # LanceDB: connect, upsert (mergeInsert), vectorSearch, FTS, delete
 ```
 
-## Spark microservices used
+## Requirements
 
-| Port  | Model                                  | Role                          |
-|-------|----------------------------------------|-------------------------------|
-| 18091 | Qwen/Qwen3-Embedding-4B               | Embedding (2560d)             |
-| 18096 | nvidia/llama-nemotron-rerank-1b-v2    | Post-search reranking         |
-| 18097 | TrOCR / EasyOCR                       | Scanned PDF text extraction   |
-| 18112 | dslim/bert-base-NER                   | Entity tagging per chunk      |
-| 18113 | bart-large-mnli                       | Zero-shot capture classify    |
-| 18110 | bart-large-cnn                        | Large doc pre-summarization   |
-| 18094 | nvidia/parakeet-ctc-1.1b              | Audio → transcript (STT)      |
+- [OpenClaw](https://openclaw.ai) — the plugin host
+- [LanceDB](https://lancedb.github.io/lancedb/) — `npm install @lancedb/lancedb`
+- `pdftotext` (poppler-utils) — for PDF parsing
+- NVIDIA Spark microservices (optional but recommended):
+  - **Embed** — port 18091 (`nvidia/llama-embed-nemotron-8b`, 4096d)
+  - **Reranker** — port 18096 (`nvidia/llama-nemotron-rerank-1b-v2`)
+  - **NER** — port 18112 (`dslim/bert-base-NER`)
+  - **Zero-shot** — port 18113 (`facebook/bart-large-mnli`)
+  - **OCR** — port 18097
+  - **STT** — port 18094
 
-## Activation (openclaw.json)
+Falls back to OpenAI or Gemini embeddings if Spark is unavailable.
+
+## Setup
+
+### 1. Install
+
+```bash
+cd ~/.openclaw/extensions
+git clone https://github.com/exampleuser/memory-spark
+cd memory-spark && npm install && npm run build
+```
+
+### 2. Configure OpenClaw
+
+In `~/.openclaw/openclaw.json`:
 
 ```json
-"plugins": {
-  "allow": ["memory-spark", ...],
-  "entries": {
-    "memory-core": { "enabled": false },
-    "memory-spark": {
+{
+  "plugins": {
+    "slots": { "memory": "memory-spark" },
+    "allow": ["memory-spark"],
+    "entries": { "memory-spark": { "enabled": true } },
+    "load": { "paths": ["~/.openclaw/extensions/memory-spark"] }
+  }
+}
+```
+
+### 3. Environment
+
+Set your Spark bearer token in `~/.openclaw/.env`:
+
+```
+SPARK_BEARER_TOKEN=your_token_here
+```
+
+### 4. Config (openclaw.json)
+
+```json
+{
+  "memory": {
+    "backend": "lancedb",
+    "lancedb": { "uri": "~/.openclaw/data/memory-spark/lancedb" },
+    "embed": {
+      "provider": "spark",
+      "model": "nvidia/llama-embed-nemotron-8b",
+      "baseUrl": "http://localhost:18091/v1"
+    },
+    "recall": {
       "enabled": true,
-      "config": {
-        "backend": "lancedb",
-        "embed": { "provider": "spark" },
-        "rerank": { "enabled": true },
-        "autoRecall": {
-          "enabled": true,
-          "agents": ["main", "school", "research", "dev"]
-        },
-        "autoCapture": {
-          "enabled": true,
-          "agents": ["main", "school", "research"]
-        },
-        "watch": {
-          "enabled": true,
-          "paths": [
-            { "path": "~/Documents/school", "agents": ["school"] },
-            { "path": "~/Documents/OpenClaw", "agents": ["meta", "main"] }
-          ]
-        }
-      }
+      "topK": 5,
+      "minScore": 0.3,
+      "maxTokens": 1500
+    },
+    "capture": {
+      "enabled": true,
+      "categories": ["fact", "preference", "decision"]
+    },
+    "watch": {
+      "enabled": true,
+      "indexOnBoot": true,
+      "debounceMs": 2000,
+      "paths": []
     }
   }
 }
 ```
 
-## Build
+## Tools
 
-```bash
-cd ~/.openclaw/extensions/memory-spark
-npm install
-npm run build
-```
+Exposes four tools to agents:
 
-## CLI
+| Tool | Description |
+|------|-------------|
+| `memory_search` | Hybrid vector + FTS search with reranking |
+| `memory_get` | Retrieve a specific chunk by ID |
+| `memory_store` | Store a fact/note manually |
+| `memory_forget` | Delete memories by path or query |
 
-```bash
-openclaw memory status          # indexing stats per agent
-openclaw memory sync            # force re-index watched paths
-openclaw memory migrate         # run memory-core → LanceDB migration
-```
+## License
 
-## Portability (no Spark node)
+MIT
 
-Set `embed.provider` to `"openai"` or `"gemini"`. Reranker auto-disables.
-Watcher, auto-recall, and auto-capture all still work — just without local inference.
+## Acknowledgments
 
-## Implementation status
-
-All subsystems are scaffolded with full type definitions and inline implementation notes.
-Each file has a clear TODO contract. Implementation order:
-
-1. `storage/lancedb.ts` — core data layer
-2. `embed/provider.ts` — OpenAI-compat HTTP client for Spark
-3. `embed/chunker.ts` — markdown-aware token-bounded chunking
-4. `manager.ts` — wire backend + embed + reranker into OC tool interface
-5. `rerank/reranker.ts` — Cohere-compat rerank HTTP call
-6. `ingest/parsers.ts` — PDF + docx text extraction
-7. `ingest/pipeline.ts` — full ingest pipeline
-8. `ingest/watcher.ts` — chokidar file watcher
-9. `auto/recall.ts` — before_prompt_build injection
-10. `auto/capture.ts` — agent_end classification + storage
-11. `classify/ner.ts` + `classify/zero-shot.ts` — Spark inference calls
-12. `scripts/migrate.ts` — one-time migration runner
+Built on [LanceDB](https://lancedb.github.io/lancedb/), [NVIDIA Nemotron](https://developer.nvidia.com/nemotron), and [OpenClaw](https://openclaw.ai).
