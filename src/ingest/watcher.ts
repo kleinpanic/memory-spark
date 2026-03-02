@@ -44,6 +44,7 @@ export function createWatcher(opts: {
   logger: WatcherLogger;
 }): Watcher {
   let fsWatcher: FSWatcher | null = null;
+  let bootPassRunning = false;
   const debounceTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   // Map: absolute dir path → agentId
@@ -97,6 +98,8 @@ export function createWatcher(opts: {
   }
 
   function debouncedHandle(filePath: string): void {
+    // Skip watcher events during boot pass to avoid commit conflicts
+    if (bootPassRunning) return;
     const existing = debounceTimers.get(filePath);
     if (existing) clearTimeout(existing);
 
@@ -165,9 +168,10 @@ export function createWatcher(opts: {
 
       // 3. Boot pass
       if (opts.watch.indexOnBoot) {
-        runBootPass(agents, opts).catch((err) =>
-          opts.logger.error(`memory-spark boot pass failed: ${err}`)
-        );
+        bootPassRunning = true;
+        runBootPass(agents, opts)
+          .catch((err) => opts.logger.error(`memory-spark boot pass failed: ${err}`))
+          .finally(() => { bootPassRunning = false; });
       }
 
       // 4. Start chokidar

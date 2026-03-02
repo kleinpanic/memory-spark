@@ -108,10 +108,24 @@ export class LanceDBBackend implements StorageBackend {
       confidence: c.confidence ?? 0,
     }));
 
-    await table.mergeInsert("id")
-      .whenMatchedUpdateAll()
-      .whenNotMatchedInsertAll()
-      .execute(normalized as unknown as Record<string, unknown>[]);
+    // Retry on commit conflict (concurrent writes from boot pass + watcher)
+    const MAX_RETRIES = 3;
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      try {
+        await table.mergeInsert("id")
+          .whenMatchedUpdateAll()
+          .whenNotMatchedInsertAll()
+          .execute(normalized as unknown as Record<string, unknown>[]);
+        return;
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        if (msg.includes("Commit conflict") && attempt < MAX_RETRIES - 1) {
+          await new Promise((r) => setTimeout(r, 200 * (attempt + 1)));
+          continue;
+        }
+        throw err;
+      }
+    }
   }
 
   async deleteByPath(pathStr: string, agentId?: string): Promise<number> {

@@ -77,10 +77,15 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
       return { filePath: opts.filePath, chunksAdded: 0, chunksRemoved: 0, durationMs: Date.now() - start };
     }
 
-    // 4. NER tag (best-effort, parallel)
-    const entitiesPerChunk = await Promise.all(
-      rawChunks.map((c) => tagEntities(c.text, opts.cfg).catch(() => [] as string[]))
-    );
+    // 4. NER tag (best-effort, sequential to avoid overwhelming single-worker service)
+    const entitiesPerChunk: string[][] = [];
+    for (const c of rawChunks) {
+      try {
+        entitiesPerChunk.push(await tagEntities(c.text, opts.cfg));
+      } catch {
+        entitiesPerChunk.push([]);
+      }
+    }
 
     // 5. Embed batch
     const vectors = await opts.embed.embedBatch(rawChunks.map((c) => c.text));
