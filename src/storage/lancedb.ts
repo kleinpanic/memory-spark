@@ -45,7 +45,8 @@ export class LanceDBBackend implements StorageBackend {
     if (this.table) return this.table;
     if (!this.db) throw new Error("LanceDB not connected");
 
-    // Create table with a seed record that we immediately delete
+    // Create table with a seed record that includes ALL fields (schema-defining).
+    // LanceDB locks schema on creation — missing fields cause append errors.
     const seed: MemoryChunk = {
       id: "__seed__",
       path: "__seed__",
@@ -56,6 +57,9 @@ export class LanceDBBackend implements StorageBackend {
       text: "",
       vector: new Array(dims).fill(0),
       updated_at: new Date().toISOString(),
+      category: "",
+      entities: "[]",
+      confidence: 0,
     };
     this.table = await this.db.createTable(TABLE_NAME, [seed as unknown as Record<string, unknown>]);
     await this.table.delete("id = '__seed__'");
@@ -67,11 +71,26 @@ export class LanceDBBackend implements StorageBackend {
     const dims = chunks[0]!.vector.length;
     const table = await this.ensureTable(dims);
 
-    // LanceDB mergeInsert for upsert behavior
+    // Normalize: ensure ALL schema fields are present (LanceDB rejects mismatched schemas)
+    const normalized = chunks.map((c) => ({
+      id: c.id,
+      path: c.path,
+      source: c.source,
+      agent_id: c.agent_id,
+      start_line: c.start_line,
+      end_line: c.end_line,
+      text: c.text,
+      vector: c.vector,
+      updated_at: c.updated_at,
+      category: c.category ?? "",
+      entities: c.entities ?? "[]",
+      confidence: c.confidence ?? 0,
+    }));
+
     await table.mergeInsert("id")
       .whenMatchedUpdateAll()
       .whenNotMatchedInsertAll()
-      .execute(chunks as unknown as Record<string, unknown>[]);
+      .execute(normalized as unknown as Record<string, unknown>[]);
   }
 
   async deleteByPath(pathStr: string, agentId?: string): Promise<number> {
