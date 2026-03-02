@@ -189,9 +189,22 @@ export function createWatcher(opts: {
         ],
       });
 
-      fsWatcher.on("add", (fp: string) => debouncedHandle(fp));
-      fsWatcher.on("change", (fp: string) => debouncedHandle(fp));
+      fsWatcher.on("ready", () => {
+        opts.logger.info("memory-spark watcher: chokidar ready, watching for changes");
+      });
+      fsWatcher.on("error", (err: unknown) => {
+        opts.logger.error(`memory-spark watcher: chokidar error: ${err}`);
+      });
+      fsWatcher.on("add", (fp: string) => {
+        opts.logger.info(`memory-spark watcher: add ${fp}`);
+        debouncedHandle(fp);
+      });
+      fsWatcher.on("change", (fp: string) => {
+        opts.logger.info(`memory-spark watcher: change ${fp}`);
+        debouncedHandle(fp);
+      });
       fsWatcher.on("unlink", async (fp: string) => {
+        opts.logger.info(`memory-spark watcher: unlink ${fp}`);
         const agentId = resolveAgentForPath(fp);
         const relPath = toRelativePath(fp, resolveWorkspaceDir(agentId));
         await opts.backend.deleteByPath(relPath, agentId).catch(() => {});

@@ -1,2 +1,9 @@
 node_modules/
 dist/
+.env
+*.env
+dims-lock.json
+lancedb/
+*.lance
+.DS_Store
+*.log
