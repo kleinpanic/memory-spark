@@ -265,7 +265,10 @@ async function runBootPass(
   const CONCURRENCY = 1;
   let errors = 0;
 
-  const FILE_TIMEOUT_MS = 60_000; // 60s per file max
+  // Dynamic timeout: 60s base + 30s per 50KB of file size
+  const BASE_TIMEOUT_MS = 60_000;
+  const TIMEOUT_PER_50KB = 30_000;
+  const MAX_TIMEOUT_MS = 300_000; // 5 min cap
 
   function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
     return new Promise<T>((resolve, reject) => {
@@ -276,9 +279,21 @@ async function runBootPass(
     });
   }
 
+  async function fileTimeout(filePath: string): Promise<number> {
+    try {
+      const stat = await fs.stat(filePath);
+      const sizeKb = stat.size / 1024;
+      const timeout = Math.min(BASE_TIMEOUT_MS + Math.ceil(sizeKb / 50) * TIMEOUT_PER_50KB, MAX_TIMEOUT_MS);
+      return timeout;
+    } catch {
+      return BASE_TIMEOUT_MS;
+    }
+  }
+
   for (let i = 0; i < queue.length; i++) {
     const item = queue[i]!;
     try {
+      const timeout = await fileTimeout(item.absPath);
       const result = await withTimeout(
         ingestFile({
           filePath: item.absPath,
@@ -290,7 +305,7 @@ async function runBootPass(
           source: item.source,
           logger: opts.logger,
         }),
-        FILE_TIMEOUT_MS,
+        timeout,
         item.absPath,
       );
       if (result.error) {

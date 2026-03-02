@@ -16,12 +16,16 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
+import { SUPPORTED_EXTS } from "./parsers.js";
 
 /** Files in workspace root that should always be indexed */
 const ROOT_FILES = [
   "MEMORY.md", "SOUL.md", "USER.md", "AGENTS.md",
   "HEARTBEAT.md", "IDENTITY.md", "TOOLS.md",
 ];
+
+/** Extensions we'll pick up from workspace root scan */
+const ROOT_SCAN_EXTS = new Set([...SUPPORTED_EXTS]);
 
 export interface WorkspaceFiles {
   agentId: string;
@@ -42,7 +46,7 @@ export async function discoverWorkspaceFiles(agentId: string, workspaceDir?: str
   const memoryFiles: string[] = [];
   const sessionFiles: string[] = [];
 
-  // 1. Workspace root files
+  // 1. Workspace root files (named bootstrap files)
   for (const f of ROOT_FILES) {
     const fp = path.join(wsDir, f);
     try {
@@ -53,11 +57,25 @@ export async function discoverWorkspaceFiles(agentId: string, workspaceDir?: str
     }
   }
 
-  // 2. memory/ directory (recursive)
+  // 1b. Workspace root: scan for PDFs and other supported types (not just hardcoded names)
+  try {
+    const rootEntries = await fs.readdir(wsDir, { withFileTypes: true });
+    for (const entry of rootEntries) {
+      if (!entry.isFile() || entry.name.startsWith(".")) continue;
+      const ext = path.extname(entry.name).replace(".", "").toLowerCase();
+      if (!ROOT_SCAN_EXTS.has(ext)) continue;
+      const fp = path.join(wsDir, entry.name);
+      if (!memoryFiles.includes(fp)) {
+        memoryFiles.push(fp);
+      }
+    }
+  } catch { /* skip */ }
+
+  // 2. memory/ directory (recursive, all supported types)
   const memDir = path.join(wsDir, "memory");
   try {
-    const mdFiles = await walkMdFiles(memDir);
-    memoryFiles.push(...mdFiles);
+    const files = await walkSupportedFiles(memDir);
+    memoryFiles.push(...files);
   } catch {
     // No memory dir
   }
@@ -126,7 +144,7 @@ export function toAbsolutePath(relPath: string, workspaceDir: string): string {
   return wsAbs; // Caller should handle existence check
 }
 
-async function walkMdFiles(dir: string): Promise<string[]> {
+async function walkSupportedFiles(dir: string): Promise<string[]> {
   const results: string[] = [];
   try {
     const entries = await fs.readdir(dir, { withFileTypes: true });
@@ -134,9 +152,12 @@ async function walkMdFiles(dir: string): Promise<string[]> {
       if (entry.name.startsWith(".")) continue;
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        results.push(...await walkMdFiles(fullPath));
-      } else if (entry.name.endsWith(".md")) {
-        results.push(fullPath);
+        results.push(...await walkSupportedFiles(fullPath));
+      } else {
+        const ext = path.extname(entry.name).replace(".", "").toLowerCase();
+        if (SUPPORTED_EXTS.has(ext)) {
+          results.push(fullPath);
+        }
       }
     }
   } catch {
