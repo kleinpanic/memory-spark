@@ -7,6 +7,7 @@ import type { MemorySparkConfig } from "./config.js";
 import type { StorageBackend, SearchResult } from "./storage/backend.js";
 import type { EmbedProvider } from "./embed/provider.js";
 import type { Reranker } from "./rerank/reranker.js";
+import { EmbedQueue } from "./embed/queue.js";
 import { toAbsolutePath } from "./ingest/workspace.js";
 import fs from "node:fs/promises";
 
@@ -38,6 +39,7 @@ export interface ManagerOptions {
   backend: StorageBackend;
   embed: EmbedProvider;
   reranker: Reranker;
+  queue?: EmbedQueue;
 }
 
 export class MemorySparkManager {
@@ -47,6 +49,7 @@ export class MemorySparkManager {
   private backend: StorageBackend;
   private embed: EmbedProvider;
   private reranker: Reranker;
+  public queue: EmbedQueue;
 
   constructor(opts: ManagerOptions) {
     this.cfg = opts.cfg;
@@ -55,6 +58,7 @@ export class MemorySparkManager {
     this.backend = opts.backend;
     this.embed = opts.embed;
     this.reranker = opts.reranker;
+    this.queue = opts.queue ?? new EmbedQueue(opts.embed);
   }
 
   async search(
@@ -64,7 +68,7 @@ export class MemorySparkManager {
     const maxResults = opts?.maxResults ?? 10;
     const minScore = opts?.minScore ?? this.cfg.autoRecall.minScore;
 
-    const queryVector = await this.embed.embedQuery(query);
+    const queryVector = await this.queue.embedQuery(query);
 
     const fetchN = maxResults * 3;
     const [vectorResults, ftsResults] = await Promise.all([

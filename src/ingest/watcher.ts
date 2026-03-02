@@ -15,6 +15,8 @@
 import type { WatchConfig, MemorySparkConfig } from "../config.js";
 import type { StorageBackend } from "../storage/backend.js";
 import type { EmbedProvider } from "../embed/provider.js";
+import type { EmbedQueue } from "../embed/queue.js";
+import type { Embedder } from "./pipeline.js";
 import { ingestFile } from "./pipeline.js";
 import { discoverWorkspaceFiles, discoverAllAgents, toRelativePath } from "./workspace.js";
 import { SUPPORTED_EXTS } from "./parsers.js";
@@ -38,7 +40,7 @@ export function createWatcher(opts: {
   watch: WatchConfig;
   cfg: MemorySparkConfig;
   backend: StorageBackend;
-  embed: EmbedProvider;
+  embed: Embedder;
   logger: WatcherLogger;
 }): Watcher {
   let fsWatcher: FSWatcher | null = null;
@@ -210,7 +212,7 @@ export function createWatcher(opts: {
  */
 async function runBootPass(
   agents: string[],
-  opts: { cfg: MemorySparkConfig; backend: StorageBackend; embed: EmbedProvider; logger: WatcherLogger },
+  opts: { cfg: MemorySparkConfig; backend: StorageBackend; embed: Embedder; logger: WatcherLogger },
 ): Promise<void> {
   const indexed = await opts.backend.listPaths();
   const indexedMap = new Map(indexed.map((i) => [i.path, i.updatedAt]));
@@ -259,8 +261,8 @@ async function runBootPass(
 
   opts.logger.info(`memory-spark boot pass: ${queue.length} files to index (${skipped} up-to-date, ${total} total)`);
 
-  // Process files with concurrency limit of 3
-  const CONCURRENCY = 3;
+  // Process files sequentially — the EmbedQueue handles backpressure/retry
+  const CONCURRENCY = 1;
   let errors = 0;
 
   for (let i = 0; i < queue.length; i += CONCURRENCY) {

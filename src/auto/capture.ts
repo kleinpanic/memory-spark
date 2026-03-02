@@ -8,6 +8,7 @@
 import type { AutoCaptureConfig, MemorySparkConfig } from "../config.js";
 import type { StorageBackend, MemoryChunk } from "../storage/backend.js";
 import type { EmbedProvider } from "../embed/provider.js";
+import type { EmbedQueue } from "../embed/queue.js";
 import { classifyForCapture } from "../classify/zero-shot.js";
 import { tagEntities } from "../classify/ner.js";
 import { looksLikePromptInjection } from "../security.js";
@@ -23,7 +24,7 @@ export interface AutoCaptureDeps {
   cfg: AutoCaptureConfig;
   globalCfg: MemorySparkConfig;
   backend: StorageBackend;
-  embed: EmbedProvider;
+  embed: EmbedProvider | EmbedQueue;
 }
 
 export function createAutoCaptureHandler(deps: AutoCaptureDeps) {

@@ -6,6 +6,7 @@
 import type { MemorySparkConfig } from "../config.js";
 import type { StorageBackend, MemoryChunk } from "../storage/backend.js";
 import type { EmbedProvider } from "../embed/provider.js";
+import type { EmbedQueue } from "../embed/queue.js";
 import { chunkDocument } from "../embed/chunker.js";
 import { extractText } from "./parsers.js";
 import { extractSessionText } from "./sessions.js";
@@ -14,12 +15,15 @@ import { tagEntities } from "../classify/ner.js";
 import crypto from "node:crypto";
 import path from "node:path";
 
+/** Anything with embedBatch — works with both raw EmbedProvider and EmbedQueue */
+export type Embedder = Pick<EmbedProvider, "embedBatch"> | Pick<EmbedQueue, "embedBatch">;
+
 export interface IngestFileOptions {
   filePath: string;
   agentId: string;
   workspaceDir: string;
   backend: StorageBackend;
-  embed: EmbedProvider;
+  embed: Embedder;
   cfg: MemorySparkConfig;
   /** "memory" for workspace files, "sessions" for JSONL transcripts, "ingest" for external */
   source?: "memory" | "sessions" | "ingest";

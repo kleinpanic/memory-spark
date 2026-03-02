@@ -24,6 +24,8 @@ import path from "node:path";
 import { resolveConfig, type MemorySparkConfig } from "./src/config.js";
 import { LanceDBBackend } from "./src/storage/lancedb.js";
 import { createEmbedProvider, type EmbedProvider } from "./src/embed/provider.js";
+import { EmbedQueue } from "./src/embed/queue.js";
+import { validateDimsLock } from "./src/embed/dims-lock.js";
 import { createReranker, type Reranker } from "./src/rerank/reranker.js";
 import { MemorySparkManager } from "./src/manager.js";
 import { createWatcher, type Watcher } from "./src/ingest/watcher.js";
@@ -39,6 +41,7 @@ interface PluginState {
   cfg: MemorySparkConfig;
   backend: StorageBackend;
   embed: EmbedProvider;
+  queue: EmbedQueue;
   reranker: Reranker;
   watcher: Watcher | null;
 }
@@ -62,9 +65,27 @@ async function getState(
     const embed = await createEmbedProvider(cfg.embed);
     logger.info(`memory-spark: embed → ${embed.id}/${embed.model} (${embed.dims}d)`);
 
+    // Dimension safety: lock dims on first boot, refuse mismatch on subsequent boots
+    const dimsCheck = await validateDimsLock(cfg.lancedbDir, embed.id, embed.model, embed.dims);
+    if (!dimsCheck.ok) {
+      logger.error(`memory-spark: FATAL — ${dimsCheck.error}`);
+      throw new Error(dimsCheck.error);
+    }
+
+    // Queue: serialized embed requests with retry/backoff
+    const queue = new EmbedQueue(embed, {
+      concurrency: 1,
+      maxRetries: 3,
+      baseDelayMs: 2000,
+      maxDelayMs: 30000,
+      timeoutMs: 30000,
+      unhealthyThreshold: 5,
+      unhealthyCooldownMs: 60000,
+    }, logger);
+
     const reranker = await createReranker(cfg.rerank);
 
-    state = { cfg, backend, embed, reranker, watcher: null };
+    state = { cfg, backend, embed, queue, reranker, watcher: null };
     logger.info("memory-spark: ready");
     return state;
   })();
@@ -127,7 +148,7 @@ const memorySpark = {
             const s = await getState(cfg, api.logger);
             const manager = new MemorySparkManager({
               cfg, agentId, workspaceDir,
-              backend: s.backend, embed: s.embed, reranker: s.reranker,
+              backend: s.backend, embed: s.embed, reranker: s.reranker, queue: s.queue,
             });
             const results = await manager.search(params.query, { maxResults: params.maxResults });
             if (results.length === 0) {
@@ -149,7 +170,7 @@ const memorySpark = {
             const s = await getState(cfg, api.logger);
             const manager = new MemorySparkManager({
               cfg, agentId, workspaceDir,
-              backend: s.backend, embed: s.embed, reranker: s.reranker,
+              backend: s.backend, embed: s.embed, reranker: s.reranker, queue: s.queue,
             });
             const result = await manager.readFile({ relPath: params.path, from: params.from, lines: params.lines });
             return { content: [{ type: "text" as const, text: result.text || "(empty)" }], details: {} };
@@ -167,7 +188,7 @@ const memorySpark = {
             if (looksLikePromptInjection(params.text)) {
               return { content: [{ type: "text" as const, text: "Refused: text contains suspicious patterns." }], details: {} };
             }
-            const vector = await s.embed.embedQuery(params.text);
+            const vector = await s.queue.embedQuery(params.text);
             // Duplicate check
             const existing = await s.backend.vectorSearch(vector, {
               query: params.text, maxResults: 1, minScore: 0.92, agentId, source: "capture",
@@ -204,7 +225,7 @@ const memorySpark = {
           parameters: ForgetParams,
           execute: async (_toolCallId: string, params: { query: string }) => {
             const s = await getState(cfg, api.logger);
-            const vector = await s.embed.embedQuery(params.query);
+            const vector = await s.queue.embedQuery(params.query);
             const matches = await s.backend.vectorSearch(vector, {
               query: params.query, maxResults: 5, minScore: 0.7, agentId, source: "capture",
             }).catch(() => []);
@@ -230,7 +251,7 @@ const memorySpark = {
       try {
         const s = await getState(cfg, api.logger);
         const handler = createAutoRecallHandler({
-          cfg: cfg.autoRecall, backend: s.backend, embed: s.embed, reranker: s.reranker,
+          cfg: cfg.autoRecall, backend: s.backend, embed: s.queue, reranker: s.reranker,
         });
         return await handler(event, ctx);
       } catch {
@@ -245,7 +266,7 @@ const memorySpark = {
       try {
         const s = await getState(cfg, api.logger);
         const handler = createAutoCaptureHandler({
-          cfg: cfg.autoCapture, globalCfg: cfg, backend: s.backend, embed: s.embed,
+          cfg: cfg.autoCapture, globalCfg: cfg, backend: s.backend, embed: s.queue,
         });
         await handler(event, ctx);
       } catch {
@@ -268,7 +289,7 @@ const memorySpark = {
           agentId,
           workspaceDir,
           backend: s.backend,
-          embed: s.embed,
+          embed: s.queue,
           cfg,
           source: "sessions",
         });
@@ -289,7 +310,7 @@ const memorySpark = {
             watch: cfg.watch,
             cfg,
             backend: s.backend,
-            embed: s.embed,
+            embed: s.queue,
             logger: svcCtx.logger,
           });
           await s.watcher.start();
@@ -378,7 +399,7 @@ const memorySpark = {
                 watch: { ...cfg.watch, indexOnBoot: true },
                 cfg,
                 backend: s.backend,
-                embed: s.embed,
+                embed: s.queue,
                 logger: { info: console.log, warn: console.warn, error: console.error },
               });
               await s.watcher.start();

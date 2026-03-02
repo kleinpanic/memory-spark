@@ -7,6 +7,7 @@
 import type { AutoRecallConfig } from "../config.js";
 import type { StorageBackend, SearchResult } from "../storage/backend.js";
 import type { EmbedProvider } from "../embed/provider.js";
+import type { EmbedQueue } from "../embed/queue.js";
 import type { Reranker } from "../rerank/reranker.js";
 import { looksLikePromptInjection, formatRecalledMemories } from "../security.js";
 
@@ -17,7 +18,7 @@ type HookContext = { agentId?: string; sessionKey?: string };
 export interface AutoRecallDeps {
   cfg: AutoRecallConfig;
   backend: StorageBackend;
-  embed: EmbedProvider;
+  embed: EmbedProvider | EmbedQueue;
   reranker: Reranker;
 }
 
