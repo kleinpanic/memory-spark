@@ -66,36 +66,36 @@ test("Token estimation for longer text", () => {
 
 test("Short text below minTokens returns no chunks", () => {
   // Default minTokens = 20 => ~80 chars minimum
-  const chunks = chunkDocument({ text: "Short text", path: "test.md" }, { maxTokens: 512, overlap: 50 });
+  const chunks = chunkDocument({ text: "Short text", path: "test.md", source: "memory" }, { maxTokens: 512, overlapTokens: 50 });
   return chunks.length === 0;
 });
 
 test("Text above minTokens returns chunks", () => {
   // ~120 chars should create at least 1 chunk
   const text = Array(20).fill("word").join(" ") + " and some more words to reach minimum";
-  const chunks = chunkDocument({ text, path: "test.md" }, { maxTokens: 512, overlap: 50 });
+  const chunks = chunkDocument({ text, path: "test.md", source: "memory" }, { maxTokens: 512, overlapTokens: 50 });
   return chunks.length >= 1;
 });
 
 test("Multiple chunks for long text", () => {
   const longText = Array(200).fill("This is a test sentence.").join(" ");
-  const chunks = chunkDocument({ text: longText, path: "test.md" }, { maxTokens: 512, overlap: 50 });
+  const chunks = chunkDocument({ text: longText, path: "test.md", source: "memory" }, { maxTokens: 512, overlapTokens: 50 });
   return chunks.length > 1;
 });
 
 test("Chunks have correct metadata", () => {
-  const chunks = chunkDocument({ text: "Test\ncontent\nhere", path: "test.md" }, { maxTokens: 512, overlap: 50 });
+  const chunks = chunkDocument({ text: "Test\ncontent\nhere", path: "test.md", source: "memory" }, { maxTokens: 512, overlapTokens: 50 });
   return chunks.every((c) => c.text && c.startLine >= 1 && c.endLine >= c.startLine);
 });
 
 test("Markdown processing doesn't crash", () => {
   const markdown = "# Heading 1\n\nParagraph content here with enough words to meet minimum token count threshold.\n\n## Heading 2\n\nMore paragraph content with sufficient length for indexing.";
-  const chunks = chunkDocument({ text: markdown, path: "test.md", ext: "md" }, { maxTokens: 512, overlap: 50 });
+  const chunks = chunkDocument({ text: markdown, path: "test.md", ext: "md", source: "memory" }, { maxTokens: 512, overlapTokens: 50 });
   return chunks.length >= 1; // Should produce at least 1 chunk from markdown
 });
 
 test("Empty text returns empty array", () => {
-  const chunks = chunkDocument({ text: "", path: "test.md" }, { maxTokens: 512, overlap: 50 });
+  const chunks = chunkDocument({ text: "", path: "test.md", source: "memory" }, { maxTokens: 512, overlapTokens: 50 });
   return chunks.length === 0;
 });
 
