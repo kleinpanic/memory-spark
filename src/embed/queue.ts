@@ -52,6 +52,8 @@ export class EmbedQueue {
   private unhealthyCooldownMs: number;
   private consecutiveFailures = 0;
   private unhealthySince: number | null = null;
+  private _wasUnhealthy = false;
+  private _recoveryCallbacks: Array<() => void> = [];
   private logger: QueueLogger;
   private _processed = 0;
   private _failed = 0;
@@ -130,6 +132,15 @@ export class EmbedQueue {
     this.queue = [];
   }
 
+  /**
+   * Register a callback to be fired once when the queue recovers from an
+   * unhealthy state (i.e., Spark comes back online mid-session).
+   * The callback is called asynchronously via setImmediate.
+   */
+  onRecovery(fn: () => void): void {
+    this._recoveryCallbacks.push(fn);
+  }
+
   // --- internals ---
 
   private enqueue<T>(fn: () => Promise<T>): Promise<T> {
@@ -153,9 +164,20 @@ export class EmbedQueue {
 
       try {
         const result = await item.fn();
+        const recovering = this._wasUnhealthy;
         this.consecutiveFailures = 0;
         this._processed++;
         item.resolve(result);
+        // Fire recovery callbacks once after returning to healthy
+        if (recovering) {
+          this._wasUnhealthy = false;
+          const cbs = this._recoveryCallbacks.slice();
+          setImmediate(() => {
+            for (const cb of cbs) {
+              try { cb(); } catch {}
+            }
+          });
+        }
       } catch (err) {
         this.consecutiveFailures++;
         const errMsg = err instanceof Error ? err.message : String(err);
@@ -184,6 +206,7 @@ export class EmbedQueue {
         // Check if we should mark unhealthy
         if (this.consecutiveFailures >= this.unhealthyThreshold) {
           this.unhealthySince = Date.now();
+          this._wasUnhealthy = true;
           this.logger.error(
             `memory-spark queue: ${this.consecutiveFailures} consecutive failures — marking UNHEALTHY for ${this.unhealthyCooldownMs / 1000}s`
           );
