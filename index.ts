@@ -311,6 +311,7 @@ const memorySpark = {
             cfg,
             backend: s.backend,
             embed: s.queue,
+            queue: s.queue,
             logger: svcCtx.logger,
           });
           await s.watcher.start();
@@ -400,6 +401,7 @@ const memorySpark = {
                 cfg,
                 backend: s.backend,
                 embed: s.queue,
+                queue: s.queue,
                 logger: { info: console.log, warn: console.warn, error: console.error },
               });
               await s.watcher.start();

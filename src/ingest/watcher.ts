@@ -15,7 +15,7 @@
 import type { WatchConfig, MemorySparkConfig } from "../config.js";
 import type { StorageBackend } from "../storage/backend.js";
 import type { EmbedProvider } from "../embed/provider.js";
-import type { EmbedQueue } from "../embed/queue.js";
+import { EmbedQueue } from "../embed/queue.js";
 import type { Embedder } from "./pipeline.js";
 import { ingestFile } from "./pipeline.js";
 import { discoverWorkspaceFiles, discoverAllAgents, toRelativePath } from "./workspace.js";
@@ -24,6 +24,45 @@ import chokidar, { type FSWatcher } from "chokidar";
 import path from "node:path";
 import os from "node:os";
 import fs from "node:fs/promises";
+
+// ---------------------------------------------------------------------------
+// Persistent pending-embed queue
+// Files that fail to embed (e.g. Spark is down) are recorded here so they
+// can be re-processed when the embed service recovers — even across restarts.
+// The boot-pass already handles recovery via mtime comparison, but this JSONL
+// provides explicit observability and a drain target for within-session recovery.
+// ---------------------------------------------------------------------------
+
+const PENDING_QUEUE_PATH = path.join(
+  os.homedir(), ".openclaw", "data", "memory-spark", "pending-embed.jsonl"
+);
+
+interface PendingEntry {
+  path: string;
+  agentId: string;
+  source: "memory" | "sessions" | "ingest";
+  failedAt: string;
+}
+
+async function appendPending(entry: PendingEntry): Promise<void> {
+  try {
+    await fs.mkdir(path.dirname(PENDING_QUEUE_PATH), { recursive: true });
+    await fs.appendFile(PENDING_QUEUE_PATH, JSON.stringify(entry) + "\n", "utf8");
+  } catch { /* best-effort — don't let queue write failures break anything */ }
+}
+
+async function clearPendingQueue(): Promise<void> {
+  try {
+    await fs.unlink(PENDING_QUEUE_PATH);
+  } catch { /* file may not exist */ }
+}
+
+async function pendingQueueSize(): Promise<number> {
+  try {
+    const content = await fs.readFile(PENDING_QUEUE_PATH, "utf8");
+    return content.trim().split("\n").filter(Boolean).length;
+  } catch { return 0; }
+}
 
 export interface WatcherLogger {
   info: (m: string) => void;
@@ -34,6 +73,8 @@ export interface WatcherLogger {
 export interface Watcher {
   start(): Promise<void>;
   stop(): Promise<void>;
+  /** Manually trigger a boot-pass re-scan (e.g. after embed recovery) */
+  triggerBootPass(): void;
 }
 
 export function createWatcher(opts: {
@@ -41,6 +82,9 @@ export function createWatcher(opts: {
   cfg: MemorySparkConfig;
   backend: StorageBackend;
   embed: Embedder;
+  /** Optional EmbedQueue reference — used to register an onRecovery hook that
+   *  auto-triggers a boot-pass when Spark comes back online mid-session. */
+  queue?: EmbedQueue;
   logger: WatcherLogger;
 }): Watcher {
   let fsWatcher: FSWatcher | null = null;
@@ -85,7 +129,7 @@ export function createWatcher(opts: {
     const agentId = resolveAgentForPath(filePath);
     const source = sourceForPath(filePath);
 
-    await ingestFile({
+    const result = await ingestFile({
       filePath,
       agentId,
       workspaceDir: resolveWorkspaceDir(agentId),
@@ -95,6 +139,11 @@ export function createWatcher(opts: {
       source,
       logger: opts.logger,
     });
+
+    // If embed failed (e.g. Spark is down), log to persistent pending queue
+    if (result.error && /embed|timeout|connect|ECONNREFUSED/i.test(result.error)) {
+      await appendPending({ path: filePath, agentId, source, failedAt: new Date().toISOString() });
+    }
   }
 
   function debouncedHandle(filePath: string): void {
@@ -114,7 +163,36 @@ export function createWatcher(opts: {
     );
   }
 
+  /** Trigger a boot-pass (can be called externally, e.g. after embed recovery) */
+  function triggerBootPassNow(): void {
+    if (bootPassRunning) {
+      opts.logger.info("memory-spark recovery: boot pass already running, skipping duplicate trigger");
+      return;
+    }
+    pendingQueueSize().then((n) => {
+      opts.logger.info(`memory-spark recovery: embed healthy again — triggering catch-up boot pass (${n} entries in pending queue)`);
+    }).catch(() => {
+      opts.logger.info("memory-spark recovery: embed healthy again — triggering catch-up boot pass");
+    });
+    discoverAllAgents().then((agents) => {
+      bootPassRunning = true;
+      runBootPass(agents, opts)
+        .then(() => {
+          // Clear the pending queue — boot-pass picked up everything via mtime comparison
+          clearPendingQueue().then(() => {
+            opts.logger.info("memory-spark recovery: pending-embed.jsonl cleared after successful boot pass");
+          }).catch(() => {});
+        })
+        .catch((err) => opts.logger.error(`memory-spark recovery boot pass failed: ${err}`))
+        .finally(() => { bootPassRunning = false; });
+    }).catch((err) => opts.logger.error(`memory-spark recovery: discoverAllAgents failed: ${err}`));
+  }
+
   return {
+    triggerBootPass() {
+      triggerBootPassNow();
+    },
+
     async start() {
       const ocDir = path.join(os.homedir(), ".openclaw");
       const watchPaths: string[] = [];
@@ -215,6 +293,13 @@ export function createWatcher(opts: {
         const relPath = toRelativePath(fp, resolveWorkspaceDir(agentId));
         await opts.backend.deleteByPath(relPath, agentId).catch(() => {});
       });
+
+      // 5. Register recovery hook: when Spark comes back online mid-session,
+      //    auto-trigger a catch-up boot pass for files written while it was down.
+      if (opts.queue) {
+        opts.queue.onRecovery(() => triggerBootPassNow());
+        opts.logger.info("memory-spark watcher: embed recovery hook registered");
+      }
     },
 
     async stop() {
