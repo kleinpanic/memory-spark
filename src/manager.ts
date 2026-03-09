@@ -68,13 +68,23 @@ export class MemorySparkManager {
     const maxResults = opts?.maxResults ?? 10;
     const minScore = opts?.minScore ?? this.cfg.autoRecall.minScore;
 
-    const queryVector = await this.queue.embedQuery(query);
+    // Try to embed the query for vector search. If Spark is temporarily down,
+    // degrade gracefully to FTS-only recall — same dims, no provider switch.
+    let queryVector: number[] | null = null;
+    try {
+      queryVector = await this.queue.embedQuery(query);
+    } catch {
+      // Spark unavailable — vector recall disabled until it recovers.
+      // Write-side pending queue will replay when Spark comes back.
+    }
 
     const fetchN = maxResults * 3;
     const [vectorResults, ftsResults] = await Promise.all([
-      this.backend.vectorSearch(queryVector, {
-        query, maxResults: fetchN, minScore, agentId: this.agentId,
-      }).catch(() => [] as SearchResult[]),
+      queryVector
+        ? this.backend.vectorSearch(queryVector, {
+            query, maxResults: fetchN, minScore, agentId: this.agentId,
+          }).catch(() => [] as SearchResult[])
+        : Promise.resolve([] as SearchResult[]),
       this.backend.ftsSearch(query, {
         query, maxResults: fetchN, agentId: this.agentId,
       }).catch(() => [] as SearchResult[]),
