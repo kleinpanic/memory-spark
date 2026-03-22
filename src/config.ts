@@ -11,7 +11,15 @@ export type StorageBackendId = "lancedb" | "sqlite-vec";
 export interface SparkEndpoints {
   embed: string;
   rerank: string;
+  /** Legacy EasyOCR endpoint (kept for fallback) */
   ocr: string;
+  /**
+   * GLM-OCR endpoint — vLLM-served zai-org/GLM-OCR via OpenAI-compatible
+   * chat completions with image_url vision input.
+   * Model: zai-org/GLM-OCR (0.9B, #1 OmniDocBench V1.5)
+   * Download: forge pull zai-org/GLM-OCR
+   */
+  glmOcr: string;
   ner: string;
   zeroShot: string;
   summarizer: string;
@@ -81,9 +89,15 @@ export interface MemorySparkConfig {
 import fs from "node:fs";
 
 /**
- * Load Spark bearer token from ~/.openclaw/.env
+ * Load Spark bearer token — checks process.env first, then ~/.openclaw/.env.
+ * process.env takes precedence so harness can override when running on Spark directly.
  */
 function loadSparkToken(): string | undefined {
+  // 1. Process environment (e.g. SPARK_BEARER_TOKEN=xxx npx tsx test-harness.ts)
+  if (process.env["SPARK_BEARER_TOKEN"]) {
+    return process.env["SPARK_BEARER_TOKEN"];
+  }
+  // 2. ~/.openclaw/.env file (default when running as OpenClaw plugin on broklein)
   try {
     const envPath = path.join(os.homedir(), ".openclaw", ".env");
     const content = fs.readFileSync(envPath, "utf-8");
@@ -103,7 +117,7 @@ export const DEFAULT_CONFIG: MemorySparkConfig = {
   embed: {
     provider: "spark",
     spark: {
-      baseUrl: "http://localhost:18091/v1",
+      baseUrl: `http://${process.env["SPARK_HOST"] ?? "10.70.80.15"}:18091/v1`,
       apiKey: SPARK_TOKEN,
       model: "nvidia/llama-embed-nemotron-8b",
       dimensions: 4096,
@@ -114,7 +128,7 @@ export const DEFAULT_CONFIG: MemorySparkConfig = {
   rerank: {
     enabled: true,
     spark: {
-      baseUrl: "http://localhost:18096/v1",
+      baseUrl: `http://${process.env["SPARK_HOST"] ?? "10.70.80.15"}:18096/v1`,
       apiKey: SPARK_TOKEN,
       model: "nvidia/llama-nemotron-rerank-1b-v2",
     },
@@ -145,13 +159,16 @@ export const DEFAULT_CONFIG: MemorySparkConfig = {
     statusFile: path.join(os.homedir(), ".openclaw", "runtime", "state", "memory-spark-migrate.json"),
   },
   spark: {
-    embed: "http://localhost:18091/v1",
-    rerank: "http://localhost:18096/v1",
-    ocr: "http://localhost:18097",
-    ner: "http://localhost:18112",
-    zeroShot: "http://localhost:18113",
-    summarizer: "http://localhost:18110",
-    stt: "http://localhost:18094",
+    // Default to WireGuard IP for direct access from broklein gateway
+    // Override via SPARK_HOST env var or config if running locally on Spark
+    embed: `http://${process.env["SPARK_HOST"] ?? "10.70.80.15"}:18091/v1`,
+    rerank: `http://${process.env["SPARK_HOST"] ?? "10.70.80.15"}:18096/v1`,
+    ocr: `http://${process.env["SPARK_HOST"] ?? "10.70.80.15"}:18097`,
+    glmOcr: `http://${process.env["SPARK_HOST"] ?? "10.70.80.15"}:18080/v1`,
+    ner: `http://${process.env["SPARK_HOST"] ?? "10.70.80.15"}:18112`,
+    zeroShot: `http://${process.env["SPARK_HOST"] ?? "10.70.80.15"}:18113`,
+    summarizer: `http://${process.env["SPARK_HOST"] ?? "10.70.80.15"}:18110`,
+    stt: `http://${process.env["SPARK_HOST"] ?? "10.70.80.15"}:18094`,
   },
 };
 

@@ -7,6 +7,8 @@ export interface MemoryChunk {
   path: string;
   source: "memory" | "sessions" | "ingest" | "capture";
   agent_id: string;
+  /** User/gateway isolation — enables multi-user RAG (Klein, Nicholas, etc.) */
+  user_id?: string;
   start_line: number;
   end_line: number;
   text: string;
@@ -23,6 +25,7 @@ export interface SearchOptions {
   maxResults?: number;
   minScore?: number;
   agentId?: string;
+  userId?: string;  // Filter by user/gateway for multi-user isolation
   source?: string;
 }
 

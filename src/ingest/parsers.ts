@@ -61,7 +61,50 @@ async function extractPdf(filePath: string, cfg: MemorySparkConfig): Promise<str
     // pdf-parse not available
   }
 
-  // Fallback: Spark OCR for scanned PDFs
+  // Primary OCR: GLM-OCR via vLLM (zai-org/GLM-OCR, #1 OmniDocBench V1.5)
+  // Requires: vllm serve zai-org/GLM-OCR --allowed-local-media-path / --port <glmOcrPort>
+  // Config: cfg.spark.glmOcr should point to vLLM chat completions endpoint
+  try {
+    const buffer = await fs.readFile(filePath);
+    const base64 = buffer.toString("base64");
+    const resp = await fetch(`${cfg.spark.glmOcr}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(cfg.embed.spark?.apiKey ? { Authorization: `Bearer ${cfg.embed.spark.apiKey}` } : {}),
+      },
+      body: JSON.stringify({
+        model: "zai-org/GLM-OCR",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image_url",
+                image_url: { url: `data:application/pdf;base64,${base64}` },
+              },
+              {
+                type: "text",
+                text: "Extract all text from this document. Output only the extracted text in markdown format, preserving structure.",
+              },
+            ],
+          },
+        ],
+        max_tokens: 8192,
+        temperature: 0,
+      }),
+      signal: AbortSignal.timeout(120000),
+    });
+    if (resp.ok) {
+      const data = await resp.json() as { choices: Array<{ message: { content: string } }> };
+      const text = data.choices?.[0]?.message?.content?.trim() ?? "";
+      if (text.length > 50) return text;
+    }
+  } catch {
+    // GLM-OCR not available — fall through to EasyOCR
+  }
+
+  // Fallback: EasyOCR (spark-ocr :18097)
   try {
     const buffer = await fs.readFile(filePath);
     const formData = new FormData();
@@ -74,10 +117,10 @@ async function extractPdf(filePath: string, cfg: MemorySparkConfig): Promise<str
     });
     if (resp.ok) {
       const data = await resp.json() as { text: string };
-      return data.text;
+      if (data.text?.trim().length > 50) return data.text;
     }
   } catch {
-    // OCR not available
+    // Legacy OCR not available
   }
 
   throw new Error(`memory-spark: could not extract text from PDF: ${filePath}`);
