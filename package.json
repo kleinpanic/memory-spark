@@ -13,11 +13,11 @@
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.14.0",
+    "@sinclair/typebox": "^0.34.0",
     "apache-arrow": "^18.0.0",
     "chokidar": "^4.0.0",
     "pdf-parse": "^1.1.1",
-    "mammoth": "^1.8.0",
-    "tiktoken": "^1.0.7"
+    "mammoth": "^1.8.0"
   },
   "devDependencies": {
     "typescript": "^5.7.0",
