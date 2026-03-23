@@ -18,6 +18,16 @@ export class LanceDBBackend implements StorageBackend {
   private table: Table | null = null;
   private ftsCreated = false;
 
+  // Write mutex — serializes all upsert/delete calls to prevent LanceDB commit conflicts
+  // when the boot scanner and file watcher run concurrently at startup.
+  private writeLock: Promise<void> = Promise.resolve();
+  private withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
+    const next = this.writeLock.then(() => fn());
+    // Settle the lock chain even if fn throws, so subsequent writes aren't blocked forever
+    this.writeLock = next.then(() => {}, () => {});
+    return next;
+  }
+
   constructor(cfg: MemorySparkConfig) {
     this.cfg = cfg;
   }
@@ -89,6 +99,10 @@ export class LanceDBBackend implements StorageBackend {
 
   async upsert(chunks: MemoryChunk[]): Promise<void> {
     if (chunks.length === 0) return;
+    return this.withWriteLock(() => this._upsert(chunks));
+  }
+
+  private async _upsert(chunks: MemoryChunk[]): Promise<void> {
     const dims = chunks[0]!.vector.length;
     const table = await this.ensureTable(dims);
 
@@ -129,19 +143,23 @@ export class LanceDBBackend implements StorageBackend {
   }
 
   async deleteByPath(pathStr: string, agentId?: string): Promise<number> {
-    if (!this.table) return 0;
-    const before = await this.table.countRows();
-    let predicate = `path = '${escapeSql(pathStr)}'`;
-    if (agentId) predicate += ` AND agent_id = '${escapeSql(agentId)}'`;
-    await this.table.delete(predicate);
-    const after = await this.table.countRows();
-    return before - after;
+    return this.withWriteLock(async () => {
+      if (!this.table) return 0;
+      const before = await this.table.countRows();
+      let predicate = `path = '${escapeSql(pathStr)}'`;
+      if (agentId) predicate += ` AND agent_id = '${escapeSql(agentId)}'`;
+      await this.table.delete(predicate);
+      const after = await this.table.countRows();
+      return before - after;
+    });
   }
 
   async deleteById(ids: string[]): Promise<void> {
-    if (!this.table || ids.length === 0) return;
-    const inList = ids.map((id) => `'${escapeSql(id)}'`).join(",");
-    await this.table.delete(`id IN (${inList})`);
+    return this.withWriteLock(async () => {
+      if (!this.table || ids.length === 0) return;
+      const inList = ids.map((id) => `'${escapeSql(id)}'`).join(",");
+      await this.table.delete(`id IN (${inList})`);
+    });
   }
 
   async vectorSearch(queryVector: number[], opts: SearchOptions): Promise<SearchResult[]> {
