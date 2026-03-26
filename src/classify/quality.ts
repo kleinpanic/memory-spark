@@ -75,6 +75,26 @@ const NOISE_PATTERNS: Array<{ pattern: RegExp; flag: string; penalty: number }> 
   // Pure timestamp lines (no content after timestamp)
   { pattern: /^\[\w{3} \d{4}-\d{2}-\d{2} \d{2}:\d{2} \w+\]\s*$/m,
     flag: "timestamp-only", penalty: 0.3 },
+
+  // Session dump headers (raw conversation logs, not knowledge)
+  { pattern: /^# Session: \d{4}-\d{2}-\d{2}/m,
+    flag: "session-dump-header", penalty: 0.7 },
+  { pattern: /^\*\*Session (?:Key|ID)\*\*:/m,
+    flag: "session-dump-metadata", penalty: 0.5 },
+
+  // Raw assistant/user turn prefixes (conversation logs, not knowledge)
+  { pattern: /^(assistant|user|system):\s/m,
+    flag: "raw-turn-prefix", penalty: 0.3 },
+
+  // Casual chat markers (lol, lmao, lmfao, haha, etc.)
+  { pattern: /\b(lol|lmao|lmfao|haha|heh|rofl|bruh|nah|idk|tbh|imo|iirc)\b/i,
+    flag: "casual-chat", penalty: 0.3 },
+
+  // External untrusted content wrappers (Klein's raw messages)
+  { pattern: /<<<EXTERNAL_UNTRUSTED_CONTENT/,
+    flag: "untrusted-content-wrapper", penalty: 0.6 },
+  { pattern: /UNTRUSTED Discord message body/,
+    flag: "discord-raw-body", penalty: 0.5 },
 ];
 
 export interface LanguageOpts {
