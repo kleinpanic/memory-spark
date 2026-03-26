@@ -712,7 +712,7 @@ const memorySpark = {
         }
 
         api.logger.info("memory-spark: first boot — migration delegated to boot pass");
-        import("./scripts/migrate.js")
+        import("./tools/migrate.js")
           .then((m) => m.runMigration?.())
           .catch((err) => {
             api.logger.warn(`memory-spark: migration import failed: ${err}`);
@@ -781,7 +781,7 @@ const memorySpark = {
           .description("Run migration from memory-core to LanceDB")
           .action(async () => {
             try {
-              await import("./scripts/migrate.js");
+              await import("./tools/migrate.js");
             } catch (err) {
               console.error(`Migration error: ${err}`);
             }

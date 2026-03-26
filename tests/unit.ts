@@ -1313,6 +1313,96 @@ test("Quality gate still allows real decisions to pass", () => {
   assert.ok(r.score > 0.5, `Decision scored ${r.score}, should be >0.5`);
 });
 
+// =============================================================
+// BEIR Metrics Tests (must be before summary/exit)
+// =============================================================
+import { ndcgAtK, mrrAtK, recallAtK, mapAtK, precisionAtK, mean, evaluateBEIR } from "../evaluation/metrics.js";
+
+test("NDCG@3 perfect ranking", () => {
+  const qrels = { q1: { d1: 2, d2: 1, d3: 0 } };
+  const results = { q1: { d1: 0.9, d2: 0.5, d3: 0.1 } };
+  const scores = ndcgAtK(qrels, results, 3);
+  assert.ok(scores.q1! > 0.99, `Perfect ranking should give NDCG ≈ 1.0 (got ${scores.q1})`);
+});
+
+test("NDCG@3 reversed ranking", () => {
+  const qrels = { q1: { d1: 2, d2: 1, d3: 0 } };
+  const results = { q1: { d3: 0.9, d2: 0.5, d1: 0.1 } };
+  const scores = ndcgAtK(qrels, results, 3);
+  assert.ok(scores.q1! < 0.8, `Reversed ranking should give NDCG < 0.8 (got ${scores.q1})`);
+});
+
+test("MRR@5 first result relevant", () => {
+  const qrels = { q1: { d1: 1 } };
+  const results = { q1: { d1: 0.9, d2: 0.5 } };
+  const scores = mrrAtK(qrels, results, 5);
+  assert.strictEqual(scores.q1, 1.0, "First relevant at position 1 = MRR 1.0");
+});
+
+test("MRR@5 second result relevant", () => {
+  const qrels = { q1: { d2: 1 } };
+  const results = { q1: { d1: 0.9, d2: 0.5 } };
+  const scores = mrrAtK(qrels, results, 5);
+  assert.strictEqual(scores.q1, 0.5, "First relevant at position 2 = MRR 0.5");
+});
+
+test("Recall@5 retrieves half the relevant docs", () => {
+  const qrels = { q1: { d1: 1, d2: 1, d3: 1, d4: 1 } };
+  const results = { q1: { d1: 0.9, d2: 0.8, d5: 0.7, d6: 0.6, d7: 0.5 } };
+  const scores = recallAtK(qrels, results, 5);
+  assert.strictEqual(scores.q1, 0.5, "2 of 4 relevant retrieved = 0.5");
+});
+
+test("MAP@3 mixed relevance", () => {
+  const qrels = { q1: { d1: 1, d3: 1 } };
+  const results = { q1: { d1: 0.9, d2: 0.8, d3: 0.7 } };
+  const scores = mapAtK(qrels, results, 3);
+  // AP = (1/1 + 2/3) / 2 = 0.833...
+  assert.ok(Math.abs(scores.q1! - 0.833) < 0.01, `MAP should be ~0.833 (got ${scores.q1})`);
+});
+
+test("Precision@5 with 2 relevant", () => {
+  const qrels = { q1: { d1: 1, d2: 1 } };
+  const results = { q1: { d1: 0.9, d3: 0.8, d2: 0.7, d4: 0.6, d5: 0.5 } };
+  const scores = precisionAtK(qrels, results, 5);
+  assert.strictEqual(scores.q1, 0.4, "2 relevant in 5 = P@5 = 0.4");
+});
+
+test("evaluateBEIR returns all metric families", () => {
+  const qrels = { q1: { d1: 2, d2: 1 } };
+  const results = { q1: { d1: 0.9, d2: 0.5 } };
+  const beir = evaluateBEIR(qrels, results, [1, 5]);
+  assert.ok("ndcg" in beir);
+  assert.ok("mrr" in beir);
+  assert.ok("recall" in beir);
+  assert.ok("map" in beir);
+  assert.ok("precision" in beir);
+  assert.ok("@1" in beir.ndcg);
+  assert.ok("@5" in beir.ndcg);
+});
+
+test("mean of empty scores is 0", () => {
+  assert.strictEqual(mean({}), 0);
+});
+
+test("mean of single score", () => {
+  assert.strictEqual(mean({ q1: 0.75 }), 0.75);
+});
+
+test("NDCG@k with no relevant docs returns 0", () => {
+  const qrels = { q1: { d1: 0, d2: 0 } };
+  const results = { q1: { d1: 0.9, d2: 0.5 } };
+  const scores = ndcgAtK(qrels, results, 3);
+  assert.strictEqual(scores.q1, 0, "No relevant docs = NDCG 0");
+});
+
+test("MRR@k with no relevant docs returns 0", () => {
+  const qrels = { q1: { d1: 0 } };
+  const results = { q1: { d1: 0.9 } };
+  const scores = mrrAtK(qrels, results, 5);
+  assert.strictEqual(scores.q1, 0, "No relevant docs = MRR 0");
+});
+
 // Summary
 console.log("\n=== Summary ===");
 const passed = results.filter((r) => r.status === "PASS").length;

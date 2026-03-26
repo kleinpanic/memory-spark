@@ -3,7 +3,7 @@
  * Standalone Indexer — replicates the gateway boot-pass without requiring OpenClaw.
  *
  * Usage:
- *   MEMORY_SPARK_DATA_DIR=./test-data npx tsx scripts/standalone-index.ts
+ *   MEMORY_SPARK_DATA_DIR=./test-data npx tsx tools/indexer.ts
  *
  * This discovers all agent workspaces + reference library paths,
  * runs the full ingest pipeline (parse → chunk → quality → NER → embed → store),
@@ -38,7 +38,7 @@ async function main() {
   const dataDir = process.env["MEMORY_SPARK_DATA_DIR"];
   if (!dataDir) {
     console.error("ERROR: Set MEMORY_SPARK_DATA_DIR to avoid touching production.");
-    console.error("  MEMORY_SPARK_DATA_DIR=./test-data npx tsx scripts/standalone-index.ts");
+    console.error("  MEMORY_SPARK_DATA_DIR=./test-data npx tsx tools/indexer.ts");
     process.exit(1);
   }
 

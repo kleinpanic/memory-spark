@@ -5,13 +5,13 @@
  *
  * Usage:
  *   # Dry run (default) — shows what would be deleted:
- *   MEMORY_SPARK_DATA_DIR=./test-data npx tsx scripts/purge-garbage.ts
+ *   MEMORY_SPARK_DATA_DIR=./test-data npx tsx tools/purge.ts
  *
  *   # Actually delete:
- *   MEMORY_SPARK_DATA_DIR=./test-data npx tsx scripts/purge-garbage.ts --delete
+ *   MEMORY_SPARK_DATA_DIR=./test-data npx tsx tools/purge.ts --delete
  *
  *   # Against production (CAREFUL):
- *   npx tsx scripts/purge-garbage.ts --delete
+ *   npx tsx tools/purge.ts --delete
  */
 
 import { resolveConfig } from "../src/config.js";
