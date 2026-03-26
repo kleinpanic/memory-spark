@@ -84,7 +84,10 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
     // 3b. Quality gate — score chunks and drop noise before embedding
     const minQuality = opts.cfg.ingest?.minQuality ?? 0.3;
     const qualifiedWithScores = rawChunks.map((c) => {
-      const quality = scoreChunkQuality(c.text, relPath, source);
+      const quality = scoreChunkQuality(c.text, relPath, source, {
+        language: opts.cfg.ingest?.language,
+        threshold: opts.cfg.ingest?.languageThreshold,
+      });
       return { chunk: c, qualityScore: quality.score };
     }).filter((item) => item.qualityScore >= minQuality);
 

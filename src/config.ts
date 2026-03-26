@@ -97,6 +97,18 @@ export interface MigrateConfig {
 export interface IngestConfig {
   /** Minimum quality score (0-1) for a chunk to be indexed. Default: 0.3 */
   minQuality: number;
+  /**
+   * Primary language for indexed content. Non-matching languages are penalized or excluded.
+   * Set to "all" to disable language filtering entirely.
+   * Default: "en"
+   */
+  language: string;
+  /**
+   * Non-Latin character ratio threshold (0-1). Chunks exceeding this ratio in characters
+   * outside the configured language's script are excluded.
+   * Default: 0.3 (30% non-Latin = excluded for language "en")
+   */
+  languageThreshold: number;
 }
 
 export interface ReferenceConfig {
@@ -211,12 +223,20 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
       fileTypes: ["md", "txt", "pdf", "docx"],
       debounceMs: 2000,
       indexOnBoot: true,
-      excludePatterns: ["**/archive/**", "**/*.bak", "**/*-session-save.md"],
+      excludePatterns: [
+        "**/archive/**", "**/*.bak", "**/*-session-save.md",
+        "**/zh-CN/**", "**/zh-TW/**", "**/ja/**", "**/ko/**",
+        "**/fr/**", "**/de/**", "**/es/**", "**/pt-BR/**", "**/ru/**",
+        "**/i18n/**", "**/locales/**", "**/locale/**",
+        "**/translations/**", "**/translation/**",
+      ],
       excludePathsExact: ["memory/learnings.md"],
       indexSessions: false,
     },
     ingest: {
       minQuality: 0.3,
+      language: "en",
+      languageThreshold: 0.3,
     },
     reference: {
       enabled: true,
