@@ -33,9 +33,9 @@ const EXCLUDED_PATH_PATTERNS: RegExp[] = [
  */
 export function nonLatinRatio(text: string): number {
   if (!text) return 0;
-  // CJK Unified, CJK Extension A/B, Hiragana, Katakana, Hangul, Cyrillic, Arabic, Thai, Devanagari
+  // Use Unicode property escapes for CJK, Hangul, Cyrillic, Arabic, Thai, Devanagari
   const nonLatin = text.match(
-    /[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af\u0400-\u04ff\u0600-\u06ff\u0e00-\u0e7f\u0900-\u097f]/g,
+    /\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}|\p{Script=Hangul}|\p{Script=Cyrillic}|\p{Script=Arabic}|\p{Script=Thai}|\p{Script=Devanagari}/gu,
   );
   const total = text.replace(/\s/g, "").length;
   if (total === 0) return 0;

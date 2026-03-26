@@ -14,7 +14,7 @@
 
 import type { WatchConfig, MemorySparkConfig } from "../config.js";
 import type { StorageBackend } from "../storage/backend.js";
-import type { EmbedProvider } from "../embed/provider.js";
+// import type { EmbedProvider } from "../embed/provider.js";
 import { EmbedQueue } from "../embed/queue.js";
 import type { Embedder } from "./pipeline.js";
 import { ingestFile } from "./pipeline.js";
@@ -565,7 +565,7 @@ async function runBootPass(
   );
 
   // Process files sequentially — the EmbedQueue handles backpressure/retry
-  const CONCURRENCY = 1;
+  const _CONCURRENCY = 1;
   let errors = 0;
 
   // Dynamic timeout: 60s base + 30s per 50KB of file size
