@@ -115,6 +115,20 @@ const ForgetParams = Type.Object({
   query: Type.String({ description: "What to forget — matches and removes similar memories" }),
 });
 
+const ReferenceSearchParams = Type.Object({
+  query: Type.String({ description: "What to search for in reference documentation" }),
+  tag: Type.Optional(Type.String({ description: "Filter by tag (e.g. 'internal', 'openclaw')" })),
+  maxResults: Type.Optional(Type.Number({ description: "Max results (default 10)" })),
+});
+
+const IndexStatusParams = Type.Object({
+  agentId: Type.Optional(Type.String({ description: "Agent ID to scope stats to (default: current agent)" })),
+});
+
+const ForgetByPathParams = Type.Object({
+  path: Type.String({ description: "Relative file path whose indexed chunks should be removed" }),
+});
+
 // ---------------------------------------------------------------------------
 // Plugin definition
 // ---------------------------------------------------------------------------
@@ -296,9 +310,129 @@ const memorySpark = {
           },
         };
 
-        return [searchTool, getTool, storeTool, forgetTool] as any;
+        const referenceSearchTool = {
+          name: "memory_reference_search",
+          description: "Search reference documentation (textbooks, API docs, source code docs). Use instead of web search when relevant reference material has been indexed.",
+          label: "Reference Search",
+          parameters: ReferenceSearchParams,
+          execute: async (_toolCallId: string, params: { query: string; tag?: string; maxResults?: number }) => {
+            const s = await getState(cfg, api.logger);
+            const limit = params.maxResults ?? 10;
+            let queryVector: number[];
+            try {
+              queryVector = await s.queue.embedQuery(params.query);
+            } catch {
+              return { content: [{ type: "text" as const, text: "Embedding unavailable — cannot search reference docs." }], details: {} };
+            }
+
+            const fetchN = limit * 3;
+            const [vectorResults, ftsResults] = await Promise.all([
+              s.backend.vectorSearch(queryVector, {
+                query: params.query, maxResults: fetchN, agentId, contentType: "reference",
+              }).catch(() => []),
+              s.backend.ftsSearch(params.query, {
+                query: params.query, maxResults: fetchN, agentId, contentType: "reference",
+              }).catch(() => []),
+            ]);
+
+            // Merge and deduplicate by id
+            const seen = new Set<string>();
+            const merged = [...vectorResults, ...ftsResults]
+              .filter((r) => { if (seen.has(r.chunk.id)) return false; seen.add(r.chunk.id); return true; })
+              .sort((a, b) => b.score - a.score);
+
+            // Tag filter — match path prefix against cfg.reference.tags
+            let results = merged;
+            if (params.tag) {
+              const tagMap = cfg.reference.tags;
+              const matchingPrefixes = Object.entries(tagMap)
+                .filter(([, t]) => t === params.tag)
+                .map(([prefix]) => prefix);
+              if (matchingPrefixes.length > 0) {
+                results = merged.filter((r) =>
+                  matchingPrefixes.some((prefix) => r.chunk.path.startsWith(prefix))
+                );
+              }
+            }
+
+            const final = results.slice(0, limit);
+            if (final.length === 0) {
+              return { content: [{ type: "text" as const, text: "No reference documentation found for that query." }], details: {} };
+            }
+            const text = final.map((r, i) =>
+              `${i + 1}. [${r.chunk.path}:${r.chunk.start_line}] (score: ${r.score.toFixed(2)})\n${r.chunk.text.slice(0, 400)}`
+            ).join("\n\n");
+            return { content: [{ type: "text" as const, text }], details: { resultCount: final.length } };
+          },
+        };
+
+        const indexStatusTool = {
+          name: "memory_index_status",
+          description: "Show memory index statistics: chunk counts by type, index health, and top indexed paths.",
+          label: "Index Status",
+          parameters: IndexStatusParams,
+          execute: async (_toolCallId: string, params: { agentId?: string }) => {
+            const s = await getState(cfg, api.logger);
+            const targetAgentId = params.agentId ?? agentId;
+
+            // Use LanceDBBackend.getStats() if available
+            const lanceStats = (s.backend as import("./src/storage/lancedb.js").LanceDBBackend).getStats?.(targetAgentId);
+            const baseStatus = await s.backend.status();
+
+            let statsText = `Memory Index Status\n`;
+            statsText += `===================\n`;
+            statsText += `Backend: ${baseStatus.backend}\n`;
+            statsText += `Total chunks: ${baseStatus.chunkCount}\n`;
+            statsText += `Ready: ${baseStatus.ready}\n`;
+
+            if (lanceStats) {
+              const stats = await lanceStats;
+              if (stats.indices.length > 0) {
+                statsText += `\nIndexes:\n`;
+                for (const idx of stats.indices) {
+                  statsText += `  - ${idx.name} (${idx.indexType}) on [${idx.columns.join(", ")}]\n`;
+                }
+              } else {
+                statsText += `\nIndexes: none (ANN search will use brute force)\n`;
+              }
+
+              if (stats.topPaths.length > 0) {
+                statsText += `\nTop paths by chunk count:\n`;
+                for (const p of stats.topPaths.slice(0, 10)) {
+                  statsText += `  ${p.chunkCount.toString().padStart(4)} chunks — ${p.path}\n`;
+                }
+              }
+            }
+
+            statsText += `\nEmbed: ${s.embed.id}/${s.embed.model} (${s.embed.dims}d)\n`;
+            statsText += `Reranker: ${cfg.rerank.enabled ? "enabled" : "off"}\n`;
+            statsText += `AutoRecall: ${cfg.autoRecall.enabled ? cfg.autoRecall.agents.join(",") : "off"}\n`;
+
+            return { content: [{ type: "text" as const, text: statsText }], details: {} };
+          },
+        };
+
+        const forgetByPathTool = {
+          name: "memory_forget_by_path",
+          description: "Remove all indexed chunks from a specific file path. Use when reference docs are outdated or a file has been deleted.",
+          label: "Forget by Path",
+          parameters: ForgetByPathParams,
+          execute: async (_toolCallId: string, params: { path: string }) => {
+            const s = await getState(cfg, api.logger);
+            const removed = await s.backend.deleteByPath(params.path, agentId);
+            if (removed === 0) {
+              return { content: [{ type: "text" as const, text: `No chunks found for path: ${params.path}` }], details: { removed: 0 } };
+            }
+            return {
+              content: [{ type: "text" as const, text: `Removed ${removed} chunks from: ${params.path}` }],
+              details: { removed },
+            };
+          },
+        };
+
+        return [searchTool, getTool, storeTool, forgetTool, referenceSearchTool, indexStatusTool, forgetByPathTool] as any;
       },
-      { names: ["memory_search", "memory_get", "memory_store", "memory_forget"] },
+      { names: ["memory_search", "memory_get", "memory_store", "memory_forget", "memory_reference_search", "memory_index_status", "memory_forget_by_path"] },
     );
 
     // -------------------------------------------------------------------

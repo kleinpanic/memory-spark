@@ -164,15 +164,19 @@ function rrfMerge(vectorResults: SearchResult[], ftsResults: SearchResult[], lim
 }
 
 /**
- * Temporal decay: boost recent memories, penalize old ones.
- * Half-life: 30 days. A 60-day-old memory gets 0.25x weight.
+ * Temporal decay: boost recent memories, apply gentle decay for old ones.
+ * Uses exponential decay with a floor at 0.8 — old-but-gold knowledge
+ * never drops below 80% weight (previously at 0.25x for 60-day-old chunks).
+ *
+ * Formula: 0.8 + 0.2 * exp(-0.03 * ageDays)
+ * 0 days=1.0, 7 days=0.96, 30 days=0.89, 90 days=0.81, 365 days=0.80
  */
-function applyTemporalDecay(results: SearchResult[], halfLifeDays = 30): void {
+function applyTemporalDecay(results: SearchResult[]): void {
   const now = Date.now();
   for (const r of results) {
     const updatedAt = r.chunk.updated_at ? new Date(r.chunk.updated_at).getTime() : now;
     const ageDays = Math.max(0, (now - updatedAt) / (86400 * 1000));
-    const decay = Math.pow(0.5, ageDays / halfLifeDays);
+    const decay = 0.8 + 0.2 * Math.exp(-0.03 * ageDays);
     r.score *= decay;
   }
 }
@@ -288,6 +292,7 @@ function applySourceWeighting(results: SearchResult[]): void {
 
     // Path-level refinements
     if (chunkPath === "MEMORY.md") weight *= 1.4;
+    else if (chunkPath.toLowerCase().includes("mistakes")) weight *= 1.6;
     else if (chunkPath.startsWith("memory/archive/")) weight *= 0.4;
     else if (chunkPath === "memory/learnings.md") weight *= 0.1;
 

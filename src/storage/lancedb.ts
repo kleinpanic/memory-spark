@@ -4,6 +4,7 @@
 
 import * as lancedb from "@lancedb/lancedb";
 import type { Table } from "@lancedb/lancedb";
+import type { AddColumnsSql } from "@lancedb/lancedb";
 import type {
   StorageBackend, MemoryChunk, SearchOptions, SearchResult, BackendStatus,
 } from "./backend.js";
@@ -39,6 +40,10 @@ export class LanceDBBackend implements StorageBackend {
     const names = await this.db.tableNames();
     if (names.includes(TABLE_NAME)) {
       this.table = await this.db.openTable(TABLE_NAME);
+      // Schema evolution: add new columns if they don't exist yet
+      await this.ensureSchema();
+      // Ensure indexes are created for fast ANN + FTS
+      await this.ensureIndexes();
     }
     // Table is created on first upsert when we know the vector dims
   }
@@ -49,6 +54,79 @@ export class LanceDBBackend implements StorageBackend {
       this.table = null;
     }
     this.db = null;
+  }
+
+  /**
+   * Add new columns to an existing table if they don't exist.
+   * Wrapped in try/catch — "column already exists" is silently ignored.
+   */
+  private async ensureSchema(): Promise<void> {
+    if (!this.table) return;
+    try {
+      const schema = await this.table.schema();
+      const existingFields = new Set(schema.fields.map((f) => f.name));
+
+      const newColumns: AddColumnsSql[] = [];
+      if (!existingFields.has("content_type")) {
+        newColumns.push({ name: "content_type", valueSql: "'knowledge'" });
+      }
+      if (!existingFields.has("quality_score")) {
+        newColumns.push({ name: "quality_score", valueSql: "0.5" });
+      }
+      if (!existingFields.has("token_count")) {
+        newColumns.push({ name: "token_count", valueSql: "0" });
+      }
+      if (!existingFields.has("parent_heading")) {
+        newColumns.push({ name: "parent_heading", valueSql: "''" });
+      }
+
+      if (newColumns.length > 0) {
+        await this.table.addColumns(newColumns);
+      }
+    } catch {
+      // Schema evolution failure is non-fatal — old tables will still work
+    }
+  }
+
+  /**
+   * Create IVF_PQ vector index and FTS index if they don't exist.
+   * Wrapped in try/catch — index creation failure doesn't prevent startup.
+   */
+  private async ensureIndexes(): Promise<void> {
+    if (!this.table) return;
+    try {
+      const indices = await this.table.listIndices();
+      const hasVectorIndex = indices.some((i) => i.columns.includes("vector"));
+      const hasFtsIndex = indices.some((i) => i.columns.includes("text"));
+
+      if (!hasVectorIndex) {
+        try {
+          // numSubVectors: 64 → 4096/64 = 64 dims per subvector (SIMD-friendly multiple of 8)
+          await this.table.createIndex("vector", {
+            config: lancedb.Index.ivfPq({
+              numPartitions: 10,
+              numSubVectors: 64,
+              distanceType: "cosine",
+            }),
+          });
+        } catch {
+          // Vector index creation may fail if table is too small (needs ≥ numPartitions rows)
+        }
+      }
+
+      if (!hasFtsIndex) {
+        try {
+          await this.table.createIndex("text", { config: lancedb.Index.fts() });
+        } catch {
+          // FTS index creation failure is non-fatal
+        }
+      }
+
+      // Mark FTS as ready regardless — ftsSearch() has its own fallback
+      this.ftsCreated = true;
+    } catch {
+      // listIndices() failure is non-fatal
+    }
   }
 
   private ensureTablePromise: Promise<Table> | null = null;
@@ -73,12 +151,13 @@ export class LanceDBBackend implements StorageBackend {
     const names = await this.db.tableNames();
     if (names.includes(TABLE_NAME)) {
       this.table = await this.db.openTable(TABLE_NAME);
+      await this.ensureSchema();
       return this.table;
     }
 
     // Create table with a seed record that includes ALL fields (schema-defining).
     // LanceDB locks schema on creation — missing fields cause append errors.
-    const seed: MemoryChunk = {
+    const seed = {
       id: "__seed__",
       path: "__seed__",
       source: "memory",
@@ -91,6 +170,10 @@ export class LanceDBBackend implements StorageBackend {
       category: "",
       entities: "[]",
       confidence: 0,
+      content_type: "knowledge",
+      quality_score: 0.5,
+      token_count: 0,
+      parent_heading: "",
     };
     this.table = await this.db.createTable(TABLE_NAME, [seed as unknown as Record<string, unknown>]);
     await this.table.delete("id = '__seed__'");
@@ -120,6 +203,10 @@ export class LanceDBBackend implements StorageBackend {
       category: c.category ?? "",
       entities: c.entities ?? "[]",
       confidence: c.confidence ?? 0,
+      content_type: c.content_type ?? "knowledge",
+      quality_score: c.quality_score ?? 0.5,
+      token_count: c.token_count ?? 0,
+      parent_heading: c.parent_heading ?? "",
     }));
 
     // Retry on commit conflict (concurrent writes from boot pass + watcher)
@@ -168,11 +255,13 @@ export class LanceDBBackend implements StorageBackend {
 
     let q = this.table.vectorSearch(queryVector)
       .distanceType("cosine")
+      .refineFactor(20)
       .limit(limit);
 
     const filters: string[] = [];
     if (opts.agentId) filters.push(`agent_id = '${escapeSql(opts.agentId)}'`);
     if (opts.source) filters.push(`source = '${escapeSql(opts.source)}'`);
+    if (opts.contentType) filters.push(`content_type = '${escapeSql(opts.contentType)}'`);
     if (filters.length > 0) {
       q = q.where(filters.join(" AND "));
     }
@@ -187,7 +276,7 @@ export class LanceDBBackend implements StorageBackend {
   async ftsSearch(query: string, opts: SearchOptions): Promise<SearchResult[]> {
     if (!this.table) return [];
 
-    // Ensure FTS index exists
+    // Ensure FTS index exists (fallback for newly-created tables)
     if (!this.ftsCreated) {
       try {
         await this.table.createIndex("text", { config: lancedb.Index.fts() });
@@ -204,6 +293,7 @@ export class LanceDBBackend implements StorageBackend {
       const filters: string[] = [];
       if (opts.agentId) filters.push(`agent_id = '${escapeSql(opts.agentId)}'`);
       if (opts.source) filters.push(`source = '${escapeSql(opts.source)}'`);
+      if (opts.contentType) filters.push(`content_type = '${escapeSql(opts.contentType)}'`);
       if (filters.length > 0) {
         q = q.where(filters.join(" AND "));
       }
@@ -309,6 +399,33 @@ export class LanceDBBackend implements StorageBackend {
       };
     }
   }
+
+  /**
+   * Aggregate statistics for the memory_index_status tool.
+   * Not part of StorageBackend interface — access via cast.
+   */
+  async getStats(agentId?: string): Promise<{
+    totalChunks: number;
+    indices: Array<{ name: string; indexType: string; columns: string[] }>;
+    topPaths: Array<{ path: string; chunkCount: number }>;
+  }> {
+    if (!this.table) return { totalChunks: 0, indices: [], topPaths: [] };
+    try {
+      const filter = agentId ? `agent_id = '${escapeSql(agentId)}'` : undefined;
+      const [totalChunks, indices, paths] = await Promise.all([
+        this.table.countRows(filter),
+        this.table.listIndices().catch(() => [] as Array<{ name: string; indexType: string; columns: string[] }>),
+        this.listPaths(agentId),
+      ]);
+      const topPaths = paths
+        .sort((a, b) => b.chunkCount - a.chunkCount)
+        .slice(0, 10)
+        .map((p) => ({ path: p.path, chunkCount: p.chunkCount }));
+      return { totalChunks, indices, topPaths };
+    } catch {
+      return { totalChunks: 0, indices: [], topPaths: [] };
+    }
+  }
 }
 
 function escapeSql(s: string): string {
@@ -334,6 +451,10 @@ function rowToSearchResult(row: Record<string, unknown>): SearchResult {
     category: row.category as string | undefined,
     entities: row.entities as string | undefined,
     confidence: row.confidence as number | undefined,
+    content_type: (row.content_type as string | undefined) ?? "knowledge",
+    quality_score: row.quality_score as number | undefined,
+    token_count: row.token_count as number | undefined,
+    parent_heading: row.parent_heading as string | undefined,
   };
 
   return {

@@ -99,6 +99,20 @@ export interface IngestConfig {
   minQuality: number;
 }
 
+export interface ReferenceConfig {
+  /** Whether reference library indexing is enabled. Default: true */
+  enabled: boolean;
+  /** Additional paths to index as reference material (e.g. textbooks, API docs) */
+  paths: string[];
+  /** Chunk size for reference docs (larger than knowledge chunks). Default: 800 */
+  chunkSize: number;
+  /**
+   * Path prefix → tag mapping for organizing reference docs by topic.
+   * e.g. { "InternalDocs/": "internal", "openclaw-docs/": "openclaw" }
+   */
+  tags: Record<string, string>;
+}
+
 export interface MemorySparkConfig {
   backend: StorageBackendId;
   lancedbDir: string;
@@ -111,6 +125,8 @@ export interface MemorySparkConfig {
   ingest: IngestConfig;
   migrate: MigrateConfig;
   spark: SparkEndpoints;
+  /** Reference library configuration — additional docs indexed as "reference" content_type */
+  reference: ReferenceConfig;
   /** Override SPARK_HOST env var. Used to point at a different Spark node. */
   sparkHost?: string;
   /** Override SPARK_BEARER_TOKEN env var. Loaded from env/.env if not set. */
@@ -201,6 +217,12 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
     },
     ingest: {
       minQuality: 0.3,
+    },
+    reference: {
+      enabled: true,
+      paths: [],
+      chunkSize: 800,
+      tags: {},
     },
     migrate: {
       autoMigrateOnFirstBoot: true,
@@ -298,6 +320,11 @@ export function resolveConfig(userConfig?: Partial<MemorySparkConfig>): MemorySp
       })) ?? defaults.watch.paths,
     },
     ingest: { ...defaults.ingest, ...userConfig.ingest },
+    reference: {
+      ...defaults.reference,
+      ...userConfig.reference,
+      paths: userConfig.reference?.paths?.map(expandHome) ?? defaults.reference.paths,
+    },
     migrate: {
       ...defaults.migrate,
       ...userConfig.migrate,

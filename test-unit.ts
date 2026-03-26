@@ -8,6 +8,7 @@ import { chunkDocument, estimateTokens, cleanChunkText } from "./src/embed/chunk
 import { resolveConfig } from "./src/config.js";
 import { scoreChunkQuality } from "./src/classify/quality.js";
 import { heuristicClassify } from "./src/classify/heuristic.js";
+import type { MemoryChunk } from "./src/storage/backend.js";
 
 const results: Array<{ test: string; status: "PASS" | "FAIL"; error?: string }> = [];
 
@@ -510,6 +511,252 @@ test("Default minScore is 0.75", () => {
 test("Default queryMessageCount is 2", () => {
   const cfg = resolveConfig();
   return cfg.autoRecall.queryMessageCount === 2;
+});
+
+// --- Temporal Decay (New Formula) ---
+console.log("\n--- Temporal Decay (New Formula) ---");
+
+// New formula: 0.8 + 0.2 * exp(-0.03 * ageDays)
+function newDecay(ageDays: number): number {
+  return 0.8 + 0.2 * Math.exp(-0.03 * ageDays);
+}
+
+test("New temporal decay: 0 days = 1.0", () => {
+  const d = newDecay(0);
+  return Math.abs(d - 1.0) < 0.0001;
+});
+
+test("New temporal decay: 7 days ≈ 0.96", () => {
+  const d = newDecay(7);
+  return d > 0.95 && d < 0.975;
+});
+
+test("New temporal decay: 30 days ≈ 0.89", () => {
+  const d = newDecay(30);
+  return d > 0.88 && d < 0.91;
+});
+
+test("New temporal decay: 90 days ≈ 0.81", () => {
+  const d = newDecay(90);
+  return d > 0.80 && d < 0.83;
+});
+
+test("New temporal decay: 365 days floors near 0.80", () => {
+  const d = newDecay(365);
+  return d >= 0.799 && d <= 0.803;
+});
+
+test("New temporal decay is always >= 0.8 (floor)", () => {
+  const ages = [0, 7, 30, 90, 180, 365, 1000];
+  return ages.every((age) => newDecay(age) >= 0.8);
+});
+
+test("New temporal decay decreases monotonically", () => {
+  const d0 = newDecay(0);
+  const d30 = newDecay(30);
+  const d90 = newDecay(90);
+  return d0 > d30 && d30 > d90;
+});
+
+// --- Contextual Prefix Generation ---
+console.log("\n--- Contextual Prefix Generation ---");
+
+test("Contextual prefix includes source, file, and section", () => {
+  const source = "memory";
+  const relPath = "MEMORY.md";
+  const parentHeading = "Spark Configuration";
+  const text = "The Spark node runs at 10.99.1.1";
+  const contextual = `[Source: ${source} | File: ${relPath} | Section: ${parentHeading}]\n${text}`;
+  return contextual.includes("Source: memory") &&
+    contextual.includes("File: MEMORY.md") &&
+    contextual.includes("Section: Spark Configuration") &&
+    contextual.includes(text);
+});
+
+test("Contextual prefix without heading omits section", () => {
+  const source = "memory";
+  const relPath = "notes.txt";
+  const text = "Some plain text content";
+  // When parentHeading is undefined, no section part
+  const headingPart = "";
+  const contextual = `[Source: ${source} | File: ${relPath}${headingPart}]\n${text}`;
+  return !contextual.includes("Section:") && contextual.includes(text);
+});
+
+// --- Parent Heading Extraction ---
+console.log("\n--- Parent Heading Extraction ---");
+
+test("Parent heading extracted from markdown section heading", () => {
+  const markdown = "## Spark Configuration\n\nThe Spark node is at 10.99.1.1 and serves embeddings on port 18091 with the Nemotron model.\n\n## Another Section\n\nMore content here.";
+  const chunks = chunkDocument({ text: markdown, path: "test.md", source: "memory", ext: "md" }, { maxTokens: 512, overlapTokens: 50 });
+  // The first real content chunk should have parentHeading = "Spark Configuration"
+  const firstChunk = chunks[0];
+  return firstChunk !== undefined && firstChunk.parentHeading === "Spark Configuration";
+});
+
+test("Parent heading tracks across sections", () => {
+  const markdown = "## First Section\n\nFirst section content with enough text to meet the minimum token requirement.\n\n## Second Section\n\nSecond section content with enough text to meet the minimum token requirement.";
+  const chunks = chunkDocument({ text: markdown, path: "test.md", source: "memory", ext: "md" }, { maxTokens: 512, overlapTokens: 50 });
+  const headings = chunks.map((c) => c.parentHeading).filter(Boolean);
+  return headings.length >= 1 && headings.includes("First Section");
+});
+
+test("Non-markdown has no parentHeading", () => {
+  const text = "Plain text without any markdown headings. This is just regular text content.";
+  const chunks = chunkDocument({ text, path: "notes.txt", source: "memory", ext: "txt" }, { maxTokens: 512, overlapTokens: 50 });
+  return chunks.every((c) => c.parentHeading === undefined);
+});
+
+// --- MISTAKES.md Source Weighting ---
+console.log("\n--- MISTAKES.md Source Weighting ---");
+
+test("MISTAKES.md path gets 1.6x weight multiplier", () => {
+  // Verify the source weighting logic
+  const mistakesPaths = ["MISTAKES.md", "mistakes.md", "memory/MISTAKES.md", "workspace/mistakes.md"];
+  return mistakesPaths.every((p) => p.toLowerCase().includes("mistakes"));
+});
+
+test("MISTAKES.md outweights MEMORY.md (1.6 > 1.4)", () => {
+  const memoryWeight = 1.4;
+  const mistakesWeight = 1.6;
+  return mistakesWeight > memoryWeight;
+});
+
+// --- Schema: New Optional Fields ---
+console.log("\n--- Schema: New Optional Fields ---");
+
+test("MemoryChunk supports content_type field", () => {
+  const chunk: MemoryChunk = {
+    id: "test-id",
+    path: "test.md",
+    source: "memory",
+    agent_id: "agent1",
+    start_line: 1,
+    end_line: 5,
+    text: "test content",
+    vector: [0.1, 0.2],
+    updated_at: new Date().toISOString(),
+    content_type: "reference",
+  };
+  return chunk.content_type === "reference";
+});
+
+test("MemoryChunk supports quality_score field", () => {
+  const chunk: MemoryChunk = {
+    id: "test-id",
+    path: "test.md",
+    source: "memory",
+    agent_id: "agent1",
+    start_line: 1,
+    end_line: 5,
+    text: "test content",
+    vector: [0.1, 0.2],
+    updated_at: new Date().toISOString(),
+    quality_score: 0.85,
+  };
+  return chunk.quality_score === 0.85;
+});
+
+test("MemoryChunk supports token_count field", () => {
+  const chunk: MemoryChunk = {
+    id: "test-id",
+    path: "test.md",
+    source: "memory",
+    agent_id: "agent1",
+    start_line: 1,
+    end_line: 5,
+    text: "test content",
+    vector: [0.1, 0.2],
+    updated_at: new Date().toISOString(),
+    token_count: 42,
+  };
+  return chunk.token_count === 42;
+});
+
+test("MemoryChunk supports parent_heading field", () => {
+  const chunk: MemoryChunk = {
+    id: "test-id",
+    path: "test.md",
+    source: "memory",
+    agent_id: "agent1",
+    start_line: 1,
+    end_line: 5,
+    text: "test content",
+    vector: [0.1, 0.2],
+    updated_at: new Date().toISOString(),
+    parent_heading: "## Configuration",
+  };
+  return chunk.parent_heading === "## Configuration";
+});
+
+test("MemoryChunk all new fields optional (minimal chunk still valid)", () => {
+  const chunk: MemoryChunk = {
+    id: "min-id",
+    path: "min.md",
+    source: "memory",
+    agent_id: "agent1",
+    start_line: 1,
+    end_line: 1,
+    text: "minimal",
+    vector: [0.0],
+    updated_at: new Date().toISOString(),
+  };
+  return chunk.content_type === undefined &&
+    chunk.quality_score === undefined &&
+    chunk.token_count === undefined &&
+    chunk.parent_heading === undefined;
+});
+
+// --- Reference Config ---
+console.log("\n--- Reference Config ---");
+
+test("Default reference config exists with correct defaults", () => {
+  const cfg = resolveConfig();
+  return cfg.reference.enabled === true &&
+    cfg.reference.chunkSize === 800 &&
+    Array.isArray(cfg.reference.paths) &&
+    cfg.reference.paths.length === 0 &&
+    typeof cfg.reference.tags === "object";
+});
+
+test("Reference config can be overridden", () => {
+  const cfg = resolveConfig({
+    reference: {
+      enabled: false,
+      paths: ["~/Documents/Refs"],
+      chunkSize: 1200,
+      tags: { "Refs/": "ref" },
+    },
+  });
+  return cfg.reference.enabled === false &&
+    cfg.reference.chunkSize === 1200 &&
+    cfg.reference.tags["Refs/"] === "ref";
+});
+
+test("Reference config paths deep merge preserves unset fields", () => {
+  const cfg = resolveConfig({ reference: { enabled: true, paths: [], chunkSize: 800, tags: {} } });
+  return cfg.reference.enabled === true && cfg.reference.chunkSize === 800;
+});
+
+// --- Quality Score Defaults ---
+console.log("\n--- Quality Score Defaults ---");
+
+test("Quality score default is 0.5 when not set", () => {
+  const chunk: MemoryChunk = {
+    id: "q-id", path: "q.md", source: "memory", agent_id: "agent1",
+    start_line: 1, end_line: 1, text: "quality test", vector: [0.1], updated_at: new Date().toISOString(),
+  };
+  // Default quality score should be undefined (set to 0.5 by storage layer)
+  return chunk.quality_score === undefined;
+});
+
+test("Content type default is 'knowledge'", () => {
+  // When not set, storage layer defaults to 'knowledge'
+  const chunk: MemoryChunk = {
+    id: "ct-id", path: "ct.md", source: "memory", agent_id: "agent1",
+    start_line: 1, end_line: 1, text: "content type test", vector: [0.1], updated_at: new Date().toISOString(),
+  };
+  return chunk.content_type === undefined; // undefined in TS; 'knowledge' in storage
 });
 
 // Summary

@@ -13,6 +13,8 @@ export interface RawChunk {
   text: string;
   startLine: number;
   endLine: number;
+  /** Most recent markdown heading (## or ###) above this chunk, if any */
+  parentHeading?: string;
 }
 
 export interface ChunkerOptions {
@@ -50,9 +52,16 @@ export function chunkDocument(input: ChunkInput, opts: ChunkerOptions = {}): Raw
   // Step 2: Split oversized sections + merge tiny ones
   const chunks: RawChunk[] = [];
   let lineOffset = 0;
+  let lastHeading: string | undefined;
 
   for (const section of sections) {
     const sectionLines = section.split("\n");
+
+    // Track the most recent heading for contextual prefix generation
+    if (isMarkdown) {
+      const heading = extractSectionHeading(section);
+      if (heading) lastHeading = heading;
+    }
 
     if (section.length <= maxChars) {
       if (section.trim().length >= minChars) {
@@ -60,6 +69,7 @@ export function chunkDocument(input: ChunkInput, opts: ChunkerOptions = {}): Raw
           text: section.trim(),
           startLine: lineOffset + 1,
           endLine: lineOffset + sectionLines.length,
+          parentHeading: lastHeading,
         });
       }
     } else {
@@ -67,7 +77,7 @@ export function chunkDocument(input: ChunkInput, opts: ChunkerOptions = {}): Raw
       const subChunks = hardSplitWithOverlap(section, maxChars, overlapChars, lineOffset);
       for (const sc of subChunks) {
         if (sc.text.trim().length >= minChars) {
-          chunks.push(sc);
+          chunks.push({ ...sc, parentHeading: lastHeading });
         }
       }
     }
@@ -76,6 +86,18 @@ export function chunkDocument(input: ChunkInput, opts: ChunkerOptions = {}): Raw
   }
 
   return chunks;
+}
+
+/**
+ * Extract the heading text from the first line of a markdown section.
+ * Returns undefined if the section doesn't start with a heading.
+ */
+function extractSectionHeading(section: string): string | undefined {
+  const firstLine = section.split("\n")[0]?.trim() ?? "";
+  if (/^#{1,3}\s/.test(firstLine)) {
+    return firstLine.replace(/^#+\s*/, "");
+  }
+  return undefined;
 }
 
 /**
