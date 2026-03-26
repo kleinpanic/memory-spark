@@ -53,7 +53,12 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
     if (isSession) {
       const entry = await extractSessionText(opts.filePath);
       if (!entry || !entry.text.trim()) {
-        return { filePath: opts.filePath, chunksAdded: 0, chunksRemoved: 0, durationMs: Date.now() - start };
+        return {
+          filePath: opts.filePath,
+          chunksAdded: 0,
+          chunksRemoved: 0,
+          durationMs: Date.now() - start,
+        };
       }
       rawText = entry.text;
     } else {
@@ -61,7 +66,12 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
     }
 
     if (!rawText.trim()) {
-      return { filePath: opts.filePath, chunksAdded: 0, chunksRemoved: 0, durationMs: Date.now() - start };
+      return {
+        filePath: opts.filePath,
+        chunksAdded: 0,
+        chunksRemoved: 0,
+        durationMs: Date.now() - start,
+      };
     }
 
     // 2. Convert to relative path for storage
@@ -78,32 +88,53 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
     });
 
     if (rawChunks.length === 0) {
-      return { filePath: opts.filePath, chunksAdded: 0, chunksRemoved: 0, durationMs: Date.now() - start };
+      return {
+        filePath: opts.filePath,
+        chunksAdded: 0,
+        chunksRemoved: 0,
+        durationMs: Date.now() - start,
+      };
     }
 
     // 3b. Quality gate — score chunks and drop noise before embedding
     const minQuality = opts.cfg.ingest?.minQuality ?? 0.3;
-    const qualifiedWithScores = rawChunks.map((c) => {
-      const quality = scoreChunkQuality(c.text, relPath, source, {
-        language: opts.cfg.ingest?.language,
-        threshold: opts.cfg.ingest?.languageThreshold,
-      });
-      return { chunk: c, qualityScore: quality.score };
-    }).filter((item) => item.qualityScore >= minQuality);
+    const qualifiedWithScores = rawChunks
+      .map((c) => {
+        const quality = scoreChunkQuality(c.text, relPath, source, {
+          language: opts.cfg.ingest?.language,
+          threshold: opts.cfg.ingest?.languageThreshold,
+        });
+        return { chunk: c, qualityScore: quality.score };
+      })
+      .filter((item) => item.qualityScore >= minQuality);
 
     if (qualifiedWithScores.length === 0) {
-      opts.logger?.info(`memory-spark: ${source} ${relPath} — all ${rawChunks.length} chunks filtered by quality gate`);
-      return { filePath: opts.filePath, chunksAdded: 0, chunksRemoved: 0, durationMs: Date.now() - start };
+      opts.logger?.info(
+        `memory-spark: ${source} ${relPath} — all ${rawChunks.length} chunks filtered by quality gate`,
+      );
+      return {
+        filePath: opts.filePath,
+        chunksAdded: 0,
+        chunksRemoved: 0,
+        durationMs: Date.now() - start,
+      };
     }
 
     // 3c. Clean chunk text — strip metadata noise before embedding
-    const cleanedWithScores = qualifiedWithScores.map((item) => ({
-      chunk: { ...item.chunk, text: cleanChunkText(item.chunk.text) },
-      qualityScore: item.qualityScore,
-    })).filter((item) => item.chunk.text.trim().length > 0);
+    const cleanedWithScores = qualifiedWithScores
+      .map((item) => ({
+        chunk: { ...item.chunk, text: cleanChunkText(item.chunk.text) },
+        qualityScore: item.qualityScore,
+      }))
+      .filter((item) => item.chunk.text.trim().length > 0);
 
     if (cleanedWithScores.length === 0) {
-      return { filePath: opts.filePath, chunksAdded: 0, chunksRemoved: 0, durationMs: Date.now() - start };
+      return {
+        filePath: opts.filePath,
+        chunksAdded: 0,
+        chunksRemoved: 0,
+        durationMs: Date.now() - start,
+      };
     }
 
     const cleanedChunks = cleanedWithScores.map((item) => item.chunk);

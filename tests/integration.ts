@@ -36,7 +36,9 @@ const SPARK_TOKEN = (() => {
   try {
     const envFile = fs.readFileSync(path.join(os.homedir(), ".openclaw", ".env"), "utf-8");
     return envFile.match(/SPARK_BEARER_TOKEN=["']?([^"'\s\n]+)/)?.[1] ?? "none";
-  } catch { return "none"; }
+  } catch {
+    return "none";
+  }
 })();
 
 const VERBOSE = process.argv.includes("--verbose");
@@ -189,14 +191,46 @@ CA pin: sha256:298fd061c1aa7728dc7a13db89195b064364abd913d3c7744af5bfae39f40077
 
 // ── Queries and expected matches ────────────────────────────────────────────
 const QUERIES: Array<{ query: string; expectPath: string; label: string }> = [
-  { query: "What port does the Spark embed service use?", expectPath: "memory/spark-setup.md", label: "Spark port question" },
-  { query: "How does voice chat work with Discord?", expectPath: "memory/voice-bridge.md", label: "Voice bridge question" },
-  { query: "What coding language does the user prefer?", expectPath: "memory/klein-preferences.md", label: "User language preference" },
-  { query: "Which model should I use for coding tasks?", expectPath: "AGENTS.md", label: "Model selection for coding" },
-  { query: "Teleport cluster CA pin hash", expectPath: "memory/teleport-setup.md", label: "Teleport CA pin" },
-  { query: "GPU memory utilization setting", expectPath: "memory/spark-setup.md", label: "GPU memory config" },
-  { query: "User's preferred editor and programming language", expectPath: "memory/klein-preferences.md", label: "User editor preference" },
-  { query: "STT speech to text endpoint", expectPath: "memory/voice-bridge.md", label: "STT endpoint" },
+  {
+    query: "What port does the Spark embed service use?",
+    expectPath: "memory/spark-setup.md",
+    label: "Spark port question",
+  },
+  {
+    query: "How does voice chat work with Discord?",
+    expectPath: "memory/voice-bridge.md",
+    label: "Voice bridge question",
+  },
+  {
+    query: "What coding language does the user prefer?",
+    expectPath: "memory/klein-preferences.md",
+    label: "User language preference",
+  },
+  {
+    query: "Which model should I use for coding tasks?",
+    expectPath: "AGENTS.md",
+    label: "Model selection for coding",
+  },
+  {
+    query: "Teleport cluster CA pin hash",
+    expectPath: "memory/teleport-setup.md",
+    label: "Teleport CA pin",
+  },
+  {
+    query: "GPU memory utilization setting",
+    expectPath: "memory/spark-setup.md",
+    label: "GPU memory config",
+  },
+  {
+    query: "User's preferred editor and programming language",
+    expectPath: "memory/klein-preferences.md",
+    label: "User editor preference",
+  },
+  {
+    query: "STT speech to text endpoint",
+    expectPath: "memory/voice-bridge.md",
+    label: "STT endpoint",
+  },
 ];
 
 // ── Test framework ──────────────────────────────────────────────────────────
@@ -250,10 +284,14 @@ async function suiteConnectivity(cfg: MemorySparkConfig) {
     const resp = await fetch(`http://${SPARK_HOST}:18096/v1/rerank`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${SPARK_TOKEN}` },
-      body: JSON.stringify({ query: "test", documents: ["hello"], model: "nvidia/llama-nemotron-rerank-1b-v2" }),
+      body: JSON.stringify({
+        query: "test",
+        documents: ["hello"],
+        model: "nvidia/llama-nemotron-rerank-1b-v2",
+      }),
       signal: AbortSignal.timeout(5000),
     });
-    const data = await resp.json() as any;
+    const data = (await resp.json()) as any;
     log("connectivity", `Rerank (:18096)`, resp.ok && !!data.results, `status=${resp.status}`);
   } catch (err: any) {
     log("connectivity", `Rerank (:18096)`, false, err.message);
@@ -351,7 +389,9 @@ async function suiteScoreDistribution(cfg: MemorySparkConfig, embed: EmbedProvid
 
       if (VERBOSE) {
         for (const r of results) {
-          console.log(`      score=${r.score.toFixed(4)} path=${r.chunk.path} text="${r.chunk.text.slice(0, 60)}..."`);
+          console.log(
+            `      score=${r.score.toFixed(4)} path=${r.chunk.path} text="${r.chunk.text.slice(0, 60)}..."`,
+          );
         }
       }
     } catch (err: any) {
@@ -361,8 +401,14 @@ async function suiteScoreDistribution(cfg: MemorySparkConfig, embed: EmbedProvid
 
   // Summary assertions
   log("scores", "ALL queries return at least one result", anyResultFound);
-  log("scores", `ALL top scores above production threshold (${PRODUCTION_MIN_SCORE})`, allAboveThreshold,
-    allAboveThreshold ? "Vector space is aligned" : "Some queries scored below threshold — check if minScore is too aggressive or if corpus coverage is thin");
+  log(
+    "scores",
+    `ALL top scores above production threshold (${PRODUCTION_MIN_SCORE})`,
+    allAboveThreshold,
+    allAboveThreshold
+      ? "Vector space is aligned"
+      : "Some queries scored below threshold — check if minScore is too aggressive or if corpus coverage is thin",
+  );
 
   await backend.close();
 }
@@ -391,8 +437,12 @@ async function suiteRelevanceAccuracy(cfg: MemorySparkConfig, embed: EmbedProvid
       if (top1Match) correctTop1++;
       if (top3Match) correctTop3++;
 
-      log("relevance", `${q.label} → top-1 correct`, top1Match,
-        `got=${results[0]?.chunk.path ?? "none"} expected=${q.expectPath}`);
+      log(
+        "relevance",
+        `${q.label} → top-1 correct`,
+        top1Match,
+        `got=${results[0]?.chunk.path ?? "none"} expected=${q.expectPath}`,
+      );
     } catch (err: any) {
       log("relevance", q.label, false, err.message);
     }
@@ -431,12 +481,18 @@ async function suiteManagerE2E(cfg: MemorySparkConfig) {
       const results = await mgr.search(q.query, { maxResults: 5 });
       const found = results.length > 0;
       const topMatch = results[0]?.path === q.expectPath;
-      log("manager", `search("${q.query.slice(0, 40)}...")`, found,
-        `${results.length} results, top=${results[0]?.path ?? "none"} match=${topMatch}`);
+      log(
+        "manager",
+        `search("${q.query.slice(0, 40)}...")`,
+        found,
+        `${results.length} results, top=${results[0]?.path ?? "none"} match=${topMatch}`,
+      );
 
       if (VERBOSE && results.length > 0) {
         for (const r of results) {
-          console.log(`      score=${r.score.toFixed(4)} path=${r.path} snippet="${r.snippet.slice(0, 60)}..."`);
+          console.log(
+            `      score=${r.score.toFixed(4)} path=${r.path} snippet="${r.snippet.slice(0, 60)}..."`,
+          );
         }
       }
     } catch (err: any) {
@@ -498,24 +554,26 @@ async function suiteSchemaEvolution(cfg: MemorySparkConfig) {
     // LanceDB doesn't have a direct schema inspect API, so we insert + query
     const embed2 = await createEmbedProvider(schemaCfg.embed);
     const vec = await embed2.embedQuery("schema test");
-    await backend.upsert([{
-      id: "schema-test-001",
-      path: "test.md",
-      source: "memory" as const,
-      agent_id: "test",
-      start_line: 1,
-      end_line: 1,
-      text: "Schema test document.",
-      vector: vec,
-      updated_at: new Date().toISOString(),
-      category: "fact",
-      entities: "[]",
-      confidence: 0.9,
-      content_type: "knowledge",
-      quality_score: 1,
-      token_count: 5,
-      parent_heading: "Test Section",
-    }]);
+    await backend.upsert([
+      {
+        id: "schema-test-001",
+        path: "test.md",
+        source: "memory" as const,
+        agent_id: "test",
+        start_line: 1,
+        end_line: 1,
+        text: "Schema test document.",
+        vector: vec,
+        updated_at: new Date().toISOString(),
+        category: "fact",
+        entities: "[]",
+        confidence: 0.9,
+        content_type: "knowledge",
+        quality_score: 1,
+        token_count: 5,
+        parent_heading: "Test Section",
+      },
+    ]);
 
     const results = await backend.vectorSearch(vec, { query: "schema", maxResults: 1 });
     const row = results[0]?.chunk;
@@ -592,7 +650,9 @@ function printSummary() {
   const skipped = results.filter((r) => r.status === "SKIP").length;
 
   console.log("\n╔══════════════════════════════════════════════════════════════╗");
-  console.log(`║  PASS: ${passed}  |  FAIL: ${failed}  |  SKIP: ${skipped}  |  TOTAL: ${results.length}`);
+  console.log(
+    `║  PASS: ${passed}  |  FAIL: ${failed}  |  SKIP: ${skipped}  |  TOTAL: ${results.length}`,
+  );
   console.log("╚══════════════════════════════════════════════════════════════╝");
 
   if (failed > 0) {

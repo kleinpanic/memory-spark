@@ -8,9 +8,9 @@ import path from "node:path";
 import os from "node:os";
 
 export interface SessionEntry {
-  path: string;       // relative path: sessions/<filename>
+  path: string; // relative path: sessions/<filename>
   absPath: string;
-  text: string;        // extracted conversation text
+  text: string; // extracted conversation text
   mtimeMs: number;
 }
 
@@ -22,7 +22,13 @@ export async function listSessionFiles(agentId: string): Promise<string[]> {
   try {
     const files = await fs.readdir(sessionsDir);
     return files
-      .filter((f) => f.endsWith(".jsonl") && !f.includes(".reset.") && !f.includes(".deleted.") && !f.includes(".bak"))
+      .filter(
+        (f) =>
+          f.endsWith(".jsonl") &&
+          !f.includes(".reset.") &&
+          !f.includes(".deleted.") &&
+          !f.includes(".bak"),
+      )
       .map((f) => path.join(sessionsDir, f));
   } catch {
     return [];

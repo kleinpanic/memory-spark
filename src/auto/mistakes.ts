@@ -69,8 +69,14 @@ export async function enforceMistakesFiles(
       const upper = path.join(dir, "MISTAKES.md");
       const lower = path.join(dir, "mistakes.md");
 
-      const upperExists = await fs.access(upper).then(() => true).catch(() => false);
-      const lowerExists = await fs.access(lower).then(() => true).catch(() => false);
+      const upperExists = await fs
+        .access(upper)
+        .then(() => true)
+        .catch(() => false);
+      const lowerExists = await fs
+        .access(lower)
+        .then(() => true)
+        .catch(() => false);
 
       if (!upperExists && !lowerExists) {
         await fs.writeFile(upper, MISTAKES_INDEX_TEMPLATE, "utf-8");

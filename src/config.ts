@@ -224,11 +224,23 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
       debounceMs: 2000,
       indexOnBoot: true,
       excludePatterns: [
-        "**/archive/**", "**/*.bak", "**/*-session-save.md",
-        "**/zh-CN/**", "**/zh-TW/**", "**/ja/**", "**/ko/**",
-        "**/fr/**", "**/de/**", "**/es/**", "**/pt-BR/**", "**/ru/**",
-        "**/i18n/**", "**/locales/**", "**/locale/**",
-        "**/translations/**", "**/translation/**",
+        "**/archive/**",
+        "**/*.bak",
+        "**/*-session-save.md",
+        "**/zh-CN/**",
+        "**/zh-TW/**",
+        "**/ja/**",
+        "**/ko/**",
+        "**/fr/**",
+        "**/de/**",
+        "**/es/**",
+        "**/pt-BR/**",
+        "**/ru/**",
+        "**/i18n/**",
+        "**/locales/**",
+        "**/locale/**",
+        "**/translations/**",
+        "**/translation/**",
       ],
       excludePathsExact: ["memory/learnings.md"],
       indexSessions: false,
@@ -246,7 +258,13 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
     },
     migrate: {
       autoMigrateOnFirstBoot: true,
-      statusFile: path.join(os.homedir(), ".openclaw", "runtime", "state", "memory-spark-migrate.json"),
+      statusFile: path.join(
+        os.homedir(),
+        ".openclaw",
+        "runtime",
+        "state",
+        "memory-spark-migrate.json",
+      ),
     },
     spark: {
       embed: `http://${sparkHost}:18091/v1`,
@@ -302,11 +320,8 @@ function expandHome(p: string): string {
  */
 export function resolveConfig(userConfig?: Partial<MemorySparkConfig>): MemorySparkConfig {
   // Resolve host and token with proper precedence
-  const sparkHost = userConfig?.sparkHost
-    ?? process.env["SPARK_HOST"]
-    ?? FALLBACK_SPARK_HOST;
-  const sparkToken = userConfig?.sparkBearerToken
-    ?? loadSparkToken(); // checks process.env then ~/.openclaw/.env
+  const sparkHost = userConfig?.sparkHost ?? process.env["SPARK_HOST"] ?? FALLBACK_SPARK_HOST;
+  const sparkToken = userConfig?.sparkBearerToken ?? loadSparkToken(); // checks process.env then ~/.openclaw/.env
 
   // Build defaults using the resolved host/token
   const defaults = buildDefaults(sparkHost, sparkToken);
@@ -334,10 +349,11 @@ export function resolveConfig(userConfig?: Partial<MemorySparkConfig>): MemorySp
     watch: {
       ...defaults.watch,
       ...userConfig.watch,
-      paths: userConfig.watch?.paths?.map((p) => ({
-        ...p,
-        path: expandHome(p.path),
-      })) ?? defaults.watch.paths,
+      paths:
+        userConfig.watch?.paths?.map((p) => ({
+          ...p,
+          path: expandHome(p.path),
+        })) ?? defaults.watch.paths,
     },
     ingest: { ...defaults.ingest, ...userConfig.ingest },
     reference: {

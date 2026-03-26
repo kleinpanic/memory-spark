@@ -10,10 +10,17 @@ import { promisify } from "node:util";
 const execFileAsync = promisify(execFile);
 
 export const SUPPORTED_EXTS = new Set([
-  "md", "txt", "rst",
+  "md",
+  "txt",
+  "rst",
   "pdf",
   "docx",
-  "mp3", "wav", "m4a", "ogg", "flac", "opus",
+  "mp3",
+  "wav",
+  "m4a",
+  "ogg",
+  "flac",
+  "opus",
 ]);
 
 export async function extractText(
@@ -33,8 +40,12 @@ export async function extractText(
     case "docx":
       return extractDocx(filePath);
 
-    case "mp3": case "wav": case "m4a":
-    case "ogg": case "flac": case "opus":
+    case "mp3":
+    case "wav":
+    case "m4a":
+    case "ogg":
+    case "flac":
+    case "opus":
       return extractAudio(filePath, cfg);
 
     default:
@@ -96,7 +107,7 @@ async function extractPdf(filePath: string, cfg: MemorySparkConfig): Promise<str
       signal: AbortSignal.timeout(120000),
     });
     if (resp.ok) {
-      const data = await resp.json() as { choices: Array<{ message: { content: string } }> };
+      const data = (await resp.json()) as { choices: Array<{ message: { content: string } }> };
       const text = data.choices?.[0]?.message?.content?.trim() ?? "";
       if (text.length > 50) return text;
     }
@@ -116,7 +127,7 @@ async function extractPdf(filePath: string, cfg: MemorySparkConfig): Promise<str
       signal: AbortSignal.timeout(60000),
     });
     if (resp.ok) {
-      const data = await resp.json() as { text: string };
+      const data = (await resp.json()) as { text: string };
       if (data.text?.trim().length > 50) return data.text;
     }
   } catch {
@@ -151,6 +162,6 @@ async function extractAudio(filePath: string, cfg: MemorySparkConfig): Promise<s
     throw new Error(`memory-spark: STT failed for ${filePath}: ${resp.status}`);
   }
 
-  const data = await resp.json() as { text: string };
+  const data = (await resp.json()) as { text: string };
   return data.text;
 }

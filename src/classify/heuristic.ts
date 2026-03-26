@@ -25,7 +25,7 @@ export function heuristicClassify(text: string): ClassifyResult {
       lower,
     )
   ) {
-    return { label: "decision", score: 0.70 };
+    return { label: "decision", score: 0.7 };
   }
 
   // ── Preference indicators ──────────────────────────────────────────────
@@ -34,7 +34,7 @@ export function heuristicClassify(text: string): ClassifyResult {
       lower,
     )
   ) {
-    return { label: "preference", score: 0.70 };
+    return { label: "preference", score: 0.7 };
   }
 
   // ── Code snippet detection ─────────────────────────────────────────────
@@ -44,11 +44,9 @@ export function heuristicClassify(text: string): ClassifyResult {
     /^(import|from|const|let|var|function|class|def |export |async |type |interface )\s/m.test(
       text,
     ) ||
-    /\b(=>|\.map\(|\.filter\(|\.reduce\(|console\.log|print\(|println!)\b/.test(
-      text,
-    )
+    /\b(=>|\.map\(|\.filter\(|\.reduce\(|console\.log|print\(|println!)\b/.test(text)
   ) {
-    return { label: "code-snippet", score: 0.70 };
+    return { label: "code-snippet", score: 0.7 };
   }
 
   // ── Fact indicators ────────────────────────────────────────────────────
@@ -58,9 +56,7 @@ export function heuristicClassify(text: string): ClassifyResult {
     /\bport\s+\d+\b/i.test(text) || // port references
     /\/[\w.-]+\/[\w.-]+/.test(text) || // file paths
     /\bv?\d+\.\d+(\.\d+)?\b/.test(text) || // version numbers
-    /\b(runs on|located at|hosted at|deployed to|configured as|set to)\b/.test(
-      lower,
-    )
+    /\b(runs on|located at|hosted at|deployed to|configured as|set to)\b/.test(lower)
   ) {
     return { label: "fact", score: 0.65 };
   }

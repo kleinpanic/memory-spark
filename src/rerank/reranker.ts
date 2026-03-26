@@ -42,7 +42,7 @@ function sparkReranker(cfg: RerankConfig): Reranker {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "Authorization": `Bearer ${apiKey}`,
+          Authorization: `Bearer ${apiKey}`,
         },
         body: JSON.stringify({
           model,
@@ -58,7 +58,7 @@ function sparkReranker(cfg: RerankConfig): Reranker {
         return candidates.slice(0, topN);
       }
 
-      const data = await resp.json() as {
+      const data = (await resp.json()) as {
         results: Array<{ index: number; relevance_score: number }>;
       };
 
@@ -76,7 +76,7 @@ function sparkReranker(cfg: RerankConfig): Reranker {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "Authorization": `Bearer ${apiKey}`,
+            Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify({
             model,

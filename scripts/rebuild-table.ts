@@ -34,12 +34,16 @@ async function main() {
 
   console.log(`Table: ${TABLE_NAME}`);
   console.log(`Rows: ${count}`);
-  console.log(`Columns: ${schema.fields.map(f => `${f.name}(${f.nullable ? "null" : "notnull"})`).join(", ")}`);
+  console.log(
+    `Columns: ${schema.fields.map((f) => `${f.name}(${f.nullable ? "null" : "notnull"})`).join(", ")}`,
+  );
   console.log(`DB path: ${DB_PATH}`);
 
   if (!confirm) {
     console.log("\nDry run — add --confirm to actually drop the table.");
-    console.log("After dropping, restart the gateway and the boot pass will rebuild from disk files.");
+    console.log(
+      "After dropping, restart the gateway and the boot pass will rebuild from disk files.",
+    );
     table.close();
     return;
   }
@@ -58,7 +62,9 @@ async function main() {
   try {
     await fs.unlink(dimsLock);
     console.log("dims-lock.json removed (will re-detect on first embed).");
-  } catch { /* doesn't exist */ }
+  } catch {
+    /* doesn't exist */
+  }
 }
 
 main().catch(console.error);

@@ -59,12 +59,15 @@ export interface EvalResults {
     p95_latency_ms: number;
     p99_latency_ms: number;
   };
-  perCategory: Record<string, {
-    ndcg_at_10: number;
-    mrr: number;
-    recall_at_5: number;
-    count: number;
-  }>;
+  perCategory: Record<
+    string,
+    {
+      ndcg_at_10: number;
+      mrr: number;
+      recall_at_5: number;
+      count: number;
+    }
+  >;
   perQuery: QueryResult[];
 }
 
@@ -102,11 +105,18 @@ function dcgAtK(grades: number[], k: number): number {
 /**
  * Normalized DCG at K
  */
-export function ndcgAtK(retrieved: RetrievedDoc[], judgments: RelevanceJudgment[], k: number): number {
-  const grades = retrieved.slice(0, k).map(doc => gradeDocument(doc, judgments));
+export function ndcgAtK(
+  retrieved: RetrievedDoc[],
+  judgments: RelevanceJudgment[],
+  k: number,
+): number {
+  const grades = retrieved.slice(0, k).map((doc) => gradeDocument(doc, judgments));
 
   // Ideal ranking: sort all possible grades descending
-  const idealGrades = judgments.map(j => j.grade).sort((a, b) => b - a).slice(0, k);
+  const idealGrades = judgments
+    .map((j) => j.grade)
+    .sort((a, b) => b - a)
+    .slice(0, k);
 
   const dcg = dcgAtK(grades, k);
   const idcg = dcgAtK(idealGrades, k);
@@ -129,10 +139,14 @@ export function reciprocalRank(retrieved: RetrievedDoc[], judgments: RelevanceJu
 /**
  * Average Precision at K
  */
-export function averagePrecisionAtK(retrieved: RetrievedDoc[], judgments: RelevanceJudgment[], k: number): number {
+export function averagePrecisionAtK(
+  retrieved: RetrievedDoc[],
+  judgments: RelevanceJudgment[],
+  k: number,
+): number {
   let numRelevant = 0;
   let sumPrecision = 0;
-  const totalRelevant = judgments.filter(j => j.grade > 0).length;
+  const totalRelevant = judgments.filter((j) => j.grade > 0).length;
 
   for (let i = 0; i < Math.min(retrieved.length, k); i++) {
     if (gradeDocument(retrieved[i], judgments) > 0) {
@@ -147,8 +161,12 @@ export function averagePrecisionAtK(retrieved: RetrievedDoc[], judgments: Releva
 /**
  * Recall at K: fraction of relevant docs found in top-K
  */
-export function recallAtK(retrieved: RetrievedDoc[], judgments: RelevanceJudgment[], k: number): number {
-  const totalRelevant = judgments.filter(j => j.grade > 0).length;
+export function recallAtK(
+  retrieved: RetrievedDoc[],
+  judgments: RelevanceJudgment[],
+  k: number,
+): number {
+  const totalRelevant = judgments.filter((j) => j.grade > 0).length;
   if (totalRelevant === 0) return 0;
 
   let found = 0;
@@ -157,7 +175,7 @@ export function recallAtK(retrieved: RetrievedDoc[], judgments: RelevanceJudgmen
   // For each judgment, check if ANY top-K doc matches
   for (const j of judgments) {
     if (j.grade === 0) continue;
-    const matched = topK.some(doc => {
+    const matched = topK.some((doc) => {
       const pathMatch = doc.path.toLowerCase().includes(j.path_contains.toLowerCase());
       if (!pathMatch) return false;
       if (j.snippet_contains) {
@@ -174,7 +192,11 @@ export function recallAtK(retrieved: RetrievedDoc[], judgments: RelevanceJudgmen
 /**
  * Precision at K
  */
-export function precisionAtK(retrieved: RetrievedDoc[], judgments: RelevanceJudgment[], k: number): number {
+export function precisionAtK(
+  retrieved: RetrievedDoc[],
+  judgments: RelevanceJudgment[],
+  k: number,
+): number {
   const topK = retrieved.slice(0, k);
   if (topK.length === 0) return 0;
 
@@ -200,10 +222,7 @@ export function aggregate(values: number[]): MetricResult {
 
   // 95% CI using t-distribution approximation (z=1.96 for large n)
   const se = std / Math.sqrt(values.length);
-  const ci95: [number, number] = [
-    Math.max(0, mean - 1.96 * se),
-    Math.min(1, mean + 1.96 * se)
-  ];
+  const ci95: [number, number] = [Math.max(0, mean - 1.96 * se), Math.min(1, mean + 1.96 * se)];
 
   return { mean, std, ci95, values };
 }
@@ -222,7 +241,7 @@ export function percentile(sorted: number[], p: number): number {
  */
 export function compileResults(
   queryResults: QueryResult[],
-  config: Record<string, boolean | string | number>
+  config: Record<string, boolean | string | number>,
 ): EvalResults {
   const ndcg1: number[] = [];
   const ndcg5: number[] = [];

@@ -4,7 +4,11 @@
  */
 
 import type {
-  StorageBackend, MemoryChunk, SearchOptions, SearchResult, BackendStatus,
+  StorageBackend,
+  MemoryChunk,
+  SearchOptions,
+  SearchResult,
+  BackendStatus,
 } from "./backend.js";
 import type { MemorySparkConfig } from "../config.js";
 import fs from "node:fs/promises";
@@ -54,7 +58,9 @@ export class SqliteVecBackend implements StorageBackend {
     return [];
   }
 
-  async listPaths(_agentId?: string): Promise<Array<{ path: string; agentId: string; updatedAt: string; chunkCount: number }>> {
+  async listPaths(
+    _agentId?: string,
+  ): Promise<Array<{ path: string; agentId: string; updatedAt: string; chunkCount: number }>> {
     return [];
   }
 
@@ -72,9 +78,7 @@ export class SqliteVecBackend implements StorageBackend {
   async discoverAgentDbs(): Promise<string[]> {
     try {
       const files = await fs.readdir(this.cfg.sqliteVecDir);
-      return files
-        .filter((f) => f.endsWith(".sqlite"))
-        .map((f) => path.basename(f, ".sqlite"));
+      return files.filter((f) => f.endsWith(".sqlite")).map((f) => path.basename(f, ".sqlite"));
     } catch {
       return [];
     }
