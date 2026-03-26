@@ -37,7 +37,8 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
 
     const rawQueryText = buildQuery(event.messages, cfg.queryMessageCount);
     const queryText = cleanQueryText(rawQueryText);
-    if (!queryText.trim()) return undefined;
+    // Skip trivial messages that won't produce meaningful recall
+    if (!queryText.trim() || queryText.trim().length < 4) return undefined;
 
     let queryVector: number[];
     try {
@@ -46,25 +47,29 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
       return undefined;
     }
 
-    // Hybrid search: vector + FTS
+    // Hybrid search: vector THEN FTS (sequential).
+    // LanceDB FTS has a known bug where .where() clauses cause Arrow panics.
+    // Running FTS concurrently with vector search via Promise.all can corrupt
+    // the shared native connection state, causing both to fail.
+    // Sequential execution ensures vector results are safe even if FTS fails.
     const fetchN = cfg.maxResults * 4;
-    const [vectorResults, rawFtsResults] = await Promise.all([
-      backend
-        .vectorSearch(queryVector, {
-          query: queryText,
-          maxResults: fetchN,
-          minScore: cfg.minScore,
-          agentId,
-        })
-        .catch(() => [] as SearchResult[]),
-      backend
-        .ftsSearch(queryText, {
-          query: queryText,
-          maxResults: fetchN,
-          agentId,
-        })
-        .catch(() => [] as SearchResult[]),
-    ]);
+
+    const vectorResults = await backend
+      .vectorSearch(queryVector, {
+        query: queryText,
+        maxResults: fetchN,
+        minScore: cfg.minScore,
+        agentId,
+      })
+      .catch(() => [] as SearchResult[]);
+
+    const rawFtsResults = await backend
+      .ftsSearch(queryText, {
+        query: queryText,
+        maxResults: fetchN,
+        agentId,
+      })
+      .catch(() => [] as SearchResult[]);
 
     // Filter FTS results: exclude sessions source (keyword matches on chat logs
     // are almost always garbage) and apply a minimum score threshold
@@ -346,7 +351,7 @@ function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
  * Clean query text — strip Discord metadata, timestamps, and injected blocks
  * so the embedding vector represents the actual conversational content.
  */
-function cleanQueryText(text: string): string {
+export function cleanQueryText(text: string): string {
   // Strip Discord conversation metadata blocks
   text = text.replace(/```json\s*\{[\s\S]*?"message_id"[\s\S]*?\}\s*```/g, "");
   text = text.replace(/Conversation info \(untrusted metadata\):[\s\S]*?```\s*/g, "");
