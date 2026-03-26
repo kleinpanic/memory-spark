@@ -57,8 +57,24 @@ export class LanceDBBackend implements StorageBackend {
   }
 
   /**
-   * Add new columns to an existing table if they don't exist.
-   * Wrapped in try/catch — "column already exists" is silently ignored.
+   * Track whether schema has evolved columns — controls upsert behavior.
+   * If the table was created before the new columns existed, we skip setting them
+   * in upsert to avoid Arrow nullability mismatches.
+   */
+  private schemaHasNewColumns = false;
+
+  /**
+   * Check if table already has the new columns. If not, we set a flag
+   * so that _upsert knows to OMIT those fields (letting the existing
+   * rows keep their NULL/default values). New columns will be added
+   * via addColumns but upserts won't include them until a fresh table
+   * is created (e.g., after a full re-index).
+   *
+   * NOTE: LanceDB addColumns creates nullable columns, but seed-record-based
+   * tables create non-nullable columns. Mixing nullable and non-nullable
+   * in mergeInsert causes Arrow schema errors. The safe approach is:
+   * - Old table (addColumns path): skip new fields in upsert
+   * - New table (seed record path): include new fields in upsert
    */
   private async ensureSchema(): Promise<void> {
     if (!this.table) return;
@@ -66,15 +82,28 @@ export class LanceDBBackend implements StorageBackend {
       const schema = await this.table.schema();
       const existingFields = new Set(schema.fields.map((f) => f.name));
 
+      // Check if all new columns already exist
+      const needed = ["content_type", "quality_score", "token_count", "parent_heading"];
+      const missing = needed.filter((n) => !existingFields.has(n));
+
+      if (missing.length === 0) {
+        // All columns exist — check if they came from seed record (non-nullable)
+        // or from addColumns (nullable). If non-nullable, safe to include in upsert.
+        const contentTypeField = schema.fields.find((f) => f.name === "content_type");
+        this.schemaHasNewColumns = contentTypeField ? !contentTypeField.nullable : false;
+        return;
+      }
+
+      // Add missing columns via SQL (creates nullable columns)
       const newColumns: AddColumnsSql[] = [];
       if (!existingFields.has("content_type")) {
         newColumns.push({ name: "content_type", valueSql: "'knowledge'" });
       }
       if (!existingFields.has("quality_score")) {
-        newColumns.push({ name: "quality_score", valueSql: "0.5" });
+        newColumns.push({ name: "quality_score", valueSql: "CAST(0.5 AS DOUBLE)" });
       }
       if (!existingFields.has("token_count")) {
-        newColumns.push({ name: "token_count", valueSql: "0" });
+        newColumns.push({ name: "token_count", valueSql: "CAST(0 AS DOUBLE)" });
       }
       if (!existingFields.has("parent_heading")) {
         newColumns.push({ name: "parent_heading", valueSql: "''" });
@@ -83,8 +112,11 @@ export class LanceDBBackend implements StorageBackend {
       if (newColumns.length > 0) {
         await this.table.addColumns(newColumns);
       }
+      // addColumns creates nullable columns — do NOT include them in upsert
+      this.schemaHasNewColumns = false;
     } catch {
       // Schema evolution failure is non-fatal — old tables will still work
+      this.schemaHasNewColumns = false;
     }
   }
 
@@ -189,25 +221,34 @@ export class LanceDBBackend implements StorageBackend {
     const dims = chunks[0]!.vector.length;
     const table = await this.ensureTable(dims);
 
-    // Normalize: ensure ALL schema fields are present (LanceDB rejects mismatched schemas)
-    const normalized = chunks.map((c) => ({
-      id: c.id,
-      path: c.path,
-      source: c.source,
-      agent_id: c.agent_id,
-      start_line: c.start_line,
-      end_line: c.end_line,
-      text: c.text,
-      vector: c.vector,
-      updated_at: c.updated_at,
-      category: c.category ?? "",
-      entities: c.entities ?? "[]",
-      confidence: c.confidence ?? 0,
-      content_type: c.content_type ?? "knowledge",
-      quality_score: c.quality_score ?? 0.5,
-      token_count: c.token_count ?? 0,
-      parent_heading: c.parent_heading ?? "",
-    }));
+    // Normalize: ensure ALL schema fields are present (LanceDB rejects mismatched schemas).
+    // If the table was created before schema evolution (addColumns path), the new columns
+    // are nullable. Including non-nullable values in mergeInsert causes Arrow schema errors.
+    // In that case, omit the new fields — existing rows keep their defaults.
+    const includeNewCols = this.schemaHasNewColumns;
+    const normalized = chunks.map((c) => {
+      const base: Record<string, unknown> = {
+        id: c.id,
+        path: c.path,
+        source: c.source,
+        agent_id: c.agent_id,
+        start_line: c.start_line,
+        end_line: c.end_line,
+        text: c.text,
+        vector: c.vector,
+        updated_at: c.updated_at,
+        category: c.category ?? "",
+        entities: c.entities ?? "[]",
+        confidence: c.confidence ?? 0,
+      };
+      if (includeNewCols) {
+        base.content_type = c.content_type ?? "knowledge";
+        base.quality_score = c.quality_score ?? 0.5;
+        base.token_count = c.token_count ?? 0;
+        base.parent_heading = c.parent_heading ?? "";
+      }
+      return base;
+    });
 
     // Retry on commit conflict (concurrent writes from boot pass + watcher)
     const MAX_RETRIES = 3;
