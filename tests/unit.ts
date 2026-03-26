@@ -3,6 +3,7 @@
  * Tests core logic without hitting Spark/OpenAI/Gemini endpoints
  */
 
+import assert from "node:assert/strict";
 import { looksLikePromptInjection, escapeMemoryText, formatRecalledMemories } from "../src/security.js";
 import { chunkDocument, estimateTokens, cleanChunkText } from "../src/embed/chunker.js";
 import { resolveConfig } from "../src/config.js";
@@ -759,6 +760,70 @@ test("Content type default is 'knowledge'", () => {
   return chunk.content_type === undefined; // undefined in TS; 'knowledge' in storage
 });
 
+// ── Language Filter Tests ──────────────────────────────────────────
+
+test("Chinese (zh-CN) content gets zero score", () => {
+  const r = scoreChunkQuality("### 故障排除\n首先：运行 openclaw doctor 和 openclaw channels status --probe（可操作的警告 + 快速审计）。", "memory/knowledge-base/openclaw-docs/git-latest/zh-CN/channels/discord.md", "memory");
+  assert.strictEqual(r.score, 0);
+  assert.ok(r.flags.includes("excluded-path-i18n") || r.flags.includes("non-english-content"));
+});
+
+test("zh-CN path exclusion triggers even with English content", () => {
+  const r = scoreChunkQuality("This is perfectly valid English content about Discord setup.", "docs/zh-CN/setup.md", "memory");
+  assert.strictEqual(r.score, 0);
+  assert.ok(r.flags.includes("excluded-path-i18n"));
+});
+
+test("Japanese content gets zero score via path", () => {
+  const r = scoreChunkQuality("機器人不響應消息。確保你的用戶 ID 在 allowFrom 中。", "docs/ja/troubleshooting.md", "memory");
+  assert.strictEqual(r.score, 0);
+});
+
+test("Mixed language with >30% non-Latin gets zero score", () => {
+  const r = scoreChunkQuality("設定方法：回復样式 threads vs posts 设置", "docs/guide.md", "memory");
+  assert.strictEqual(r.score, 0);
+  assert.ok(r.flags.includes("non-english-content"));
+});
+
+test("English content with no non-Latin chars scores well", () => {
+  const r = scoreChunkQuality("The API endpoint at /api/v1/status returns 200. Config key: gateway.bind is strictly locked to loopback.", "docs/api.md", "memory");
+  assert.ok(r.score > 0.5, `Expected score > 0.5 but got ${r.score}`);
+});
+
+test("i18n/locales/translations paths are excluded", () => {
+  const r1 = scoreChunkQuality("Valid content here", "src/i18n/messages.md", "memory");
+  assert.strictEqual(r1.score, 0);
+  const r2 = scoreChunkQuality("Valid content here", "app/locales/en.md", "memory");
+  assert.strictEqual(r2.score, 0);
+  const r3 = scoreChunkQuality("Valid content here", "translations/de.md", "memory");
+  assert.strictEqual(r3.score, 0);
+});
+
+test("language='all' disables language filtering", () => {
+  const r = scoreChunkQuality("### 故障排除\n首先：运行 openclaw doctor", "docs/guide.md", "memory", { language: "all" });
+  assert.ok(r.score > 0, `Expected score > 0 with language=all but got ${r.score}`);
+  assert.ok(!r.flags.includes("non-english-content"));
+});
+
+test("Default excludePatterns include i18n directories", () => {
+  const cfg = resolveConfig({});
+  assert.ok(cfg.watch.excludePatterns.includes("**/zh-CN/**"), "Missing zh-CN exclude pattern");
+  assert.ok(cfg.watch.excludePatterns.includes("**/i18n/**"), "Missing i18n exclude pattern");
+});
+
+test("Default language config is 'en' with 0.3 threshold", () => {
+  const cfg = resolveConfig({});
+  assert.strictEqual(cfg.ingest.language, "en");
+  assert.strictEqual(cfg.ingest.languageThreshold, 0.3);
+});
+
+test("Language config can be overridden to 'all'", () => {
+  const cfg = resolveConfig({ ingest: { language: "all", languageThreshold: 0.5 } });
+  assert.strictEqual(cfg.ingest.language, "all");
+  assert.strictEqual(cfg.ingest.languageThreshold, 0.5);
+});
+
+
 // Summary
 console.log("\n=== Summary ===");
 const passed = results.filter((r) => r.status === "PASS").length;
@@ -776,3 +841,5 @@ if (failed > 0) {
   console.log("\n✅ All unit tests passed!");
   process.exit(0);
 }
+
+
