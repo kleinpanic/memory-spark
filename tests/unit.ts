@@ -1171,6 +1171,58 @@ test("applyTemporalDecay: recent chunk decays less than old chunk", () => {
   assert.ok(results[1]!.score >= 0.79, `Old chunk should still be >= 0.8 floor (got ${results[1]!.score})`);
 });
 
+// ── Embedding cache ────────────────────────────────────────────────────
+
+import { EmbedCache } from "../src/embed/cache.js";
+
+test("EmbedCache: basic get/set", () => {
+  const cache = new EmbedCache({ enabled: true, maxSize: 10, ttlMs: 60000 });
+  assert.equal(cache.get("hello"), undefined);
+  cache.set("hello", [1, 2, 3]);
+  assert.deepEqual(cache.get("hello"), [1, 2, 3]);
+});
+
+test("EmbedCache: normalizes whitespace", () => {
+  const cache = new EmbedCache({ enabled: true, maxSize: 10, ttlMs: 60000 });
+  cache.set("  hello   world  ", [1, 2, 3]);
+  assert.deepEqual(cache.get("hello world"), [1, 2, 3]);
+});
+
+test("EmbedCache: case insensitive", () => {
+  const cache = new EmbedCache({ enabled: true, maxSize: 10, ttlMs: 60000 });
+  cache.set("Hello World", [1, 2, 3]);
+  assert.deepEqual(cache.get("hello world"), [1, 2, 3]);
+});
+
+test("EmbedCache: respects maxSize (LRU eviction)", () => {
+  const cache = new EmbedCache({ enabled: true, maxSize: 2, ttlMs: 60000 });
+  cache.set("a", [1]);
+  cache.set("b", [2]);
+  cache.set("c", [3]); // Should evict "a"
+  assert.equal(cache.get("a"), undefined);
+  assert.deepEqual(cache.get("b"), [2]);
+  assert.deepEqual(cache.get("c"), [3]);
+});
+
+test("EmbedCache: disabled returns undefined", () => {
+  const cache = new EmbedCache({ enabled: false, maxSize: 10, ttlMs: 60000 });
+  cache.set("hello", [1, 2, 3]);
+  assert.equal(cache.get("hello"), undefined);
+});
+
+test("EmbedCache: stats track hits and misses", () => {
+  const cache = new EmbedCache({ enabled: true, maxSize: 10, ttlMs: 60000 });
+  cache.get("miss1");
+  cache.get("miss2");
+  cache.set("hit", [1]);
+  cache.get("hit");
+  cache.get("hit");
+  const s = cache.stats();
+  assert.equal(s.misses, 2);
+  assert.equal(s.hits, 2);
+  assert.equal(s.size, 1);
+});
+
 // ── Auto-capture garbage detection ──────────────────────────────────────
 
 // We can't import looksLikeCaptureGarbage directly (not exported),
