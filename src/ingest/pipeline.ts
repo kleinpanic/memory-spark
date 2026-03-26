@@ -29,7 +29,7 @@ export interface IngestFileOptions {
   /** "memory" for workspace files, "sessions" for JSONL transcripts, "ingest" for external */
   source?: "memory" | "sessions" | "ingest";
   /** Content type for reference library indexing. Default: "knowledge" */
-  contentType?: "knowledge" | "reference";
+  contentType?: "knowledge" | "reference" | "tool";
   logger?: { info: (m: string) => void; warn: (m: string) => void; error: (m: string) => void };
 }
 
@@ -77,7 +77,12 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
     // 2. Convert to relative path for storage
     const relPath = toRelativePath(opts.filePath, opts.workspaceDir);
     const source = opts.source ?? (isSession ? "sessions" : "memory");
-    const contentType = opts.contentType ?? "knowledge";
+    // Auto-detect content type based on filename
+    const basename = path.basename(opts.filePath).toLowerCase();
+    let contentType = opts.contentType ?? "knowledge";
+    if (basename === "tools.md" || basename.startsWith("tools-")) {
+      contentType = "tool" as typeof contentType;
+    }
 
     // 3. Chunk
     const rawChunks = chunkDocument({

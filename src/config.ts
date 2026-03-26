@@ -289,7 +289,11 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
     },
     reference: {
       enabled: true,
-      paths: [],
+      paths: (() => {
+        // Auto-discover OpenClaw docs if available
+        const docsPath = path.join(os.homedir(), ".local", "share", "npm", "lib", "node_modules", "openclaw", "docs");
+        try { fs.accessSync(docsPath); return [docsPath]; } catch { return []; }
+      })(),
       chunkSize: 800,
       tags: {},
     },
