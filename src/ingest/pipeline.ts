@@ -7,7 +7,7 @@ import type { MemorySparkConfig } from "../config.js";
 import type { StorageBackend, MemoryChunk } from "../storage/backend.js";
 import type { EmbedProvider } from "../embed/provider.js";
 import type { EmbedQueue } from "../embed/queue.js";
-import { chunkDocument, cleanChunkText } from "../embed/chunker.js";
+import { chunkDocument, cleanChunkText, estimateTokens } from "../embed/chunker.js";
 import { extractText } from "./parsers.js";
 import { extractSessionText } from "./sessions.js";
 import { toRelativePath } from "./workspace.js";
@@ -28,6 +28,8 @@ export interface IngestFileOptions {
   cfg: MemorySparkConfig;
   /** "memory" for workspace files, "sessions" for JSONL transcripts, "ingest" for external */
   source?: "memory" | "sessions" | "ingest";
+  /** Content type for reference library indexing. Default: "knowledge" */
+  contentType?: "knowledge" | "reference";
   logger?: { info: (m: string) => void; warn: (m: string) => void; error: (m: string) => void };
 }
 
@@ -65,6 +67,7 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
     // 2. Convert to relative path for storage
     const relPath = toRelativePath(opts.filePath, opts.workspaceDir);
     const source = opts.source ?? (isSession ? "sessions" : "memory");
+    const contentType = opts.contentType ?? "knowledge";
 
     // 3. Chunk
     const rawChunks = chunkDocument({
@@ -80,25 +83,28 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
 
     // 3b. Quality gate — score chunks and drop noise before embedding
     const minQuality = opts.cfg.ingest?.minQuality ?? 0.3;
-    const qualifiedChunks = rawChunks.filter((c) => {
-      const q = scoreChunkQuality(c.text, relPath, source);
-      return q.score >= minQuality;
-    });
+    const qualifiedWithScores = rawChunks.map((c) => {
+      const quality = scoreChunkQuality(c.text, relPath, source);
+      return { chunk: c, qualityScore: quality.score };
+    }).filter((item) => item.qualityScore >= minQuality);
 
-    if (qualifiedChunks.length === 0) {
+    if (qualifiedWithScores.length === 0) {
       opts.logger?.info(`memory-spark: ${source} ${relPath} — all ${rawChunks.length} chunks filtered by quality gate`);
       return { filePath: opts.filePath, chunksAdded: 0, chunksRemoved: 0, durationMs: Date.now() - start };
     }
 
     // 3c. Clean chunk text — strip metadata noise before embedding
-    const cleanedChunks = qualifiedChunks.map((c) => ({
-      ...c,
-      text: cleanChunkText(c.text),
-    })).filter((c) => c.text.trim().length > 0);
+    const cleanedWithScores = qualifiedWithScores.map((item) => ({
+      chunk: { ...item.chunk, text: cleanChunkText(item.chunk.text) },
+      qualityScore: item.qualityScore,
+    })).filter((item) => item.chunk.text.trim().length > 0);
 
-    if (cleanedChunks.length === 0) {
+    if (cleanedWithScores.length === 0) {
       return { filePath: opts.filePath, chunksAdded: 0, chunksRemoved: 0, durationMs: Date.now() - start };
     }
+
+    const cleanedChunks = cleanedWithScores.map((item) => item.chunk);
+    const qualityScores = cleanedWithScores.map((item) => item.qualityScore);
 
     // 4. NER tag (best-effort, sequential to avoid overwhelming single-worker service)
     const entitiesPerChunk: string[][] = [];
@@ -110,8 +116,14 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
       }
     }
 
-    // 5. Embed batch (on cleaned text — vectors represent content, not metadata)
-    const vectors = await opts.embed.embedBatch(cleanedChunks.map((c) => c.text));
+    // 5. Contextual embeddings (Anthropic "Contextual Retrieval" technique):
+    //    Prepend source context to the text before embedding for better retrieval.
+    //    Store the ORIGINAL cleaned text in the chunk but embed the contextualized version.
+    const contextualizedTexts = cleanedChunks.map((c) => {
+      const headingPart = c.parentHeading ? ` | Section: ${c.parentHeading}` : "";
+      return `[Source: ${source} | File: ${relPath}${headingPart}]\n${c.text}`;
+    });
+    const vectors = await opts.embed.embedBatch(contextualizedTexts);
 
     // 6. Build MemoryChunk objects with RELATIVE paths
     const now = new Date().toISOString();
@@ -126,6 +138,10 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
       vector: vectors[i]!,
       updated_at: now,
       entities: JSON.stringify(entitiesPerChunk[i] ?? []),
+      content_type: contentType,
+      quality_score: qualityScores[i] ?? 0.5,
+      token_count: estimateTokens(raw.text),
+      parent_heading: raw.parentHeading ?? "",
     }));
 
     // 7. Remove old chunks for this path, then upsert new

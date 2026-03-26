@@ -17,6 +17,14 @@ export interface MemoryChunk {
   category?: string;
   entities?: string;    // JSON-serialized string[] for storage
   confidence?: number;
+  /** Content classification: "knowledge" (default), "reference", "capture" */
+  content_type?: string;
+  /** Quality score 0-1 from quality gate */
+  quality_score?: number;
+  /** Estimated token count of this chunk */
+  token_count?: number;
+  /** Most recent markdown heading (## or ###) above this chunk */
+  parent_heading?: string;
 }
 
 export interface SearchOptions {
@@ -27,6 +35,8 @@ export interface SearchOptions {
   agentId?: string;
   userId?: string;  // Filter by user/gateway for multi-user isolation
   source?: string;
+  /** Filter by content_type (e.g. "reference", "knowledge") */
+  contentType?: string;
 }
 
 export interface SearchResult {
