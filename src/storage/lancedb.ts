@@ -283,7 +283,14 @@ export class LanceDBBackend implements StorageBackend {
       q = q.where(filters.join(" AND "));
     }
 
-    const rows = await q.toArray();
+    let rows = await q.toArray();
+    // Post-filter for path contains (LanceDB SQL doesn't have ILIKE on all builds)
+    if (opts.pathContains) {
+      const needle = opts.pathContains.toLowerCase();
+      rows = rows.filter((r: Record<string, unknown>) =>
+        typeof r["path"] === "string" && (r["path"] as string).toLowerCase().includes(needle),
+      );
+    }
     return rows.map(rowToSearchResult).filter((r) => {
       if (opts.minScore && r.score < opts.minScore) return false;
       return true;

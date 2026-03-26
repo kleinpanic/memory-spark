@@ -37,6 +37,8 @@ export interface SearchOptions {
   source?: string;
   /** Filter by content_type (e.g. "reference", "knowledge") */
   contentType?: string;
+  /** Filter results where path contains this substring (case-insensitive) */
+  pathContains?: string;
 }
 
 export interface SearchResult {

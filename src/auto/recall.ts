@@ -76,6 +76,30 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     // Unlike pure RRF (which destroys cosine similarity by replacing scores
     // with 1/(k+rank)), this preserves the embedding quality signal.
     const merged = hybridMerge(vectorResults, ftsResults, fetchN);
+
+    // Dynamic mistakes injection — always give mistakes a fair shot at reranking.
+    // This does a separate vector search filtered to mistakes paths and merges
+    // relevant results into the candidate pool. The reranker decides final ordering.
+    const mistakesResults = await backend
+      .vectorSearch(queryVector, {
+        query: queryText,
+        maxResults: 5,
+        minScore: Math.max((cfg.minScore ?? 0.1) * 0.7, 0.05), // lower threshold for mistakes
+        agentId,
+        pathContains: "mistake",
+      })
+      .catch(() => [] as SearchResult[]);
+
+    if (mistakesResults.length > 0) {
+      const seenIds = new Set(merged.map((r) => r.chunk.id));
+      for (const r of mistakesResults) {
+        if (!seenIds.has(r.chunk.id)) {
+          merged.push(r);
+          seenIds.add(r.chunk.id);
+        }
+      }
+    }
+
     if (merged.length === 0) return undefined;
 
     // Source weighting EARLY — penalize garbage before expensive stages
@@ -92,25 +116,43 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     const reranked = await reranker.rerank(queryText, diverse, cfg.maxResults);
     if (reranked.length === 0) return undefined;
 
-    // LCM recency suppression — skip chunks that overlap heavily with recent messages
+    // LCM + recency dedup — skip chunks that overlap heavily with:
+    // 1. Recent conversation messages
+    // 2. LCM summary content already in context
+    // This prevents memory-spark from injecting something LCM already provides.
+    const allContextTexts: string[] = [];
+
+    // Recent messages
     const recentTexts = event.messages
       .slice(-cfg.queryMessageCount)
       .map(extractMessageText)
       .map(cleanQueryText)
       .filter(Boolean);
+    allContextTexts.push(...recentTexts);
+
+    // LCM summaries — extract text from any <summary> or <content> blocks in messages
+    for (const msg of event.messages) {
+      const text = extractMessageText(msg);
+      // Find LCM summary content blocks
+      const summaryMatches = text.match(/<content>([\s\S]*?)<\/content>/g);
+      if (summaryMatches) {
+        for (const match of summaryMatches) {
+          const inner = match.replace(/<\/?content>/g, "").trim();
+          if (inner.length > 50) allContextTexts.push(cleanQueryText(inner));
+        }
+      }
+    }
 
     const deduplicated = reranked.filter((r) => {
-      const chunkAge = Date.now() - new Date(r.chunk.updated_at).getTime();
-      if (chunkAge > 2 * 60 * 60 * 1000) return true; // older than 2h — keep
       const chunkTokens = new Set(
         (r.chunk.text.match(/\b\w{4,}\b/g) ?? []).map((w) => w.toLowerCase()),
       );
       if (chunkTokens.size === 0) return true;
-      for (const msg of recentTexts) {
-        const msgTokens = new Set((msg.match(/\b\w{4,}\b/g) ?? []).map((w) => w.toLowerCase()));
+      for (const ctx of allContextTexts) {
+        const ctxTokens = new Set((ctx.match(/\b\w{4,}\b/g) ?? []).map((w) => w.toLowerCase()));
         let overlap = 0;
         for (const t of chunkTokens) {
-          if (msgTokens.has(t)) overlap++;
+          if (ctxTokens.has(t)) overlap++;
         }
         if (overlap / chunkTokens.size > 0.4) return false; // >40% overlap = redundant
       }
