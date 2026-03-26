@@ -118,12 +118,12 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
 
     // 5. Contextual embeddings (Anthropic "Contextual Retrieval" technique):
     //    Prepend source context to the text before embedding for better retrieval.
-    //    Store the ORIGINAL cleaned text in the chunk but embed the contextualized version.
-    const contextualizedTexts = cleanedChunks.map((c) => {
-      const headingPart = c.parentHeading ? ` | Section: ${c.parentHeading}` : "";
-      return `[Source: ${source} | File: ${relPath}${headingPart}]\n${c.text}`;
-    });
-    const vectors = await opts.embed.embedBatch(contextualizedTexts);
+    //    Embed the RAW cleaned text (not the contextual prefix).
+    //    Contextual prefixes (source/file/heading) are stored as metadata fields
+    //    (content_type, parent_heading) and used for reranking/display, NOT for
+    //    vector space alignment. Embedding prefixed text causes a query/document
+    //    space mismatch that makes vector search return near-zero similarity.
+    const vectors = await opts.embed.embedBatch(cleanedChunks.map((c) => c.text));
 
     // 6. Build MemoryChunk objects with RELATIVE paths
     const now = new Date().toISOString();
