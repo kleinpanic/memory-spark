@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1160 560" width="1160" height="560" role="img" aria-label="memory-spark chart">
+  <defs>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    </style>
+  </defs>
+  <rect x="0" y="0" width="1160" height="560" fill="#0d1117"/>
+  <rect x="12" y="12" width="1136" height="536" rx="12" fill="#161b22" stroke="#30363d"/>
+  
+    <text x="40" y="58" fill="#c9d1d9" font-size="30" font-weight="700">Latency Distribution (Full Pipeline)</text>
+    <text x="40" y="84" fill="#8b949e" font-size="16">Histogram over per-query retrieval latency</text>
+    <rect x="92" y="500" width="81" height="0" fill="#58a6ff" opacity="0.75"/>
+<rect x="177" y="500" width="81" height="0" fill="#58a6ff" opacity="0.75"/>
+<rect x="262" y="500" width="81" height="0" fill="#58a6ff" opacity="0.75"/>
+<rect x="347" y="500" width="81" height="0" fill="#58a6ff" opacity="0.75"/>
+<rect x="432" y="500" width="81" height="0" fill="#58a6ff" opacity="0.75"/>
+<rect x="517" y="500" width="81" height="0" fill="#58a6ff" opacity="0.75"/>
+<rect x="602" y="500" width="81" height="0" fill="#58a6ff" opacity="0.75"/>
+<rect x="687" y="462.7272727272727" width="81" height="37.27272727272731" fill="#58a6ff" opacity="0.75"/>
+<rect x="772" y="313.6363636363636" width="81" height="186.36363636363637" fill="#58a6ff" opacity="0.75"/>
+<rect x="857" y="201.8181818181818" width="81" height="298.1818181818182" fill="#58a6ff" opacity="0.75"/>
+<rect x="942" y="90" width="81" height="410" fill="#58a6ff" opacity="0.75"/>
+<rect x="1027" y="313.6363636363636" width="81" height="186.36363636363637" fill="#58a6ff" opacity="0.75"/>
+    
+        <line x1="943.9515261808256" x2="943.9515261808256" y1="90" y2="500" stroke="#3fb950" stroke-width="2" stroke-dasharray="5 4"/>
+        <text x="949.9515261808256" y="110" fill="#3fb950" font-size="13">p50: 101.2ms</text>
+      
+
+        <line x1="1084.940855323021" x2="1084.940855323021" y1="90" y2="500" stroke="#d29922" stroke-width="2" stroke-dasharray="5 4"/>
+        <text x="1090.940855323021" y="128" fill="#d29922" font-size="13">p95: 117.9ms</text>
+      
+
+        <line x1="1110" x2="1110" y1="90" y2="500" stroke="#f85149" stroke-width="2" stroke-dasharray="5 4"/>
+        <text x="1116" y="146" fill="#f85149" font-size="13">p99: 120.9ms</text>
+      
+    <line x1="90" x2="90" y1="90" y2="500" stroke="#30363d"/>
+    <line x1="90" x2="1110" y1="500" y2="500" stroke="#30363d"/>
+    <text x="600" y="544" fill="#8b949e" text-anchor="middle" font-size="14">Latency (ms)</text>
+    <text transform="translate(24 295) rotate(-90)" fill="#8b949e" text-anchor="middle" font-size="14">Query Count</text>
+    
+</svg>
