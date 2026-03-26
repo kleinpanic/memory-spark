@@ -40,10 +40,12 @@ async function main() {
   const totalRows = await table.countRows();
   console.log(`📊 Total chunks: ${totalRows}\n`);
 
-  // Scan all chunks
+  // Scan all chunks (LanceDB defaults to limit=10, must set explicitly)
   const rows = await table.query()
     .select(["id", "text", "path", "source", "agent_id"])
+    .limit(totalRows + 1000)
     .toArray();
+  console.log(`   Scanned: ${rows.length} chunks\n`);
 
   const toDelete: string[] = [];
   const flagCounts: Record<string, number> = {};
