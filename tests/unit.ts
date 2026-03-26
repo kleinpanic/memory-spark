@@ -823,6 +823,35 @@ test("Language config can be overridden to 'all'", () => {
   assert.strictEqual(cfg.ingest.languageThreshold, 0.5);
 });
 
+// ── Noise Detection Tests ──────────────────────────────────────────
+
+test("Session dump headers are penalized", () => {
+  const r = scoreChunkQuality("# Session: 2026-02-23 09:00:08 UTC\n- **Session Key**: agent:meta\n- **Session ID**: abc123", "memory/2026-02-23.md", "memory");
+  assert.ok(r.score < 0.3, `Session header should score below quality gate, got ${r.score}`);
+  assert.ok(r.flags.includes("session-dump-header"));
+});
+
+test("Casual chat gets penalized", () => {
+  const r = scoreChunkQuality("i havent ran it yet lmfao\nassistant: lol fair enough", "memory/2026-02-23.md", "memory");
+  assert.ok(r.score < 0.3, `Casual chat should score below quality gate, got ${r.score}`);
+  assert.ok(r.flags.includes("casual-chat"));
+});
+
+test("Raw assistant turn prefixes are penalized", () => {
+  const r = scoreChunkQuality("assistant: Here is the thing about the configuration that we discussed earlier in the session about hooks.", "memory/session.md", "memory");
+  assert.ok(r.flags.includes("raw-turn-prefix"));
+});
+
+test("Untrusted content wrappers are heavily penalized", () => {
+  const r = scoreChunkQuality("<<<EXTERNAL_UNTRUSTED_CONTENT id=\"x\">>>\nUNTRUSTED Discord message body\nSome actual message here\n<<<END>>>", "memory/2026-03-26.md", "memory");
+  assert.ok(r.score < 0.1, `Untrusted wrappers should be near-zero, got ${r.score}`);
+});
+
+test("Actual knowledge content still scores high", () => {
+  const r = scoreChunkQuality("The DGX Spark node at 127.0.0.1 runs NVIDIA GH200 Grace Hopper architecture with 121.7 GB unified memory. The vLLM service handles Nemotron-Super 120B inference on port 18080.", "MEMORY.md", "memory");
+  assert.ok(r.score >= 0.8, `Real knowledge should score high, got ${r.score}`);
+});
+
 
 // Summary
 console.log("\n=== Summary ===");
