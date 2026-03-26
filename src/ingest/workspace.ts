@@ -162,7 +162,7 @@ export function toAbsolutePath(relPath: string, workspaceDir: string): string {
   // Try workspace-relative
   const wsAbs = path.join(workspaceDir, relPath);
   // Try openclaw-root-relative
-  const ocAbs = path.join(os.homedir(), ".openclaw", relPath);
+  const _ocAbs = path.join(os.homedir(), ".openclaw", relPath);
 
   // Return whichever exists (check workspace first)
   return wsAbs; // Caller should handle existence check
