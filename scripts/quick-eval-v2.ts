@@ -82,6 +82,7 @@ async function main() {
 
     // FTS search
     const ftsResults = await backend.ftsSearch(tc.query, {
+      query: tc.query,
       maxResults: 10,
     }).catch(() => [] as SearchResult[]);
 
