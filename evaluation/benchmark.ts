@@ -86,7 +86,61 @@ async function runRetrieval(
   const k = opts.maxResults ?? 10;
   const results: Results = {};
 
-  for (const [queryId, queryText] of Object.entries(dataset.queries)) {
+  // Build reverse mapping: (agent_id, relative_path) → corpus doc IDs.
+  //
+  // Path lifecycle:
+  //   Filesystem:  ~/.openclaw/workspace-meta/USER.md
+  //   Indexer:     toRelativePath() strips workspace dir → "USER.md"
+  //   LanceDB:     stored as { path: "USER.md", agent_id: "meta" }
+  //   Corpus:      "~/.openclaw/workspace-meta/USER.md" (full path)
+  //
+  // Strategy: parse corpus paths to extract (agent_id, relPath), then
+  // match against chunk.agent_id + chunk.path from retrieval results.
+  // Also handle non-workspace paths (reference library, sessions, etc.)
+  const corpusLookup = new Map<string, string[]>(); // "agent_id:relPath" → docIds
+  const addLookup = (key: string, docId: string) => {
+    if (!key) return;
+    if (!corpusLookup.has(key)) corpusLookup.set(key, []);
+    if (!corpusLookup.get(key)!.includes(docId)) corpusLookup.get(key)!.push(docId);
+  };
+
+  for (const [docId, doc] of Object.entries(dataset.corpus)) {
+    const raw = (doc as { path?: string }).path ?? "";
+
+    // Parse workspace paths: ~/.openclaw/workspace-<agent>/<relPath>
+    const wsMatch = raw.match(/^~\/\.openclaw\/workspace-([^/]+)\/(.+)$/);
+    if (wsMatch) {
+      const [, agentId, relPath] = wsMatch;
+      addLookup(`${agentId}:${relPath}`, docId);
+      // Also match without agent (for cross-agent searches that don't filter)
+      addLookup(`*:${relPath}`, docId);
+    }
+
+    // Parse non-workspace openclaw paths: ~/.openclaw/<relPath>
+    const ocMatch = raw.match(/^~\/\.openclaw\/(?!workspace-)(.+)$/);
+    if (ocMatch) {
+      addLookup(`*:${ocMatch[1]}`, docId);
+    }
+
+    // Parse memory subdirectory paths: workspace-<agent>/memory/<file>
+    const memMatch = raw.match(/^~\/\.openclaw\/workspace-([^/]+)\/(memory\/.+)$/);
+    if (memMatch) {
+      addLookup(`${memMatch[1]}:${memMatch[2]}`, docId);
+    }
+
+    // Fallback: store the full raw path and bare filename
+    addLookup(`raw:${raw}`, docId);
+    const basename = raw.split("/").pop() ?? "";
+    if (basename) addLookup(`basename:${basename}`, docId);
+  }
+
+  const queryEntries = Object.entries(dataset.queries);
+  let queryIdx = 0;
+  for (const [queryId, queryText] of queryEntries) {
+    queryIdx++;
+    if (queryIdx % 10 === 0 || queryIdx === 1) {
+      process.stdout.write(`\r    [${queryIdx}/${queryEntries.length}]`);
+    }
     const queryVector = await embed.embedQuery(queryText);
     let candidates: Array<{ chunk: { id: string; path: string; text: string; source: string; updated_at: string }; score: number }> = [];
 
@@ -120,22 +174,46 @@ async function runRetrieval(
     // MMR diversity
     const diverse = mmrRerank(candidates, k * 2, 0.7);
 
-    // Cross-encoder reranking
+    // Cross-encoder reranking (full pipeline — 20 candidates to reranker)
     let final = diverse;
     if (reranker) {
       try {
-        final = await reranker.rerank(queryText, diverse, k);
-      } catch {
+        final = await reranker.rerank(queryText, diverse.slice(0, 20), k);
+      } catch (err) {
+        // Reranker failure is not silent — log it but continue with un-reranked results
+        console.warn(`\n    ⚠ Reranker failed for ${queryId}: ${err instanceof Error ? err.message : String(err)}`);
         final = diverse.slice(0, k);
       }
     } else {
       final = diverse.slice(0, k);
     }
 
-    // Map results to docIds (use path as docId for BEIR compatibility)
+    // Map retrieval results back to corpus doc IDs using agent_id + path.
+    // Multiple chunks from the same doc get the highest score (max pooling).
     const queryResults: Record<string, number> = {};
     for (const r of final) {
-      queryResults[r.chunk.path] = r.score;
+      const agentId = r.chunk.agent_id ?? "*";
+      const relPath = r.chunk.path;
+
+      // Try exact agent:path match first (most precise)
+      let matched = corpusLookup.get(`${agentId}:${relPath}`) ?? [];
+
+      // Fall back to wildcard agent match
+      if (matched.length === 0) {
+        matched = corpusLookup.get(`*:${relPath}`) ?? [];
+      }
+
+      // Fall back to basename match (least precise, handles edge cases)
+      if (matched.length === 0) {
+        const basename = relPath.split("/").pop() ?? "";
+        matched = corpusLookup.get(`basename:${basename}`) ?? [];
+      }
+
+      for (const docId of matched) {
+        if ((queryResults[docId] ?? 0) < r.score) {
+          queryResults[docId] = r.score;
+        }
+      }
     }
     results[queryId] = queryResults;
   }
@@ -153,29 +231,27 @@ async function tier1RetrievalQuality(
 
   console.log("\n📊 Tier 1: Retrieval Quality (BEIR Metrics)\n");
 
-  // Full pipeline
-  console.log("  Running: Full Pipeline (Vector + FTS + Reranker)...");
-  const fullResults = await runRetrieval(dataset, backend, embed, {});
-  ablations["full_pipeline"] = evaluateBEIR(dataset.qrels, fullResults);
-  console.log(formatBEIRResults(ablations["full_pipeline"]!));
+  const startTime = Date.now();
+  const runAblation = async (name: string, label: string, opts: Parameters<typeof runRetrieval>[3]) => {
+    const t0 = Date.now();
+    process.stdout.write(`  Running: ${label}...`);
+    const results = await runRetrieval(dataset, backend, embed, opts);
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    process.stdout.write(` (${elapsed}s)\n`);
+    ablations[name] = evaluateBEIR(dataset.qrels, results);
+    console.log(formatBEIRResults(ablations[name]!));
+    return results;
+  };
 
-  // Vector-only baseline
-  console.log("\n  Running: Vector-Only Baseline...");
-  const vectorResults = await runRetrieval(dataset, backend, embed, { useFts: false, useReranker: false });
-  ablations["vector_only"] = evaluateBEIR(dataset.qrels, vectorResults);
-  console.log(formatBEIRResults(ablations["vector_only"]!));
+  // Fast baselines first (no reranker = ~1s/query instead of ~35s)
+  await runAblation("vector_only", "Vector-Only Baseline", { useFts: false, useReranker: false });
+  await runAblation("fts_only", "FTS-Only Baseline", { useVector: false, useReranker: false });
+  await runAblation("hybrid_no_reranker", "Hybrid (No Reranker)", { useReranker: false });
 
-  // FTS-only baseline
-  console.log("\n  Running: FTS-Only Baseline...");
-  const ftsResults = await runRetrieval(dataset, backend, embed, { useVector: false, useReranker: false });
-  ablations["fts_only"] = evaluateBEIR(dataset.qrels, ftsResults);
-  console.log(formatBEIRResults(ablations["fts_only"]!));
-
-  // No reranker ablation
-  console.log("\n  Running: Hybrid (No Reranker)...");
-  const noRerankResults = await runRetrieval(dataset, backend, embed, { useReranker: false });
-  ablations["no_reranker"] = evaluateBEIR(dataset.qrels, noRerankResults);
-  console.log(formatBEIRResults(ablations["no_reranker"]!));
+  // Full pipeline (slow — reranker on CPU takes ~5-10s/query)
+  const elapsedSoFar = (Date.now() - startTime) / 1000;
+  console.log(`\n  Baselines done in ${elapsedSoFar.toFixed(0)}s. Running full pipeline (reranker)...`);
+  await runAblation("full_pipeline", "Full Pipeline (Vector + FTS + Reranker)", {});
 
   return ablations;
 }
