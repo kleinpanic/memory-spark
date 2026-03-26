@@ -18,7 +18,7 @@ import type { EmbedProvider } from "../embed/provider.js";
 import { EmbedQueue } from "../embed/queue.js";
 import type { Embedder } from "./pipeline.js";
 import { ingestFile } from "./pipeline.js";
-import { discoverWorkspaceFiles, discoverAllAgents, toRelativePath } from "./workspace.js";
+import { discoverWorkspaceFiles, discoverAllAgents, toRelativePath, walkSupportedFiles } from "./workspace.js";
 import { SUPPORTED_EXTS } from "./parsers.js";
 import { enforceMistakesFiles } from "../auto/mistakes.js";
 import chokidar, { type FSWatcher } from "chokidar";
@@ -385,7 +385,7 @@ async function runBootPass(
   let skipped = 0;
 
   // Build queue of all files to ingest
-  const queue: Array<{ absPath: string; agentId: string; wsDir: string; source: "memory" | "sessions" }> = [];
+  const queue: Array<{ absPath: string; agentId: string; wsDir: string; source: "memory" | "sessions"; contentType?: "knowledge" | "reference" }> = [];
 
   for (const agentId of agents) {
     const wsFiles = await discoverWorkspaceFiles(agentId);
@@ -419,6 +419,38 @@ async function runBootPass(
         queue.push({ absPath, agentId, wsDir: wsFiles.workspaceDir, source: "sessions" });
       } catch {
         skipped++;
+      }
+    }
+  }
+
+  // Boot pass: reference library paths (content_type will be set to "reference" by isReferencePath)
+  if (opts.cfg.reference?.enabled && opts.cfg.reference.paths.length > 0) {
+    for (const refPath of opts.cfg.reference.paths) {
+      const resolved = refPath.startsWith("~/")
+        ? path.join(os.homedir(), refPath.slice(2))
+        : refPath;
+      try {
+        await fs.access(resolved);
+        const refFiles = await walkSupportedFiles(resolved);
+        for (const absPath of refFiles) {
+          total++;
+          try {
+            const stat = await fs.stat(absPath);
+            const relPath = path.relative(resolved, absPath);
+            const key = `shared::${relPath}`;
+            const existing = indexedMap.get(key);
+            if (existing && existing >= stat.mtime.toISOString()) {
+              skipped++;
+              continue;
+            }
+            queue.push({ absPath, agentId: "shared", wsDir: resolved, source: "memory", contentType: "reference" });
+          } catch {
+            skipped++;
+          }
+        }
+        opts.logger.info(`memory-spark boot: added ${refFiles.length} reference files from ${resolved}`);
+      } catch {
+        opts.logger.warn(`memory-spark boot: reference path not accessible: ${resolved}`);
       }
     }
   }
@@ -467,6 +499,7 @@ async function runBootPass(
           embed: opts.embed,
           cfg: opts.cfg,
           source: item.source,
+          contentType: item.contentType,
           logger: opts.logger,
         }),
         timeout,

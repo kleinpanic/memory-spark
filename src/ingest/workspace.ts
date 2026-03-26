@@ -144,7 +144,7 @@ export function toAbsolutePath(relPath: string, workspaceDir: string): string {
   return wsAbs; // Caller should handle existence check
 }
 
-async function walkSupportedFiles(dir: string): Promise<string[]> {
+export async function walkSupportedFiles(dir: string): Promise<string[]> {
   const results: string[] = [];
   try {
     const entries = await fs.readdir(dir, { withFileTypes: true });
