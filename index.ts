@@ -414,11 +414,41 @@ const memorySpark = {
               }
             }
 
-            statsText += `\nEmbed: ${s.embed.id}/${s.embed.model} (${s.embed.dims}d)\n`;
+            // ── Services Health ──
+            statsText += `\nServices:\n`;
+            statsText += `  Embed: ${s.embed.id}/${s.embed.model} (${s.embed.dims}d)\n`;
+
+            // Spark embed probe
+            try {
+              const probeOk = await s.embed.probe();
+              statsText += `  Embed health: ${probeOk ? "✅ healthy" : "❌ unreachable"}\n`;
+            } catch {
+              statsText += `  Embed health: ❌ probe failed\n`;
+            }
+
+            // Embed queue stats
+            const queueStats = s.queue.stats;
+            statsText += `  EmbedQueue: ${queueStats.queued} queued, ${queueStats.failed} failed, ${queueStats.healthy ? "✅ healthy" : "❌ unhealthy"}\n`;
+
+            // Cache stats
             const cs = s.cachedEmbed.cacheStats();
-            statsText += `EmbedCache: ${cs.size}/${cs.maxSize} entries, hit rate ${cs.hitRate} (${cs.hits} hits, ${cs.misses} misses)\n`;
-            statsText += `Reranker: ${cfg.rerank.enabled ? "enabled" : "off"}\n`;
-            statsText += `AutoRecall: ${cfg.autoRecall.enabled ? cfg.autoRecall.agents.join(",") : "off"}\n`;
+            statsText += `  EmbedCache: ${cs.size}/${cs.maxSize} entries, hit rate ${cs.hitRate} (${cs.hits} hits, ${cs.misses} misses)\n`;
+
+            // Reranker probe
+            statsText += `  Reranker: ${cfg.rerank.enabled ? "enabled" : "off"}\n`;
+            if (cfg.rerank.enabled) {
+              try {
+                const rerankOk = await s.reranker.probe();
+                statsText += `  Reranker health: ${rerankOk ? "✅ healthy" : "❌ unreachable"}\n`;
+              } catch {
+                statsText += `  Reranker health: ❌ probe failed\n`;
+              }
+            }
+
+            // ── Config Summary ──
+            statsText += `\nConfig:\n`;
+            statsText += `  AutoRecall: ${cfg.autoRecall.enabled ? cfg.autoRecall.agents.join(",") : "off"}\n`;
+            statsText += `  AutoCapture: ${cfg.autoCapture.enabled ? cfg.autoCapture.agents.join(",") : "off"}\n`;
 
             return { content: [{ type: "text" as const, text: statsText }], details: {} };
           },
