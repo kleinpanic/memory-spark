@@ -318,6 +318,22 @@ function cleanQueryText(text: string): string {
   // Strip <relevant-memories> blocks (avoid recursive recall)
   text = text.replace(/<relevant-memories>[\s\S]*?<\/relevant-memories>/g, "");
 
+  // Strip LCM summary blocks
+  text = text.replace(/<summary id="sum_[a-f0-9]+"[\s\S]*?<\/summary>/g, "");
+
+  // Strip oc-tasks injection blocks
+  text = text.replace(/## Current Task Queue[\s\S]*?(?=\n## [^C]|\n---|\Z)/g, "");
+  text = text.replace(/### 🔄 In Progress[\s\S]*?(?=\n## |\n---|\Z)/g, "");
+
+  // Strip media attachment lines
+  text = text.replace(/\[media attached:[^\]]*\][^\n]*/g, "");
+
+  // Strip [System: ...] prefixes
+  text = text.replace(/\[System:[^\]]*\]\s*/g, "");
+
+  // Strip HEARTBEAT_OK / NO_REPLY
+  text = text.replace(/^(HEARTBEAT_OK|HEARTBEAT_DISABLED|NO_REPLY)\s*$/gm, "");
+
   // Strip XML/HTML comments
   text = text.replace(/<!--[\s\S]*?-->/g, "");
 
