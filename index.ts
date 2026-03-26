@@ -139,6 +139,11 @@ const ForgetByPathParams = Type.Object({
   path: Type.String({ description: "Relative file path whose indexed chunks should be removed" }),
 });
 
+const InspectParams = Type.Object({
+  query: Type.String({ description: "Simulate a query to see what would be recalled" }),
+  maxResults: Type.Optional(Type.Number({ description: "Max results to show (default: 5)" })),
+});
+
 // ---------------------------------------------------------------------------
 // Plugin definition
 // ---------------------------------------------------------------------------
@@ -472,10 +477,80 @@ const memorySpark = {
           },
         };
 
+        const inspectTool = {
+          name: "memory_inspect",
+          description: "Simulate auto-recall for a query. Shows exactly what would be injected into context, with scores, sources, and weights applied. Use to debug recall quality or verify that important memories (MISTAKES, TOOLS) are being retrieved.",
+          label: "Inspect Recall",
+          parameters: InspectParams,
+          execute: async (_toolCallId: string, params: { query: string; maxResults?: number }) => {
+            const s = await getState(cfg, api.logger);
+            const maxR = params.maxResults ?? 5;
+
+            // Embed the query
+            let vector: number[];
+            try {
+              vector = await s.cachedEmbed.embedQuery(params.query);
+            } catch {
+              return { content: [{ type: "text" as const, text: "Embedding failed — Spark may be down." }], details: {} };
+            }
+
+            // Vector search
+            const vectorResults = await s.backend.vectorSearch(vector, {
+              query: params.query,
+              maxResults: maxR * 4,
+              minScore: cfg.autoRecall.minScore,
+              agentId,
+            }).catch(() => []);
+
+            // FTS search
+            const ftsResults = await s.backend.ftsSearch(params.query, {
+              query: params.query,
+              maxResults: maxR * 2,
+            }).catch(() => []);
+
+            // Import pipeline functions
+            const { applySourceWeighting, applyTemporalDecay } = await import("./src/auto/recall.js");
+
+            // Merge
+            const merged = [...vectorResults];
+            const seenIds = new Set(vectorResults.map((r) => r.chunk.id));
+            for (const r of ftsResults) {
+              if (!seenIds.has(r.chunk.id)) {
+                r.score *= 0.7;
+                merged.push(r);
+              }
+            }
+
+            // Apply weights
+            applySourceWeighting(merged, cfg.autoRecall.weights);
+            applyTemporalDecay(merged);
+            merged.sort((a, b) => b.score - a.score);
+
+            const top = merged.slice(0, maxR);
+
+            let text = `Recall Inspection for: "${params.query}"\n`;
+            text += `${"=".repeat(50)}\n`;
+            text += `Vector results: ${vectorResults.length} | FTS results: ${ftsResults.length} | Merged: ${merged.length}\n\n`;
+
+            for (let i = 0; i < top.length; i++) {
+              const r = top[i]!;
+              text += `[${i + 1}] Score: ${r.score.toFixed(3)} | Source: ${r.chunk.source} | Path: ${r.chunk.path}\n`;
+              text += `    Agent: ${r.chunk.agent_id ?? "?"} | Updated: ${r.chunk.updated_at?.slice(0, 10) ?? "?"}\n`;
+              text += `    Preview: ${r.chunk.text.slice(0, 200).replace(/\n/g, " ")}\n\n`;
+            }
+
+            if (top.length === 0) {
+              text += "(No results found)\n";
+            }
+
+            return { content: [{ type: "text" as const, text }], details: { count: top.length } };
+          },
+        };
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenClaw plugin SDK expects untyped tool arrays
-        return [searchTool, getTool, storeTool, forgetTool, referenceSearchTool, indexStatusTool, forgetByPathTool] as any;
+        return [searchTool, getTool, storeTool, forgetTool, referenceSearchTool, indexStatusTool, forgetByPathTool, inspectTool] as any;
       },
-      { names: ["memory_search", "memory_get", "memory_store", "memory_forget", "memory_reference_search", "memory_index_status", "memory_forget_by_path"] },
+      { names: ["memory_search", "memory_get", "memory_store", "memory_forget", "memory_reference_search", "memory_index_status", "memory_forget_by_path", "memory_inspect"] },
     );
 
     // -------------------------------------------------------------------

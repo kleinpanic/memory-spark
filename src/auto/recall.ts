@@ -4,7 +4,7 @@
  * Adds: MMR diversity, temporal decay, prompt injection filtering.
  */
 
-import type { AutoRecallConfig } from "../config.js";
+import type { AutoRecallConfig, RecallWeights } from "../config.js";
 import { shouldProcessAgent } from "../config.js";
 import type { StorageBackend, SearchResult } from "../storage/backend.js";
 import type { EmbedProvider } from "../embed/provider.js";
@@ -80,7 +80,7 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
 
     // Source weighting EARLY — penalize garbage before expensive stages
     // so session chunks and archive content don't waste reranker slots.
-    applySourceWeighting(merged);
+    applySourceWeighting(merged, cfg.weights);
 
     // Temporal decay: boost recent memories
     applyTemporalDecay(merged);
@@ -349,27 +349,51 @@ function cleanQueryText(text: string): string {
 
 /**
  * Source weighting — adjust scores based on content source and path.
- * Captures and curated knowledge get boosted, archives and stale content penalized.
+ * Fully configurable via AutoRecallConfig.weights.
+ * Falls back to sensible defaults if no weights config is provided.
  */
-export function applySourceWeighting(results: SearchResult[]): void {
+const DEFAULT_WEIGHTS: RecallWeights = {
+  sources: { capture: 1.5, memory: 1.0, sessions: 0.5, reference: 1.0 },
+  paths: {
+    "MEMORY.md": 1.4,
+    "TOOLS.md": 1.3,
+    "AGENTS.md": 1.2,
+    "SOUL.md": 1.2,
+    "USER.md": 1.3,
+    "memory/learnings.md": 0.1,
+  },
+  pathPatterns: {
+    "mistakes": 1.6,
+    "memory/archive/": 0.4,
+  },
+};
+
+export function applySourceWeighting(results: SearchResult[], weights?: RecallWeights): void {
+  const w = weights ?? DEFAULT_WEIGHTS;
+
   for (const r of results) {
     const source = r.chunk.source;
     const chunkPath = r.chunk.path;
 
-    let weight = 1.0;
-    // Source-level weights
-    if (source === "capture") weight = 1.5;
-    else if (source === "sessions") weight = 0.5;
+    // Source-level weight
+    let weight = (w.sources as Record<string, number>)[source] ?? 1.0;
 
-    // Path-level refinements — core bootstrap files get priority
-    if (chunkPath === "MEMORY.md") weight *= 1.4;
-    else if (chunkPath.toLowerCase().includes("mistakes")) weight *= 1.6;
-    else if (chunkPath === "TOOLS.md") weight *= 1.3;
-    else if (chunkPath === "AGENTS.md") weight *= 1.2;
-    else if (chunkPath === "SOUL.md") weight *= 1.2;
-    else if (chunkPath === "USER.md") weight *= 1.3;
-    else if (chunkPath.startsWith("memory/archive/")) weight *= 0.4;
-    else if (chunkPath === "memory/learnings.md") weight *= 0.1;
+    // Exact path match
+    if (w.paths[chunkPath] != null) {
+      weight *= w.paths[chunkPath];
+    } else {
+      // Pattern match (substring)
+      let patternMatched = false;
+      for (const [pattern, patternWeight] of Object.entries(w.pathPatterns)) {
+        if (chunkPath.toLowerCase().includes(pattern.toLowerCase())) {
+          weight *= patternWeight;
+          patternMatched = true;
+          break;
+        }
+      }
+      // No match = 1.0x (no change)
+      if (!patternMatched) weight *= 1.0;
+    }
 
     r.score *= weight;
   }

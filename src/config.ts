@@ -39,6 +39,21 @@ export interface RerankConfig {
   topN: number;
 }
 
+/** Source and path weighting for recall scoring. All values are multipliers (1.0 = no change). */
+export interface RecallWeights {
+  /** Source-level weights */
+  sources: {
+    capture: number;   // Default: 1.5
+    memory: number;    // Default: 1.0
+    sessions: number;  // Default: 0.5
+    reference: number; // Default: 1.0
+  };
+  /** Path-level weights (applied on top of source weights) */
+  paths: Record<string, number>;
+  /** Glob-like path patterns → weights (e.g. "mistakes" matches any path containing "mistakes") */
+  pathPatterns: Record<string, number>;
+}
+
 export interface AutoRecallConfig {
   enabled: boolean;
   agents: string[];
@@ -49,6 +64,8 @@ export interface AutoRecallConfig {
   queryMessageCount: number;
   /** Maximum tokens to inject as recalled memories. Default: 2000 */
   maxInjectionTokens: number;
+  /** Source and path weighting for recall scoring. Fully configurable. */
+  weights: RecallWeights;
 }
 
 export interface AutoCaptureConfig {
@@ -207,6 +224,26 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
       minScore: 0.75,
       queryMessageCount: 2,
       maxInjectionTokens: 2000,
+      weights: {
+        sources: {
+          capture: 1.5,
+          memory: 1.0,
+          sessions: 0.5,
+          reference: 1.0,
+        },
+        paths: {
+          "MEMORY.md": 1.4,
+          "TOOLS.md": 1.3,
+          "AGENTS.md": 1.2,
+          "SOUL.md": 1.2,
+          "USER.md": 1.3,
+          "memory/learnings.md": 0.1,
+        },
+        pathPatterns: {
+          "mistakes": 1.6,
+          "memory/archive/": 0.4,
+        },
+      },
     },
     autoCapture: {
       enabled: true,
@@ -354,7 +391,15 @@ export function resolveConfig(userConfig?: Partial<MemorySparkConfig>): MemorySp
       ...userConfig.rerank,
       spark: { ...defaults.rerank.spark!, ...userConfig.rerank?.spark },
     },
-    autoRecall: { ...defaults.autoRecall, ...userConfig.autoRecall },
+    autoRecall: {
+      ...defaults.autoRecall,
+      ...userConfig.autoRecall,
+      weights: {
+        sources: { ...defaults.autoRecall.weights.sources, ...userConfig.autoRecall?.weights?.sources },
+        paths: { ...defaults.autoRecall.weights.paths, ...userConfig.autoRecall?.weights?.paths },
+        pathPatterns: { ...defaults.autoRecall.weights.pathPatterns, ...userConfig.autoRecall?.weights?.pathPatterns },
+      },
+    },
     autoCapture: { ...defaults.autoCapture, ...userConfig.autoCapture },
     watch: {
       ...defaults.watch,
