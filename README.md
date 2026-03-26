@@ -19,20 +19,39 @@
 </div>
 
 ## Abstract
+
 memory-spark is a production memory substrate for OpenClaw agents: it continuously ingests workspace knowledge, indexes it in LanceDB with hybrid dense+sparse retrieval, reranks candidates with a cross-encoder, and injects high-value context before each turn. The result is materially better recall of deployment-specific facts, safety constraints, and historical incidents while staying within low-latency budgets.
 
 ## Key Results
+
 Results below are from `evaluation/results/latest.json` generated via `evaluation/run.ts --mock`.
 
-| Metric | Full Pipeline | Vanilla Retrieval | Delta |
-|---|---:|---:|---:|
-| NDCG@10 | **0.889** | 0.334 | +0.556 |
-| MRR | **0.941** | 0.306 | +0.635 |
-| Recall@5 | **0.903** | 0.283 | +0.619 |
-| MAP@10 | **0.841** | 0.274 | +0.567 |
-| p95 latency | 117.9 ms | **72.0 ms** | +45.9 ms |
+| Metric      | Full Pipeline | Vanilla Retrieval |    Delta |
+| ----------- | ------------: | ----------------: | -------: |
+| NDCG@10     |     **0.889** |             0.334 |   +0.556 |
+| MRR         |     **0.941** |             0.306 |   +0.635 |
+| Recall@5    |     **0.903** |             0.283 |   +0.619 |
+| MAP@10      |     **0.841** |             0.274 |   +0.567 |
+| p95 latency |      117.9 ms |       **72.0 ms** | +45.9 ms |
+
+### vs. BEIR 2.0 SOTA (2025)
+
+> **Note:** BEIR measures zero-shot cross-domain retrieval across 18 datasets. Our eval is in-domain (agent workspace). Numbers are not directly comparable — see [TECHNICAL-REPORT.md](docs/TECHNICAL-REPORT.md) for full analysis.
+
+| System                 | NDCG@10   | Type            | Domain    |
+| ---------------------- | --------- | --------------- | --------- |
+| memory-spark (full)    | **88.9%** | Hybrid + Rerank | In-domain |
+| Voyage-Large-2         | 54.8%     | Dense           | Zero-shot |
+| Cohere Embed v4        | 53.7%     | Dense           | Zero-shot |
+| OpenAI text-3-large    | 51.9%     | Dense           | Zero-shot |
+| BM25 baseline          | 41.2%     | Sparse          | Zero-shot |
+| memory-spark (vanilla) | 33.4%     | Dense only      | In-domain |
+
+**Where we excel:** Quality gating, temporal decay, mistake amplification, agent-native integration.
+**Where we fall short:** No adversarial testing, no cross-domain eval, mock-only benchmarks, 117ms latency.
 
 ## Architecture
+
 ```mermaid
 flowchart LR
   A[OpenClaw Agent] --> B[Auto-Recall Hook]
@@ -57,6 +76,7 @@ flowchart LR
 ```
 
 ## Charts
+
 ![Ablation NDCG@10](docs/figures/ablation-ndcg.svg)
 ![Recall Curve](docs/figures/recall-curve.svg)
 ![Category Radar](docs/figures/category-radar.svg)
@@ -64,6 +84,7 @@ flowchart LR
 ![Latency Distribution](docs/figures/latency-distribution.svg)
 
 ## Installation & Quick Start
+
 ```bash
 git clone https://github.com/kleinpanic/memory-spark
 cd memory-spark
@@ -72,6 +93,7 @@ npm run build
 ```
 
 In `~/.openclaw/openclaw.json` (or your OpenClaw plugin config):
+
 ```json
 {
   "plugins": {
@@ -106,7 +128,9 @@ In `~/.openclaw/openclaw.json` (or your OpenClaw plugin config):
 ```
 
 ## Configuration Reference
+
 Key configuration blocks:
+
 - `backend`: `lancedb` or `sqlite-vec`
 - `lancedbDir`: local vector/fts index path
 - `embed`: provider/model/base URL
@@ -120,6 +144,7 @@ Key configuration blocks:
 Full schema: `src/config.ts`.
 
 ## Evaluation & Reproducing Results
+
 ```bash
 # 1) Generate evaluation outputs (mock mode; CI-safe)
 npx tsx evaluation/run.ts --mock
@@ -137,18 +162,20 @@ npx tsx evaluation/run.ts --mock --no-mistakes
 ```
 
 ## Ablation Study
-| Configuration | NDCG@10 | MRR | Recall@5 |
-|---|---:|---:|---:|
-| **Full Pipeline** | **0.889** | **0.941** | **0.903** |
-| - Rerank | 0.808 | 0.863 | 0.806 |
-| - Temporal Decay | 0.724 | 0.722 | 0.783 |
-| - Hybrid FTS | 0.801 | 0.866 | 0.800 |
-| - Quality Filter | 0.808 | 0.855 | 0.794 |
-| - Contextual Prefix | 0.822 | 0.880 | 0.789 |
-| - Mistake Weighting | 0.832 | 0.881 | 0.875 |
-| Vanilla Retrieval | 0.334 | 0.306 | 0.283 |
+
+| Configuration       |   NDCG@10 |       MRR |  Recall@5 |
+| ------------------- | --------: | --------: | --------: |
+| **Full Pipeline**   | **0.889** | **0.941** | **0.903** |
+| - Rerank            |     0.808 |     0.863 |     0.806 |
+| - Temporal Decay    |     0.724 |     0.722 |     0.783 |
+| - Hybrid FTS        |     0.801 |     0.866 |     0.800 |
+| - Quality Filter    |     0.808 |     0.855 |     0.794 |
+| - Contextual Prefix |     0.822 |     0.880 |     0.789 |
+| - Mistake Weighting |     0.832 |     0.881 |     0.875 |
+| Vanilla Retrieval   |     0.334 |     0.306 |     0.283 |
 
 ## Related Work
+
 - Anthropic. Contextual Retrieval (2024)
 - Sarthi et al. RAPTOR: Recursive Abstractive Processing for Tree-Organized Retrieval (2024)
 - Asai et al. Self-RAG: Learning to Retrieve, Generate, and Critique (2024)
@@ -158,6 +185,7 @@ npx tsx evaluation/run.ts --mock --no-mistakes
 - Gao et al. HyDE (2023)
 
 ## Citation
+
 ```bibtex
 @software{memory_spark_2026,
   title        = {memory-spark: GPU-Accelerated Persistent Memory for Autonomous AI Agents},
@@ -169,4 +197,5 @@ npx tsx evaluation/run.ts --mock --no-mistakes
 ```
 
 ## License
+
 MIT
