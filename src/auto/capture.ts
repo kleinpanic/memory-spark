@@ -6,6 +6,7 @@
  */
 
 import type { AutoCaptureConfig, MemorySparkConfig } from "../config.js";
+import { shouldProcessAgent } from "../config.js";
 import type { StorageBackend, MemoryChunk } from "../storage/backend.js";
 import type { EmbedProvider } from "../embed/provider.js";
 import type { EmbedQueue } from "../embed/queue.js";
@@ -36,17 +37,18 @@ export function createAutoCaptureHandler(deps: AutoCaptureDeps) {
 
     if (!cfg.enabled || !event.success) return;
     const agentId = ctx.agentId ?? "unknown";
-    if (!cfg.agents.includes("*") && !cfg.agents.includes(agentId)) return;
+    if (!shouldProcessAgent(agentId, cfg.agents, cfg.ignoreAgents ?? [])) return;
 
     // Extract ONLY user messages (no assistant — prevents self-poisoning)
-    const userTexts = extractUserMessages(event.messages);
+    const minLen = cfg.minMessageLength ?? 30;
+    const userTexts = extractUserMessages(event.messages, minLen);
     if (userTexts.length === 0) return;
 
     let captured = 0;
 
     for (const text of userTexts) {
       if (captured >= MAX_CAPTURES_PER_TURN) break;
-      if (text.length < 30) continue;
+      if (text.length < minLen) continue;
 
       // Skip prompt injection attempts
       if (looksLikePromptInjection(text)) continue;
@@ -115,7 +117,7 @@ export function createAutoCaptureHandler(deps: AutoCaptureDeps) {
  * Extract only user messages — never capture assistant output.
  * Returns individual user message texts, deduplicated.
  */
-function extractUserMessages(messages: unknown[]): string[] {
+function extractUserMessages(messages: unknown[], minLen = 30): string[] {
   if (!Array.isArray(messages)) return [];
 
   const texts: string[] = [];
@@ -127,7 +129,7 @@ function extractUserMessages(messages: unknown[]): string[] {
     if (obj.role !== "user") continue;
 
     const text = extractContent(obj).trim();
-    if (!text || text.length < 30) continue;
+    if (!text || text.length < minLen) continue;
 
     // Deduplicate within this turn
     const key = text.slice(0, 100);

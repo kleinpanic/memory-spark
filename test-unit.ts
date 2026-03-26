@@ -214,7 +214,7 @@ test("sparkBearerToken override flows to embed and rerank apiKey", () => {
 });
 
 test("Deep merge partial autoRecall preserves unset defaults", () => {
-  const cfg = resolveConfig({ autoRecall: { agents: ["dev", "main"], enabled: true, maxResults: 5, minScore: 0.65, queryMessageCount: 4 } });
+  const cfg = resolveConfig({ autoRecall: { agents: ["dev", "main"], ignoreAgents: [], enabled: true, maxResults: 5, minScore: 0.65, queryMessageCount: 4 } });
   return cfg.autoRecall.agents.length === 2 &&
          cfg.autoRecall.agents[0] === "dev" &&
          cfg.autoRecall.maxResults === 5 &&
@@ -231,6 +231,94 @@ test("sparkHost + sparkBearerToken together work for Nicholas-like config", () =
   return cfg.spark.embed.includes("10.88.88.1") &&
          cfg.embed.spark!.apiKey === "nicholas-token" &&
          cfg.rerank.spark!.apiKey === "nicholas-token";
+});
+
+// --- ignoreAgents + shouldProcessAgent ---
+console.log("\n--- Agent Filtering (ignoreAgents) ---");
+
+import { shouldProcessAgent } from "./src/config.js";
+
+test("shouldProcessAgent: wildcard includes any agent", () => {
+  return shouldProcessAgent("dev", ["*"], []);
+});
+
+test("shouldProcessAgent: wildcard + ignoreAgents excludes ignored", () => {
+  return !shouldProcessAgent("bench", ["*"], ["bench", "lens"]);
+});
+
+test("shouldProcessAgent: wildcard + ignoreAgents passes non-ignored", () => {
+  return shouldProcessAgent("main", ["*"], ["bench", "lens"]);
+});
+
+test("shouldProcessAgent: explicit list includes listed agent", () => {
+  return shouldProcessAgent("dev", ["dev", "main"], []);
+});
+
+test("shouldProcessAgent: explicit list excludes unlisted agent", () => {
+  return !shouldProcessAgent("ghost", ["dev", "main"], []);
+});
+
+test("shouldProcessAgent: ignoreAgents overrides explicit inclusion", () => {
+  return !shouldProcessAgent("dev", ["dev", "main"], ["dev"]);
+});
+
+test("shouldProcessAgent: empty agents list blocks everyone", () => {
+  return !shouldProcessAgent("main", [], []);
+});
+
+// --- ignoreAgents in resolveConfig ---
+console.log("\n--- Config: ignoreAgents ---");
+
+test("Default ignoreAgents is empty array", () => {
+  const cfg = resolveConfig();
+  return Array.isArray(cfg.autoRecall.ignoreAgents) && cfg.autoRecall.ignoreAgents.length === 0 &&
+         Array.isArray(cfg.autoCapture.ignoreAgents) && cfg.autoCapture.ignoreAgents.length === 0;
+});
+
+test("ignoreAgents override merges into autoRecall", () => {
+  const cfg = resolveConfig({ autoRecall: { agents: ["*"], ignoreAgents: ["bench", "lens"], enabled: true, maxResults: 5, minScore: 0.65, queryMessageCount: 4 } });
+  return cfg.autoRecall.ignoreAgents.length === 2 &&
+         cfg.autoRecall.ignoreAgents[0] === "bench" &&
+         cfg.autoRecall.agents[0] === "*";
+});
+
+test("ignoreAgents override merges into autoCapture", () => {
+  const cfg = resolveConfig({ autoCapture: { agents: ["*"], ignoreAgents: ["ghost"], enabled: true, categories: ["fact"], minConfidence: 0.75, minMessageLength: 30 } });
+  return cfg.autoCapture.ignoreAgents.length === 1 &&
+         cfg.autoCapture.ignoreAgents[0] === "ghost";
+});
+
+// --- minMessageLength ---
+console.log("\n--- Config: minMessageLength ---");
+
+test("Default minMessageLength is 30", () => {
+  const cfg = resolveConfig();
+  return cfg.autoCapture.minMessageLength === 30;
+});
+
+test("minMessageLength override works", () => {
+  const cfg = resolveConfig({ autoCapture: { agents: ["*"], ignoreAgents: [], enabled: true, categories: ["fact"], minConfidence: 0.75, minMessageLength: 50 } });
+  return cfg.autoCapture.minMessageLength === 50;
+});
+
+// --- embed.provider configurability ---
+console.log("\n--- Config: embed provider ---");
+
+test("Default embed provider is spark", () => {
+  const cfg = resolveConfig();
+  return cfg.embed.provider === "spark";
+});
+
+test("Embed provider can be overridden to openai", () => {
+  const cfg = resolveConfig({ embed: { provider: "openai" } });
+  return cfg.embed.provider === "openai" &&
+         cfg.embed.openai!.model === "text-embedding-3-small";
+});
+
+test("Embed provider can be overridden to gemini", () => {
+  const cfg = resolveConfig({ embed: { provider: "gemini" } });
+  return cfg.embed.provider === "gemini" &&
+         cfg.embed.gemini!.model === "gemini-embedding-001";
 });
 
 // Config Schema Tests (inline safeParse from index.ts)

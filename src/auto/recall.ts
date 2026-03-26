@@ -5,6 +5,7 @@
  */
 
 import type { AutoRecallConfig } from "../config.js";
+import { shouldProcessAgent } from "../config.js";
 import type { StorageBackend, SearchResult } from "../storage/backend.js";
 import type { EmbedProvider } from "../embed/provider.js";
 import type { EmbedQueue } from "../embed/queue.js";
@@ -31,7 +32,7 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
 
     if (!cfg.enabled) return undefined;
     const agentId = ctx.agentId ?? "unknown";
-    if (!cfg.agents.includes("*") && !cfg.agents.includes(agentId)) return undefined;
+    if (!shouldProcessAgent(agentId, cfg.agents, cfg.ignoreAgents ?? [])) return undefined;
 
     const queryText = buildQuery(event.messages, cfg.queryMessageCount);
     if (!queryText.trim()) return undefined;
