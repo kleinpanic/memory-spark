@@ -160,7 +160,17 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
     const vectors = await opts.embed.embedBatch(cleanedChunks.map((c) => c.text));
 
     // 6. Build MemoryChunk objects with RELATIVE paths
-    const now = new Date().toISOString();
+    //    Use file mtime as updated_at — NOT current time.
+    //    This preserves temporal accuracy: a file from February stays "February"
+    //    even when re-indexed on a gateway restart. Without this, every restart
+    //    resets all timestamps and breaks temporal decay scoring.
+    let fileTime: string;
+    try {
+      const stat = await import("fs/promises").then((fs) => fs.stat(opts.filePath));
+      fileTime = stat.mtime.toISOString();
+    } catch {
+      fileTime = new Date().toISOString(); // fallback for virtual/missing files
+    }
     const chunks: MemoryChunk[] = cleanedChunks.map((raw, i) => ({
       id: chunkId(relPath, raw.startLine, opts.agentId),
       path: relPath,
@@ -170,7 +180,7 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
       end_line: raw.endLine,
       text: raw.text,
       vector: vectors[i]!,
-      updated_at: now,
+      updated_at: fileTime,
       entities: JSON.stringify(entitiesPerChunk[i] ?? []),
       content_type: contentType,
       quality_score: qualityScores[i] ?? 0.5,
