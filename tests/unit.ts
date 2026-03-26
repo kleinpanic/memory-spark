@@ -3,12 +3,12 @@
  * Tests core logic without hitting Spark/OpenAI/Gemini endpoints
  */
 
-import { looksLikePromptInjection, escapeMemoryText, formatRecalledMemories } from "./src/security.js";
-import { chunkDocument, estimateTokens, cleanChunkText } from "./src/embed/chunker.js";
-import { resolveConfig } from "./src/config.js";
-import { scoreChunkQuality } from "./src/classify/quality.js";
-import { heuristicClassify } from "./src/classify/heuristic.js";
-import type { MemoryChunk } from "./src/storage/backend.js";
+import { looksLikePromptInjection, escapeMemoryText, formatRecalledMemories } from "../src/security.js";
+import { chunkDocument, estimateTokens, cleanChunkText } from "../src/embed/chunker.js";
+import { resolveConfig } from "../src/config.js";
+import { scoreChunkQuality } from "../src/classify/quality.js";
+import { heuristicClassify } from "../src/classify/heuristic.js";
+import type { MemoryChunk } from "../src/storage/backend.js";
 
 const results: Array<{ test: string; status: "PASS" | "FAIL"; error?: string }> = [];
 
@@ -239,7 +239,7 @@ test("sparkHost + sparkBearerToken together work for remote host config", () => 
 // --- ignoreAgents + shouldProcessAgent ---
 console.log("\n--- Agent Filtering (ignoreAgents) ---");
 
-import { shouldProcessAgent } from "./src/config.js";
+import { shouldProcessAgent } from "../src/config.js";
 
 test("shouldProcessAgent: wildcard includes any agent", () => {
   return shouldProcessAgent("dev", ["*"], []);

@@ -1,10 +1,33 @@
+# Dependencies
 node_modules/
+
+# Build output
 dist/
+
+# Environment / secrets
 .env
 *.env
-dims-lock.json
+
+# LanceDB data (generated at runtime)
 lancedb/
 *.lance
+dims-lock.json
+
+# Editor / OS
 .DS_Store
 *.log
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+
+# Temp planning docs (keep PLAN.md local, not in repo)
 PLAN.md
+
+# Eval results (regenerated, not committed)
+*-results.json
+
+# Coverage
+coverage/
+.nyc_output/

@@ -9,8 +9,16 @@
     "dev": "tsc --watch",
     "migrate": "node dist/scripts/migrate.js",
     "test": "npm run test:unit",
-    "test:unit": "tsx test-unit.ts",
-    "benchmark": "npx tsx scripts/benchmark.ts"
+    "test:unit": "tsx tests/unit.ts",
+    "test:integration": "tsx tests/integration.ts",
+    "test:harness": "tsx tests/harness.ts",
+    "benchmark": "npx tsx scripts/benchmark.ts",
+    "eval": "npx tsx scripts/practical-eval.ts",
+    "eval:ab": "npx tsx scripts/ab-eval.ts",
+    "lint": "eslint src/ tests/ scripts/",
+    "format": "prettier --write 'src/**/*.ts' 'tests/**/*.ts' 'scripts/**/*.ts'",
+    "format:check": "prettier --check 'src/**/*.ts' 'tests/**/*.ts' 'scripts/**/*.ts'",
+    "knip": "knip"
   },
   "dependencies": {
     "@lancedb/lancedb": "^0.14.0",
@@ -22,10 +30,15 @@
     "pdf-parse": "^1.1.1"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^22.0.0",
     "@types/pdf-parse": "^1.1.4",
+    "eslint": "^10.1.0",
+    "knip": "^6.0.5",
+    "prettier": "^3.8.1",
     "tsx": "^4.7.2",
-    "typescript": "^5.7.0"
+    "typescript": "^5.7.0",
+    "typescript-eslint": "^8.57.2"
   },
   "peerDependencies": {
     "openclaw": "*"

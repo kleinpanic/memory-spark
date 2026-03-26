@@ -134,14 +134,14 @@ In `~/.openclaw/openclaw.json`:
             "provider": "spark",
             "model": "nvidia/llama-embed-nemotron-8b",
             "spark": {
-              "baseUrl": "http://10.99.1.1:18091/v1",
+              "baseUrl": "http://YOUR_SPARK_HOST:18091/v1",
               "apiKey": "${SPARK_BEARER_TOKEN}"
             }
           },
           "rerank": {
             "enabled": true,
             "spark": {
-              "baseUrl": "http://10.99.1.1:18096/v1",
+              "baseUrl": "http://YOUR_SPARK_HOST:18096/v1",
               "apiKey": "${SPARK_BEARER_TOKEN}"
             }
           },

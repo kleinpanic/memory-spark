@@ -67,7 +67,7 @@ async function main() {
         try {
           const { stdout } = await execAsync(`git -C "${GIT_DOCS}/.." rev-parse --short HEAD`);
           gitHash = stdout.trim();
-        } catch { }
+        } catch { /* git hash optional */ }
         
         await fs.writeFile(path.join(latestDir, "_version.md"), `# OpenClaw git-latest as of ${new Date().toISOString()} (commit: ${gitHash})\n`);
         console.log(`[sync-rag] ✅ git-latest synced (commit: ${gitHash})`);

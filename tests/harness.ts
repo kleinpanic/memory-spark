@@ -23,16 +23,16 @@
  * Usage: npx tsx test-harness.ts
  */
 
-import { looksLikePromptInjection, escapeMemoryText, formatRecalledMemories } from "./src/security.js";
-import { chunkDocument } from "./src/embed/chunker.js";
-import { createEmbedProvider } from "./src/embed/provider.js";
-import { LanceDBBackend } from "./src/storage/lancedb.js";
-import { createReranker } from "./src/rerank/reranker.js";
-import { createAutoRecallHandler } from "./src/auto/recall.js";
-import { createAutoCaptureHandler } from "./src/auto/capture.js";
-import { MemorySparkManager } from "./src/manager.js";
-import { resolveConfig, DEFAULT_CONFIG } from "./src/config.js";
-import type { MemorySparkConfig } from "./src/config.js";
+import { looksLikePromptInjection, escapeMemoryText, formatRecalledMemories } from "../src/security.js";
+import { chunkDocument } from "../src/embed/chunker.js";
+import { createEmbedProvider } from "../src/embed/provider.js";
+import { LanceDBBackend } from "../src/storage/lancedb.js";
+import { createReranker } from "../src/rerank/reranker.js";
+import { createAutoRecallHandler } from "../src/auto/recall.js";
+import { createAutoCaptureHandler } from "../src/auto/capture.js";
+import { MemorySparkManager } from "../src/manager.js";
+import { resolveConfig, DEFAULT_CONFIG } from "../src/config.js";
+import type { MemorySparkConfig } from "../src/config.js";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
@@ -249,8 +249,8 @@ async function runTests() {
     logTest("4.9 Backend closes cleanly", true);
   } catch (err) {
     logTest("4.x LanceDB backend tests", false, err);
-    // @ts-ignore — ensure backend exists for later tests
-    backend = null;
+    // @ts-expect-error — ensure backend exists for later tests
+    backend = null; // eslint-disable-line no-useless-assignment
   }
 
   // ── Suite 5: Reranker (live Spark) ────────────────────────────────────────
