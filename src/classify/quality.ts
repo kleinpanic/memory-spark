@@ -55,44 +55,44 @@ const NOISE_PATTERNS: Array<{ pattern: RegExp; flag: string; penalty: number }> 
   { pattern: /^## \d{4}-\d{2}-\d{2}T[\d:.]+Z — session new/m, flag: "session-new", penalty: 1.0 },
 
   // Discord conversation metadata blocks
-  { pattern: /Conversation info \(untrusted metadata\):/, flag: "discord-metadata", penalty: 0.8 },
-  { pattern: /"message_id":\s*"\d+"/, flag: "message-id", penalty: 0.6 },
-  { pattern: /Sender \(untrusted metadata\):/, flag: "sender-metadata", penalty: 0.6 },
+  { pattern: /Conversation info \(untrusted metadata\):/, flag: "discord-metadata", penalty: 1.0 },
+  { pattern: /"message_id":\s*"\d+"/, flag: "message-id", penalty: 1.0 },
+  { pattern: /Sender \(untrusted metadata\):/, flag: "sender-metadata", penalty: 1.0 },
 
   // Raw exec output
   { pattern: /Exec completed \([^)]+, code \d+\)/, flag: "exec-output", penalty: 0.4 },
   { pattern: /session=[a-f0-9-]{8,}/, flag: "session-id", penalty: 0.3 },
 
   // Backfill stubs
-  { pattern: /Backfilled by \w+ for continuity/, flag: "backfill-stub", penalty: 0.5 },
+  { pattern: /Backfilled by \w+ for continuity/, flag: "backfill-stub", penalty: 1.0 },
 
   // NO_REPLY markers
-  { pattern: /^(assistant|user):\s*NO_REPLY\s*$/m, flag: "no-reply", penalty: 0.3 },
+  { pattern: /^(assistant|user):\s*NO_REPLY\s*$/m, flag: "no-reply", penalty: 1.0 },
 
   // Pure timestamp lines (no content after timestamp)
   {
     pattern: /^\[\w{3} \d{4}-\d{2}-\d{2} \d{2}:\d{2} \w+\]\s*$/m,
     flag: "timestamp-only",
-    penalty: 0.3,
+    penalty: 1.0,
   },
 
   // Session dump headers (raw conversation logs, not knowledge)
-  { pattern: /^# Session: \d{4}-\d{2}-\d{2}/m, flag: "session-dump-header", penalty: 0.7 },
-  { pattern: /^\*\*Session (?:Key|ID)\*\*:/m, flag: "session-dump-metadata", penalty: 0.5 },
+  { pattern: /^# Session: \d{4}-\d{2}-\d{2}/m, flag: "session-dump-header", penalty: 1.0 },
+  { pattern: /^\*\*Session (?:Key|ID)\*\*:/m, flag: "session-dump-metadata", penalty: 1.0 },
 
   // Raw assistant/user turn prefixes (conversation logs, not knowledge)
-  { pattern: /^(assistant|user|system):\s/m, flag: "raw-turn-prefix", penalty: 0.3 },
+  { pattern: /^(assistant|user|system):\s/m, flag: "raw-turn-prefix", penalty: 1.0 },
 
   // Casual chat markers (lol, lmao, lmfao, haha, etc.)
   {
     pattern: /\b(lol|lmao|lmfao|haha|heh|rofl|bruh|nah|idk|tbh|imo|iirc)\b/i,
     flag: "casual-chat",
-    penalty: 0.3,
+    penalty: 1.0,
   },
 
   // External untrusted content wrappers (Klein's raw messages)
-  { pattern: /<<<EXTERNAL_UNTRUSTED_CONTENT/, flag: "untrusted-content-wrapper", penalty: 0.6 },
-  { pattern: /UNTRUSTED Discord message body/, flag: "discord-raw-body", penalty: 0.5 },
+  { pattern: /<<<EXTERNAL_UNTRUSTED_CONTENT/, flag: "untrusted-content-wrapper", penalty: 1.0 },
+  { pattern: /UNTRUSTED Discord message body/, flag: "discord-raw-body", penalty: 1.0 },
 ];
 
 export interface LanguageOpts {

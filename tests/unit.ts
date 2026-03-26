@@ -1021,7 +1021,7 @@ test("Session dump headers are penalized", () => {
     "memory/2026-02-23.md",
     "memory",
   );
-  assert.ok(r.score < 0.3, `Session header should score below quality gate, got ${r.score}`);
+  assert.strictEqual(r.score, 0); // Session dumps are cut entirely, got ${r.score}`);
   assert.ok(r.flags.includes("session-dump-header"));
 });
 
@@ -1031,7 +1031,7 @@ test("Casual chat gets penalized", () => {
     "memory/2026-02-23.md",
     "memory",
   );
-  assert.ok(r.score < 0.3, `Casual chat should score below quality gate, got ${r.score}`);
+  assert.strictEqual(r.score, 0); // Casual chat is cut entirely, got ${r.score}`);
   assert.ok(r.flags.includes("casual-chat"));
 });
 
@@ -1050,7 +1050,7 @@ test("Untrusted content wrappers are heavily penalized", () => {
     "memory/2026-03-26.md",
     "memory",
   );
-  assert.ok(r.score < 0.1, `Untrusted wrappers should be near-zero, got ${r.score}`);
+  assert.strictEqual(r.score, 0); // Untrusted wrappers are cut entirely, got ${r.score}`);
 });
 
 test("Actual knowledge content still scores high", () => {
