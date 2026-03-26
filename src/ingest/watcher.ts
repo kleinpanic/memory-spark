@@ -20,6 +20,7 @@ import type { Embedder } from "./pipeline.js";
 import { ingestFile } from "./pipeline.js";
 import { discoverWorkspaceFiles, discoverAllAgents, toRelativePath } from "./workspace.js";
 import { SUPPORTED_EXTS } from "./parsers.js";
+import { enforceMistakesFiles } from "../auto/mistakes.js";
 import chokidar, { type FSWatcher } from "chokidar";
 import { minimatch } from "minimatch";
 import path from "node:path";
@@ -141,11 +142,24 @@ export function createWatcher(opts: {
     return "ingest";
   }
 
+  /** Check if a file is under one of the configured reference library paths */
+  function isReferencePath(filePath: string): boolean {
+    if (!opts.cfg.reference?.enabled || !opts.cfg.reference.paths.length) return false;
+    for (const refPath of opts.cfg.reference.paths) {
+      const resolved = refPath.startsWith("~/")
+        ? path.join(os.homedir(), refPath.slice(2))
+        : refPath;
+      if (filePath.startsWith(resolved)) return true;
+    }
+    return false;
+  }
+
   async function handleFileChange(filePath: string): Promise<void> {
     if (!shouldIndex(filePath)) return;
 
     const agentId = resolveAgentForPath(filePath);
     const source = sourceForPath(filePath);
+    const contentType = isReferencePath(filePath) ? "reference" as const : "knowledge" as const;
 
     const result = await ingestFile({
       filePath,
@@ -155,6 +169,7 @@ export function createWatcher(opts: {
       embed: opts.embed,
       cfg: opts.cfg,
       source,
+      contentType,
       logger: opts.logger,
     });
 
@@ -254,6 +269,27 @@ export function createWatcher(opts: {
           }
         } catch { /* skip */ }
       }
+
+      // 2b. Add reference library paths (indexed as content_type: "reference")
+      if (opts.cfg.reference?.enabled && opts.cfg.reference.paths.length > 0) {
+        for (const refPath of opts.cfg.reference.paths) {
+          const resolved = refPath.startsWith("~/")
+            ? path.join(os.homedir(), refPath.slice(2))
+            : refPath;
+          try {
+            await fs.access(resolved);
+            watchPaths.push(resolved);
+            dirToAgent.set(resolved, "shared");
+            opts.logger.info(`memory-spark watcher: added reference path ${resolved}`);
+          } catch { /* skip */ }
+        }
+      }
+
+      // 2c. MISTAKES.md enforcement — create missing ones across all agent workspaces
+      const workspaceDirs = agents.map((a) => path.join(ocDir, `workspace-${a}`));
+      enforceMistakesFiles(workspaceDirs, opts.logger).catch((err) =>
+        opts.logger.error(`memory-spark: MISTAKES.md enforcement failed: ${err}`)
+      );
 
       if (watchPaths.length === 0) {
         opts.logger.info("memory-spark watcher: no paths to watch");
