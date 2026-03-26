@@ -172,6 +172,8 @@ export class LanceDBBackend implements StorageBackend {
     };
     this.table = await this.db.createTable(TABLE_NAME, [seed as unknown as Record<string, unknown>]);
     await this.table.delete("id = '__seed__'");
+    // Fresh table has all columns from seed record — mark them as available
+    this.schemaHasNewColumns = true;
     return this.table;
   }
 
