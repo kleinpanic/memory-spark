@@ -42,6 +42,8 @@ export interface RerankConfig {
 export interface AutoRecallConfig {
   enabled: boolean;
   agents: string[];
+  /** Agents to exclude even when agents=["*"]. Takes precedence over agents. */
+  ignoreAgents: string[];
   maxResults: number;
   minScore: number;
   queryMessageCount: number;
@@ -50,8 +52,12 @@ export interface AutoRecallConfig {
 export interface AutoCaptureConfig {
   enabled: boolean;
   agents: string[];
+  /** Agents to exclude even when agents=["*"]. Takes precedence over agents. */
+  ignoreAgents: string[];
   categories: string[];
   minConfidence: number;
+  /** Minimum message length (chars) to consider for capture. Default: 30 */
+  minMessageLength: number;
 }
 
 export interface WatchPath {
@@ -147,6 +153,7 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
     autoRecall: {
       enabled: true,
       agents: ["*"],
+      ignoreAgents: [],
       maxResults: 5,
       minScore: 0.65,
       queryMessageCount: 4,
@@ -154,8 +161,10 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
     autoCapture: {
       enabled: true,
       agents: ["*"],
+      ignoreAgents: [],
       categories: ["fact", "preference", "decision", "code-snippet"],
       minConfidence: 0.75,
+      minMessageLength: 30,
     },
     watch: {
       enabled: true,
@@ -189,6 +198,20 @@ export const DEFAULT_CONFIG: MemorySparkConfig = buildDefaults(
   process.env["SPARK_HOST"] ?? FALLBACK_SPARK_HOST,
   loadSparkToken(),
 );
+
+/**
+ * Check whether an agent should be processed by auto-recall/capture.
+ * Wildcard ["*"] means all agents — unless they're in ignoreAgents.
+ */
+export function shouldProcessAgent(
+  agentId: string,
+  agents: string[],
+  ignoreAgents: string[],
+): boolean {
+  if (ignoreAgents.includes(agentId)) return false;
+  if (agents.includes("*")) return true;
+  return agents.includes(agentId);
+}
 
 function expandHome(p: string): string {
   if (p.startsWith("~/") || p === "~") {
