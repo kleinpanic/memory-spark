@@ -16,8 +16,7 @@
  */
 
 import { Type } from "@sinclair/typebox";
-import { emptyPluginConfigSchema } from "openclaw/plugin-sdk";
-import type { OpenClawPluginApi } from "openclaw/plugin-sdk";
+import type { OpenClawPluginApi, OpenClawPluginConfigSchema } from "openclaw/plugin-sdk";
 import os from "node:os";
 import path from "node:path";
 
@@ -125,7 +124,65 @@ const memorySpark = {
   version: "0.1.0",
   description: "Autonomous Spark-powered memory: LanceDB + local embed/rerank + auto-recall/capture.",
   kind: "memory" as const,
-  configSchema: emptyPluginConfigSchema(),
+  configSchema: {
+    safeParse(value: unknown) {
+      if (value === undefined || value === null) return { success: true, data: undefined };
+      if (typeof value !== "object" || Array.isArray(value)) {
+        return { success: false, error: { issues: [{ path: [], message: "expected config object" }] } };
+      }
+      // Passthrough — resolveConfig() handles deep merging and type coercion
+      return { success: true, data: value };
+    },
+    jsonSchema: {
+      type: "object",
+      additionalProperties: true,
+      properties: {
+        sparkHost: { type: "string", description: "Spark node IP/hostname (overrides SPARK_HOST env)" },
+        sparkBearerToken: { type: "string", description: "Spark bearer token (overrides SPARK_BEARER_TOKEN env)" },
+        backend: { type: "string", enum: ["lancedb", "sqlite-vec"] },
+        lancedbDir: { type: "string", description: "Path to LanceDB data directory" },
+        autoRecall: {
+          type: "object",
+          properties: {
+            enabled: { type: "boolean" },
+            agents: { type: "array", items: { type: "string" }, description: "Agent IDs or [\"*\"] for all" },
+            maxResults: { type: "number" },
+            minScore: { type: "number" },
+            queryMessageCount: { type: "number" },
+          },
+        },
+        autoCapture: {
+          type: "object",
+          properties: {
+            enabled: { type: "boolean" },
+            agents: { type: "array", items: { type: "string" }, description: "Agent IDs or [\"*\"] for all" },
+            categories: { type: "array", items: { type: "string" } },
+            minConfidence: { type: "number" },
+          },
+        },
+        embed: {
+          type: "object",
+          properties: {
+            provider: { type: "string", enum: ["spark", "openai", "gemini"] },
+          },
+        },
+        rerank: {
+          type: "object",
+          properties: {
+            enabled: { type: "boolean" },
+            topN: { type: "number" },
+          },
+        },
+        watch: {
+          type: "object",
+          properties: {
+            enabled: { type: "boolean" },
+            indexOnBoot: { type: "boolean" },
+          },
+        },
+      },
+    },
+  } as OpenClawPluginConfigSchema,
 
   register(api: OpenClawPluginApi) {
     const cfg = resolveConfig(api.pluginConfig as Partial<MemorySparkConfig> | undefined);
