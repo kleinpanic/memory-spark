@@ -29,3 +29,4 @@ dims-lock.json
 # Coverage
 coverage/
 .nyc_output/
+test-data/
