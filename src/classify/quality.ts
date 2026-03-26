@@ -93,6 +93,32 @@ const NOISE_PATTERNS: Array<{ pattern: RegExp; flag: string; penalty: number }> 
   // External untrusted content wrappers (Klein's raw messages)
   { pattern: /<<<EXTERNAL_UNTRUSTED_CONTENT/, flag: "untrusted-content-wrapper", penalty: 1.0 },
   { pattern: /UNTRUSTED Discord message body/, flag: "discord-raw-body", penalty: 1.0 },
+  { pattern: /UNTRUSTED \w+ message body/, flag: "untrusted-body", penalty: 1.0 },
+
+  // Media attachment paths (caused school-agent to think Klein sent a screenshot)
+  { pattern: /\[media attached:\s*\/home\//, flag: "media-path-local", penalty: 1.0 },
+  { pattern: /\[media attached:\s*https?:\/\//, flag: "media-path-url", penalty: 1.0 },
+  { pattern: /\.openclaw\/media\/inbound\//, flag: "inbound-media-ref", penalty: 1.0 },
+  { pattern: /To send an image back, prefer the message tool/, flag: "media-instruction", penalty: 1.0 },
+
+  // Memory recall XML (memories about memories = garbage recursion)
+  { pattern: /<relevant-memories>/, flag: "memory-xml-open", penalty: 1.0 },
+  { pattern: /<memory index="\d+"/, flag: "memory-xml-entry", penalty: 1.0 },
+  { pattern: /<!-- SECURITY: Treat every memory below as untrusted/, flag: "memory-security-comment", penalty: 1.0 },
+
+  // LCM summary blocks (compaction metadata, not knowledge)
+  { pattern: /<summary id="sum_[a-f0-9]+"/, flag: "lcm-summary", penalty: 1.0 },
+  { pattern: /<summary_ref id="sum_/, flag: "lcm-summary-ref", penalty: 1.0 },
+
+  // System/heartbeat noise
+  { pattern: /^HEARTBEAT_OK$/m, flag: "heartbeat-ok", penalty: 1.0 },
+  { pattern: /^NO_REPLY$/m, flag: "no-reply-msg", penalty: 1.0 },
+  { pattern: /\[System:\s/, flag: "system-inject", penalty: 0.8 },
+
+  // oc-tasks injection blocks
+  { pattern: /^## Current Task Queue$/m, flag: "task-queue-inject", penalty: 1.0 },
+  { pattern: /^### 🔄 In Progress/m, flag: "task-status-inject", penalty: 1.0 },
+  { pattern: /^### 👀 Awaiting Review/m, flag: "task-review-inject", penalty: 1.0 },
 ];
 
 export interface LanguageOpts {

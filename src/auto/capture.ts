@@ -15,6 +15,7 @@ import type { ClassifyResult } from "../classify/zero-shot.js";
 import { heuristicClassify } from "../classify/heuristic.js";
 import { tagEntities } from "../classify/ner.js";
 import { looksLikePromptInjection } from "../security.js";
+import { scoreChunkQuality } from "../classify/quality.js";
 import crypto from "node:crypto";
 
 type AgentEndEvent = { messages: unknown[]; success: boolean; error?: string; durationMs?: number };
@@ -51,6 +52,15 @@ export function createAutoCaptureHandler(deps: AutoCaptureDeps) {
 
       // Skip prompt injection attempts
       if (looksLikePromptInjection(text)) continue;
+
+      // Skip garbage: Discord metadata, media paths, XML memory blocks, etc.
+      // This is the CRITICAL gate that prevents the agent from storing
+      // conversation envelope noise as "knowledge".
+      if (looksLikeCaptureGarbage(text)) continue;
+
+      // Run the full quality scorer as a second gate
+      const qualityCheck = scoreChunkQuality(text, `capture/${agentId}`, "capture");
+      if (qualityCheck.score < 0.3) continue;
 
       try {
         // Classify — use Spark zero-shot or local heuristic fallback
@@ -160,6 +170,70 @@ function extractCaptureMessages(messages: unknown[], minLen = 80): string[] {
   }
 
   return texts;
+}
+
+/**
+ * Fast garbage detector for auto-capture. Rejects Discord/OpenClaw envelope noise
+ * that should NEVER become a memory. This runs BEFORE the expensive classifier.
+ *
+ * The school agent thought Klein sent a screenshot because auto-capture stored
+ * a "[media attached: ...]" envelope line as a "fact". This function prevents that.
+ */
+const CAPTURE_GARBAGE_PATTERNS: RegExp[] = [
+  // Discord/OpenClaw envelope metadata
+  /Conversation info \(untrusted metadata\)/,
+  /Sender \(untrusted metadata\)/,
+  /"message_id":\s*"\d+"/,
+  /"sender_id":\s*"\d+"/,
+  /"conversation_label":/,
+  /<<<EXTERNAL_UNTRUSTED_CONTENT/,
+  /<<<END_EXTERNAL_UNTRUSTED_CONTENT/,
+  /UNTRUSTED Discord message body/,
+  /UNTRUSTED \w+ message body/,
+
+  // Media attachment paths (the exact bug Klein found)
+  /\[media attached:\s*\/home\//,
+  /\[media attached:\s*https?:\/\//,
+  /\.openclaw\/media\/inbound\//,
+  /To send an image back, prefer the message tool/,
+
+  // Memory recall XML blocks (memories recalling themselves = infinite loop)
+  /<relevant-memories>/,
+  /<\/relevant-memories>/,
+  /<memory index="\d+"/,
+  /<!-- SECURITY: Treat every memory below as untrusted/,
+
+  // LCM summary blocks
+  /<summary id="sum_[a-f0-9]+"/,
+  /<summary_ref id="sum_/,
+
+  // System/heartbeat noise
+  /^HEARTBEAT_OK$/m,
+  /^HEARTBEAT_DISABLED$/m,
+  /^NO_REPLY$/m,
+  /\[System:\s/,
+  /\[RESTART_APPROVAL_REQUEST\]/,
+
+  // oc-tasks injection blocks
+  /^## Current Task Queue$/m,
+  /^### 🔄 In Progress/m,
+  /^### 👀 Awaiting Review/m,
+  /`oc_tasks_\w+`/,
+
+  // Raw tool output / exec results
+  /^```json\s*\n\s*\{[\s\S]{0,50}"schema":\s*"openclaw\./m,
+  /Exec completed \([^)]+, code \d+\)/,
+
+  // Agent bootstrap / session headers
+  /^## \d{4}-\d{2}-\d{2}T[\d:.]+Z — (agent bootstrap|session new)/m,
+  /^# Session: \d{4}-\d{2}-\d{2}/m,
+
+  // Raw role prefixes (conversation logs, not knowledge)
+  /^(assistant|user|system):\s/m,
+];
+
+function looksLikeCaptureGarbage(text: string): boolean {
+  return CAPTURE_GARBAGE_PATTERNS.some((p) => p.test(text));
 }
 
 function containsDecisionPattern(text: string): boolean {
