@@ -120,9 +120,14 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     const safeMemories = deduplicated
       .filter((r) => !looksLikePromptInjection(r.chunk.text))
       .map((r) => ({
-        source: `${r.chunk.source}:${r.chunk.path}:${r.chunk.start_line}`,
+        // Prefix with "memory-spark:" so agents know which plugin this came from
+        source: `memory-spark:${r.chunk.source}:${r.chunk.path}`,
         text: r.chunk.text.slice(0, 500),
         score: r.score,
+        // Use the ORIGINAL content timestamp, not when it was re-indexed.
+        // For captures, updated_at is when the capture was stored (correct).
+        // For file-sourced chunks, updated_at is file mtime (correct).
+        // The bug was that garbage captures had stale content with fresh timestamps.
         updatedAt: r.chunk.updated_at,
         contentType: r.chunk.content_type ?? "knowledge",
         agentId: r.chunk.agent_id,
