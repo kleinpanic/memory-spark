@@ -56,34 +56,28 @@ export class LanceDBBackend implements StorageBackend {
   }
 
   /**
-   * Track whether the table schema includes the new columns natively
-   * (i.e., from seed record creation, not from addColumns migration).
-   * When true, upsert includes the new fields. When false, upsert skips them
-   * to avoid Arrow nullability/type mismatches.
+   * Track whether the table schema includes the new columns.
+   * When true, upsert includes content_type, quality_score, token_count, parent_heading.
+   * When false, upsert skips them (old table, pre-overhaul).
    */
   private schemaHasNewColumns = false;
 
   /**
-   * Check if the table has the new columns (content_type, quality_score, etc.).
+   * Detect whether the table has the new columns from the RAG overhaul.
    * 
-   * IMPORTANT: We do NOT use addColumns to migrate old tables. LanceDB's addColumns
-   * creates columns with different nullability than seed-record columns, causing
-   * Arrow schema mismatches on mergeInsert. Instead:
-   * - Old tables (pre-overhaul): skip new fields in upsert, data works fine without them
-   * - New tables (created via seed record): include new fields, schema is consistent
-   * 
-   * To migrate: create a fresh table via scripts/purge-noise.ts --rebuild
+   * We do NOT use addColumns() to migrate old tables — it creates columns with
+   * different Arrow nullability than seed-record columns, causing schema errors
+   * on mergeInsert. Instead:
+   * - Old tables: skip new fields in upsert (use scripts/rebuild-table.ts to migrate)
+   * - New tables (seed record): include all fields, schema is consistent
    */
   private async ensureSchema(): Promise<void> {
     if (!this.table) return;
     try {
       const schema = await this.table.schema();
       const existingFields = new Set(schema.fields.map((f) => f.name));
-
-      // Check if all 4 new columns exist in the schema
       const needed = ["content_type", "quality_score", "token_count", "parent_heading"];
-      const hasAll = needed.every((n) => existingFields.has(n));
-      this.schemaHasNewColumns = hasAll;
+      this.schemaHasNewColumns = needed.every((n) => existingFields.has(n));
     } catch {
       this.schemaHasNewColumns = false;
     }
