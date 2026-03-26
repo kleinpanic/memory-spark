@@ -47,7 +47,7 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
 
     // Hybrid search: vector + FTS
     const fetchN = cfg.maxResults * 4;
-    const [vectorResults, ftsResults] = await Promise.all([
+    const [vectorResults, rawFtsResults] = await Promise.all([
       backend
         .vectorSearch(queryVector, {
           query: queryText,
@@ -65,9 +65,21 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
         .catch(() => [] as SearchResult[]),
     ]);
 
-    // RRF (Reciprocal Rank Fusion) merge
-    const merged = rrfMerge(vectorResults, ftsResults, fetchN);
+    // Filter FTS results: exclude sessions source (keyword matches on chat logs
+    // are almost always garbage) and apply a minimum score threshold
+    const ftsResults = rawFtsResults.filter(
+      (r) => r.chunk.source !== "sessions" && r.score >= (cfg.minScore ?? 0.1),
+    );
+
+    // Hybrid merge: preserve original vector scores + RRF rank boost.
+    // Unlike pure RRF (which destroys cosine similarity by replacing scores
+    // with 1/(k+rank)), this preserves the embedding quality signal.
+    const merged = hybridMerge(vectorResults, ftsResults, fetchN);
     if (merged.length === 0) return undefined;
+
+    // Source weighting EARLY — penalize garbage before expensive stages
+    // so session chunks and archive content don't waste reranker slots.
+    applySourceWeighting(merged);
 
     // Temporal decay: boost recent memories
     applyTemporalDecay(merged);
@@ -78,12 +90,6 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     // Cross-encoder rerank
     const reranked = await reranker.rerank(queryText, diverse, cfg.maxResults);
     if (reranked.length === 0) return undefined;
-
-    // Source weighting — boost captures & MEMORY.md, penalize archives
-    applySourceWeighting(reranked);
-
-    // Re-sort after source weighting
-    reranked.sort((a, b) => b.score - a.score);
 
     // LCM recency suppression — skip chunks that overlap heavily with recent messages
     const recentTexts = event.messages
@@ -143,45 +149,63 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
 }
 
 /**
- * Reciprocal Rank Fusion — proper hybrid merge.
- * RRF(d) = Σ 1 / (k + rank_i(d)) across all ranking lists.
+ * Hybrid merge — preserves original vector similarity scores.
+ *
+ * The old rrfMerge() replaced all scores with 1/(k+rank), destroying the
+ * cosine similarity signal from the embedding model. A chunk with cosine 0.85
+ * became 0.0167 — same as a junk chunk at FTS rank 0. This caused the full
+ * pipeline to perform WORSE than vanilla vector search.
+ *
+ * This version:
+ * 1. Keeps original vector scores (cosine similarity) as the base
+ * 2. Adds a small RRF rank boost for chunks found by both sources
+ * 3. FTS-only chunks get a normalized score based on their FTS rank
+ *
+ * Chunks appearing in BOTH lists get a bonus (evidence from two signals).
  */
-function rrfMerge(
+export function hybridMerge(
   vectorResults: SearchResult[],
   ftsResults: SearchResult[],
   limit: number,
   k = 60,
 ): SearchResult[] {
-  const scores = new Map<string, { result: SearchResult; rrfScore: number }>();
+  const merged = new Map<string, { result: SearchResult; score: number; sources: number }>();
 
-  // Score from vector ranking
+  // Vector results: use original cosine similarity as base score
   vectorResults.forEach((r, rank) => {
     const id = r.chunk.id;
-    const existing = scores.get(id);
-    const rrfScore = 1 / (k + rank);
-    if (existing) {
-      existing.rrfScore += rrfScore;
-    } else {
-      scores.set(id, { result: r, rrfScore });
-    }
+    merged.set(id, {
+      result: r,
+      score: r.score, // preserve cosine similarity
+      sources: 1,
+    });
   });
 
-  // Score from FTS ranking
+  // FTS results: boost existing vector entries, or add FTS-only entries
+  // with a decaying score based on FTS rank (max ~0.5 for rank 0)
   ftsResults.forEach((r, rank) => {
     const id = r.chunk.id;
-    const existing = scores.get(id);
-    const rrfScore = 1 / (k + rank);
+    const existing = merged.get(id);
+    const ftsRankScore = 0.5 / (1 + rank * 0.1); // 0.50, 0.45, 0.42, ...
+
     if (existing) {
-      existing.rrfScore += rrfScore;
+      // Found in both vector AND FTS — boost score (dual evidence)
+      existing.score += 0.1 + (1 / (k + rank)) * 2;
+      existing.sources = 2;
     } else {
-      scores.set(id, { result: r, rrfScore });
+      // FTS-only: use a moderate score — these lack semantic similarity
+      merged.set(id, {
+        result: r,
+        score: ftsRankScore,
+        sources: 1,
+      });
     }
   });
 
-  return Array.from(scores.values())
-    .sort((a, b) => b.rrfScore - a.rrfScore)
+  return Array.from(merged.values())
+    .sort((a, b) => b.score - a.score)
     .slice(0, limit)
-    .map((s) => ({ ...s.result, score: s.rrfScore }));
+    .map((s) => ({ ...s.result, score: s.score }));
 }
 
 /**
@@ -192,7 +216,7 @@ function rrfMerge(
  * Formula: 0.8 + 0.2 * exp(-0.03 * ageDays)
  * 0 days=1.0, 7 days=0.96, 30 days=0.89, 90 days=0.81, 365 days=0.80
  */
-function applyTemporalDecay(results: SearchResult[]): void {
+export function applyTemporalDecay(results: SearchResult[]): void {
   const now = Date.now();
   for (const r of results) {
     const updatedAt = r.chunk.updated_at ? new Date(r.chunk.updated_at).getTime() : now;
@@ -207,7 +231,7 @@ function applyTemporalDecay(results: SearchResult[]): void {
  * Iteratively selects results that are relevant but dissimilar to already-selected.
  * Uses Jaccard similarity on token sets (fast, no vectors needed).
  */
-function mmrRerank(results: SearchResult[], limit: number, lambda: number): SearchResult[] {
+export function mmrRerank(results: SearchResult[], limit: number, lambda: number): SearchResult[] {
   if (results.length <= 1) return results;
 
   const tokenSets = results.map((r) => tokenize(r.chunk.text));
@@ -305,7 +329,7 @@ function cleanQueryText(text: string): string {
  * Source weighting — adjust scores based on content source and path.
  * Captures and curated knowledge get boosted, archives and stale content penalized.
  */
-function applySourceWeighting(results: SearchResult[]): void {
+export function applySourceWeighting(results: SearchResult[]): void {
   for (const r of results) {
     const source = r.chunk.source;
     const chunkPath = r.chunk.path;

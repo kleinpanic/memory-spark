@@ -213,7 +213,7 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
       agents: ["*"],
       ignoreAgents: [],
       categories: ["fact", "preference", "decision", "code-snippet"],
-      minConfidence: 0.75,
+      minConfidence: 0.60,
       minMessageLength: 30,
       useClassifier: true,
     },
@@ -326,11 +326,21 @@ export function resolveConfig(userConfig?: Partial<MemorySparkConfig>): MemorySp
   // Build defaults using the resolved host/token
   const defaults = buildDefaults(sparkHost, sparkToken);
 
+  // MEMORY_SPARK_DATA_DIR env override — allows standalone dev/test without touching production.
+  // When set, lancedbDir points at <dataDir>/lancedb/ instead of ~/.openclaw/data/memory-spark/lancedb/
+  const dataDir = process.env["MEMORY_SPARK_DATA_DIR"];
+  if (dataDir) {
+    const resolved = path.isAbsolute(dataDir) ? dataDir : path.resolve(dataDir);
+    defaults.lancedbDir = path.join(resolved, "lancedb");
+  }
+
   if (!userConfig) return defaults;
 
   const merged: MemorySparkConfig = {
     backend: userConfig.backend ?? defaults.backend,
-    lancedbDir: expandHome(userConfig.lancedbDir ?? defaults.lancedbDir),
+    lancedbDir: dataDir
+      ? defaults.lancedbDir // env override takes precedence over user config
+      : expandHome(userConfig.lancedbDir ?? defaults.lancedbDir),
     sqliteVecDir: expandHome(userConfig.sqliteVecDir ?? defaults.sqliteVecDir),
     embed: {
       ...defaults.embed,

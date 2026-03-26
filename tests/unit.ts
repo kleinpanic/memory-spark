@@ -1062,6 +1062,115 @@ test("Actual knowledge content still scores high", () => {
   assert.ok(r.score >= 0.8, `Real knowledge should score high, got ${r.score}`);
 });
 
+// ═══════════════════════════════════════════
+// hybridMerge tests
+// ═══════════════════════════════════════════
+import {
+  hybridMerge,
+  applyTemporalDecay,
+  applySourceWeighting,
+} from "../src/auto/recall.js";
+import type { SearchResult } from "../src/storage/backend.js";
+
+function makeSearchResult(id: string, score: number, source: string = "memory", path: string = "test.md"): SearchResult {
+  return {
+    chunk: {
+      id,
+      path,
+      source: source as "memory" | "sessions" | "ingest" | "capture",
+      agent_id: "test",
+      start_line: 0,
+      end_line: 10,
+      text: `Test chunk ${id}`,
+      vector: [],
+      updated_at: new Date().toISOString(),
+    },
+    score,
+    snippet: `Test chunk ${id}`,
+  };
+}
+
+test("hybridMerge preserves vector cosine similarity scores", () => {
+  const vector = [
+    makeSearchResult("v1", 0.85),
+    makeSearchResult("v2", 0.72),
+    makeSearchResult("v3", 0.45),
+  ];
+  const fts: SearchResult[] = [];
+
+  const merged = hybridMerge(vector, fts, 10);
+  // Vector-only results should keep their original scores
+  assert.equal(merged.length, 3);
+  assert.equal(merged[0]!.score, 0.85, "Top result should preserve cosine score");
+  assert.equal(merged[1]!.score, 0.72);
+  assert.equal(merged[2]!.score, 0.45);
+});
+
+test("hybridMerge boosts chunks found in both vector AND FTS", () => {
+  const vector = [makeSearchResult("both", 0.80)];
+  const fts = [makeSearchResult("both", 0.50)];
+
+  const merged = hybridMerge(vector, fts, 10);
+  assert.equal(merged.length, 1);
+  assert.ok(merged[0]!.score > 0.80, `Dual-evidence chunk should score higher than vector-only (got ${merged[0]!.score})`);
+});
+
+test("hybridMerge: FTS-only chunks get moderate scores, not cosine-level", () => {
+  const vector = [makeSearchResult("v1", 0.85)];
+  const fts = [makeSearchResult("fts-only", 0.90)]; // High BM25 score
+
+  const merged = hybridMerge(vector, fts, 10);
+  const ftsOnlyResult = merged.find((r) => r.chunk.id === "fts-only");
+  assert.ok(ftsOnlyResult, "FTS-only chunk should be in results");
+  assert.ok(ftsOnlyResult!.score < 0.85, `FTS-only should score below top vector result (got ${ftsOnlyResult!.score})`);
+});
+
+test("hybridMerge does NOT destroy score spread like old rrfMerge", () => {
+  const vector = [
+    makeSearchResult("excellent", 0.92),
+    makeSearchResult("mediocre", 0.35),
+  ];
+  const fts: SearchResult[] = [];
+
+  const merged = hybridMerge(vector, fts, 10);
+  const spread = merged[0]!.score - merged[1]!.score;
+  assert.ok(spread > 0.3, `Score spread should be preserved (was ${spread}). Old rrfMerge compressed 0.92 and 0.35 to within 0.002 of each other.`);
+});
+
+test("applySourceWeighting penalizes sessions source", () => {
+  const results = [
+    makeSearchResult("knowledge", 1.0, "memory", "AGENTS.md"),
+    makeSearchResult("session", 1.0, "sessions", "sessions/chat.jsonl"),
+  ];
+  applySourceWeighting(results);
+  assert.ok(results[0]!.score > results[1]!.score, "Knowledge should score higher than sessions after weighting");
+  assert.ok(results[1]!.score < 0.6, `Sessions should be heavily penalized (got ${results[1]!.score})`);
+});
+
+test("applySourceWeighting boosts MISTAKES.md", () => {
+  const results = [
+    makeSearchResult("mistakes", 1.0, "memory", "MISTAKES.md"),
+    makeSearchResult("regular", 1.0, "memory", "notes.md"),
+  ];
+  applySourceWeighting(results);
+  assert.ok(results[0]!.score > results[1]!.score, "MISTAKES.md should be boosted");
+  assert.ok(results[0]!.score >= 1.5, `MISTAKES.md should get 1.6x boost (got ${results[0]!.score})`);
+});
+
+test("applyTemporalDecay: recent chunk decays less than old chunk", () => {
+  const recent = makeSearchResult("recent", 1.0);
+  recent.chunk.updated_at = new Date().toISOString();
+
+  const old = makeSearchResult("old", 1.0);
+  old.chunk.updated_at = new Date(Date.now() - 90 * 86400000).toISOString(); // 90 days ago
+
+  const results = [recent, old];
+  applyTemporalDecay(results);
+
+  assert.ok(results[0]!.score > results[1]!.score, "Recent chunk should score higher after decay");
+  assert.ok(results[1]!.score >= 0.79, `Old chunk should still be >= 0.8 floor (got ${results[1]!.score})`);
+});
+
 // Summary
 console.log("\n=== Summary ===");
 const passed = results.filter((r) => r.status === "PASS").length;

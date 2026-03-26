@@ -3,8 +3,15 @@ import path from "node:path";
 
 import { resolveConfig } from "../src/config.js";
 import { createEmbedProvider } from "../src/embed/provider.js";
+import { createReranker } from "../src/rerank/reranker.js";
 import { LanceDBBackend } from "../src/storage/lancedb.js";
 import type { SearchResult } from "../src/storage/backend.js";
+import {
+  hybridMerge,
+  applyTemporalDecay,
+  applySourceWeighting,
+  mmrRerank,
+} from "../src/auto/recall.js";
 import {
   compileResults,
   type EvalResults,
@@ -44,7 +51,7 @@ interface EvalRun {
 interface EvaluationSuite {
   schemaVersion: string;
   generatedAt: string;
-  mode: "mock" | "live";
+  mode: "live";
   dataset: {
     path: string;
     queryCount: number;
@@ -132,7 +139,6 @@ function parseArgs(argv: string[]) {
     args.has("--no-mistakes");
 
   return {
-    mock: args.has("--mock"),
     suiteMode: !hasAnyAblationFlag,
     selectedConfig,
   };
@@ -152,103 +158,6 @@ function configKey(cfg: EvalConfig): string {
   return parts.length === 0 ? "full" : parts.join("+");
 }
 
-function mulberry32(seed: number): () => number {
-  let t = seed >>> 0;
-  return () => {
-    t += 0x6d2b79f5;
-    let x = Math.imul(t ^ (t >>> 15), 1 | t);
-    x ^= x + Math.imul(x ^ (x >>> 7), 61 | x);
-    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function hashString(input: string): number {
-  let hash = 2166136261;
-  for (let i = 0; i < input.length; i++) {
-    hash ^= input.charCodeAt(i);
-    hash = Math.imul(hash, 16777619);
-  }
-  return hash >>> 0;
-}
-
-function similarityScore(query: string, docText: string): number {
-  const queryTerms = query.toLowerCase().split(/\W+/).filter(Boolean);
-  const docTerms = new Set(docText.toLowerCase().split(/\W+/).filter(Boolean));
-  if (queryTerms.length === 0) return 0;
-  let overlap = 0;
-  for (const term of queryTerms) {
-    if (docTerms.has(term)) overlap++;
-  }
-  return overlap / queryTerms.length;
-}
-
-function temporalDecay(ageDays: number): number {
-  return 0.8 + 0.2 * Math.exp(-0.03 * ageDays);
-}
-
-function inferQuality(pathHint: string): number {
-  const p = pathHint.toLowerCase();
-  if (p.includes("mistake") || p.includes("agents") || p.includes("memory")) return 0.93;
-  if (p.includes("tools") || p.includes("workflow") || p.includes("reference")) return 0.86;
-  if (p.includes("archive") || p.includes("backup")) return 0.62;
-  return 0.79;
-}
-
-function inferUpdatedAt(pathHint: string, rng: () => number): string {
-  const p = pathHint.toLowerCase();
-  let ageDays = 14 + Math.floor(rng() * 120);
-  if (p.includes("mistake") || p.includes("safety")) ageDays = 4 + Math.floor(rng() * 45);
-  if (p.includes("2026-")) ageDays = 1 + Math.floor(rng() * 20);
-  if (p.includes("reference")) ageDays = 35 + Math.floor(rng() * 180);
-  const now = Date.now();
-  return new Date(now - ageDays * 86400_000).toISOString();
-}
-
-function scoreCandidate(
-  cfg: EvalConfig,
-  query: string,
-  candidate: SearchResult,
-  rankHint: number,
-): number {
-  const chunk = candidate.chunk;
-  const base = Math.max(0.01, candidate.score || 0.3);
-  const lexical = similarityScore(query, `${chunk.path} ${chunk.text}`);
-  const qualityScore = chunk.quality_score ?? inferQuality(chunk.path);
-  const ageDays = Math.max(
-    0,
-    (Date.now() - new Date(chunk.updated_at || new Date().toISOString()).getTime()) / 86400_000,
-  );
-
-  let score = base;
-
-  if (cfg.context) {
-    score *= 1 + 0.1 * lexical;
-  }
-
-  if (cfg.quality) {
-    score *= 0.92 + 0.16 * qualityScore;
-  }
-
-  if (cfg.mistakes && chunk.path.toLowerCase().includes("mistake")) {
-    score *= 1.6;
-  }
-
-  if (cfg.decay) {
-    score *= temporalDecay(ageDays);
-  }
-
-  if (cfg.rerank) {
-    score *= 1 + 0.2 * lexical;
-    score *= 1 + 0.015 * Math.max(0, 20 - rankHint);
-  }
-
-  if (!cfg.fts) {
-    score *= 0.9;
-  }
-
-  return score;
-}
-
 function asRetrievedDoc(result: SearchResult, score: number): RetrievedDoc {
   return {
     path: result.chunk.path,
@@ -257,171 +166,83 @@ function asRetrievedDoc(result: SearchResult, score: number): RetrievedDoc {
   };
 }
 
-function buildDistractors(q: GroundTruthQuery, cfg: EvalConfig, rng: () => number): RetrievedDoc[] {
-  const pool = [
-    "notes/daily/2026-03-21.md",
-    "archive/infra-notes-legacy.md",
-    "memory/random-observations.md",
-    "reference/internal/wiki-onboarding.md",
-    "memory/ideas/backlog.md",
-    "sessions/chat-log-2026-03-20.jsonl",
-    "docs/runbook/incident-template.md",
-    "memory/todos.md",
-    "reference/oss/lancedb-overview.md",
-    "notes/meeting/weekly-sync.md",
-  ];
-
-  const docs: RetrievedDoc[] = [];
-  const count = 9 + Math.floor(rng() * 6);
-  for (let i = 0; i < count; i++) {
-    const pathHint = pool[Math.floor(rng() * pool.length)]!;
-    const heavyTail = Math.pow(rng(), 0.45);
-    const staleLift = cfg.decay ? 1 : 1.08;
-    docs.push({
-      path: pathHint,
-      text: `${q.category} distractor document ${i + 1}`,
-      score: (0.14 + heavyTail * 0.44) * staleLift,
-    });
-  }
-  return docs;
-}
-
-function mockConfigStrength(cfg: EvalConfig): number {
-  let strength = 0.34;
-  if (cfg.rerank) strength += 0.12;
-  if (cfg.decay) strength += 0.06;
-  if (cfg.fts) strength += 0.11;
-  if (cfg.quality) strength += 0.07;
-  if (cfg.context) strength += 0.1;
-  if (cfg.mistakes) strength += 0.06;
-  return Math.min(0.9, strength);
-}
-
-function mockQueryResult(q: GroundTruthQuery, cfg: EvalConfig): QueryResult {
-  const rng = mulberry32(hashString(`${q.id}:${configKey(cfg)}`));
-  const strength = mockConfigStrength(cfg);
-
-  const relevantDocs: RetrievedDoc[] = [];
-  for (const rel of q.relevant) {
-    const includeChance = Math.min(0.965, 0.12 + strength * 0.56 + rel.grade * 0.11);
-    if (rng() < includeChance) {
-      const jitter = (rng() - 0.5) * 0.2;
-      const decayPenalty = cfg.decay ? 1 : 0.94;
-      const score = Math.max(
-        0.04,
-        (0.2 + rel.grade * 0.095 + strength * 0.21 + jitter) * decayPenalty,
-      );
-      relevantDocs.push({
-        path: `memory/${rel.path_contains.replace(/\s+/g, "-").toLowerCase()}.md`,
-        text: rel.snippet_contains ?? `${q.query} ${rel.path_contains}`,
-        score,
-      });
-    }
-  }
-
-  const distractors = buildDistractors(q, cfg, rng);
-  const combined = [...relevantDocs, ...distractors]
-    .map((doc, idx) => {
-      const scoreNoise = (rng() - 0.5) * (cfg.rerank ? 0.16 : 0.24);
-      return { ...doc, score: Math.max(0.01, doc.score + scoreNoise - idx * 0.005) };
-    })
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 10);
-
-  const baseLatency = 40 + rng() * 35;
-  const rerankPenalty = cfg.rerank ? 26 + rng() * 16 : 0;
-  const hybridPenalty = cfg.fts ? 5 + rng() * 6 : 0;
-  const totalLatency = baseLatency + rerankPenalty + hybridPenalty;
-
-  return {
-    queryId: q.id,
-    category: q.category,
-    query: q.query,
-    retrieved: combined,
-    relevant: q.relevant,
-    latencyMs: Number(totalLatency.toFixed(2)),
-  };
-}
-
-async function runMockEvaluation(
-  queries: GroundTruthQuery[],
-  cfg: EvalConfig,
-): Promise<EvalResults> {
-  const perQuery = queries.map((q) => mockQueryResult(q, cfg));
-  return compileResults(perQuery, {
-    mode: "mock",
-    ...cfg,
-  });
-}
-
-function mergeCandidates(vector: SearchResult[], fts: SearchResult[]): SearchResult[] {
-  const byId = new Map<string, SearchResult>();
-  const add = (items: SearchResult[], weight: number) => {
-    items.forEach((item, rank) => {
-      const id = item.chunk.id;
-      const existing = byId.get(id);
-      const boost = (1 / (60 + rank)) * weight;
-      if (!existing) {
-        byId.set(id, {
-          ...item,
-          score: Math.max(0.001, item.score + boost),
-        });
-        return;
-      }
-      existing.score = Math.max(0.001, existing.score + boost + item.score * 0.2);
-      if (item.snippet.length > existing.snippet.length) {
-        existing.snippet = item.snippet;
-      }
-    });
-  };
-  add(vector, 1.0);
-  add(fts, 1.0);
-  return Array.from(byId.values());
-}
-
+/**
+ * Live query using the ACTUAL production pipeline from recall.ts.
+ * Previous version used mergeCandidates() + scoreCandidate() which was a
+ * broken simulation that preserved cosine scores (production doesn't) and
+ * simulated reranking with lexical multipliers (production uses Spark cross-encoder).
+ *
+ * This version uses the real: hybridMerge → sourceWeighting → temporalDecay → MMR → reranker
+ */
 async function liveQuery(
   backend: LanceDBBackend,
   q: GroundTruthQuery,
   cfg: EvalConfig,
   vectorEnabled: boolean,
   embedQuery: ((text: string) => Promise<number[]>) | null,
+  reranker?: { rerank: (query: string, results: SearchResult[], topN: number) => Promise<SearchResult[]> },
 ): Promise<QueryResult> {
   const start = performance.now();
 
   const fetchLimit = 50;
+  const minScore = 0.2; // Match production config
+
+  // Fetch from both retrievers (matching production recall.ts)
+  const vectorPromise =
+    vectorEnabled && embedQuery
+      ? embedQuery(q.query)
+          .then((vec) =>
+            backend.vectorSearch(vec, { query: q.query, maxResults: fetchLimit, minScore }),
+          )
+          .catch(() => [] as SearchResult[])
+      : Promise.resolve([] as SearchResult[]);
+
   const ftsPromise = cfg.fts
     ? backend
         .ftsSearch(q.query, { query: q.query, maxResults: fetchLimit })
         .catch(() => [] as SearchResult[])
     : Promise.resolve([] as SearchResult[]);
 
-  const vectorPromise =
-    vectorEnabled && embedQuery
-      ? embedQuery(q.query)
-          .then((vec) =>
-            backend.vectorSearch(vec, { query: q.query, maxResults: fetchLimit, minScore: 0.0 }),
-          )
-          .catch(() => [] as SearchResult[])
-      : Promise.resolve([] as SearchResult[]);
+  const [vector, rawFts] = await Promise.all([vectorPromise, ftsPromise]);
 
-  const [vector, fts] = await Promise.all([vectorPromise, ftsPromise]);
-  let candidates = mergeCandidates(vector, fts);
+  // Filter FTS: exclude sessions, apply minScore (matches production recall.ts)
+  const fts = rawFts.filter(
+    (r) => r.chunk.source !== "sessions" && r.score >= minScore,
+  );
 
-  if (!cfg.fts && candidates.length === 0 && vector.length === 0) {
-    // Fallback so ablations still run if vector retrieval is unavailable.
-    candidates = await backend
+  // Use real production pipeline functions
+  let candidates = cfg.fts ? hybridMerge(vector, fts, fetchLimit) : [...vector];
+
+  if (candidates.length === 0 && vector.length === 0) {
+    // Fallback so ablations still run if vector retrieval is unavailable
+    const fallbackFts = await backend
       .ftsSearch(q.query, { query: q.query, maxResults: fetchLimit })
-      .catch(() => []);
+      .catch(() => [] as SearchResult[]);
+    candidates = fallbackFts.filter((r) => r.chunk.source !== "sessions");
   }
 
-  const scored = candidates
-    .map((candidate, idx) => ({
-      doc: candidate,
-      score: scoreCandidate(cfg, q.query, candidate, idx + 1),
-    }))
-    .sort((a, b) => b.score - a.score)
-    .slice(0, 10)
-    .map(({ doc, score }) => asRetrievedDoc(doc, score));
+  // Source weighting EARLY (matches production order)
+  if (cfg.mistakes || cfg.quality) {
+    applySourceWeighting(candidates);
+  }
+
+  // Temporal decay
+  if (cfg.decay) {
+    applyTemporalDecay(candidates);
+  }
+
+  // MMR diversity
+  const diverse = mmrRerank(candidates, 20, 0.7);
+
+  // Cross-encoder reranking (use real Spark reranker if available and enabled)
+  let final: SearchResult[];
+  if (cfg.rerank && reranker) {
+    final = await reranker.rerank(q.query, diverse, 10);
+  } else {
+    final = diverse.sort((a, b) => b.score - a.score).slice(0, 10);
+  }
+
+  const scored = final.map((r) => asRetrievedDoc(r, r.score));
 
   const latencyMs = Number((performance.now() - start).toFixed(2));
 
@@ -452,10 +273,18 @@ async function runLiveEvaluation(
     vectorEnabled = false;
   }
 
+  // Create the real Spark cross-encoder reranker (same as production)
+  let reranker: { rerank: (query: string, results: SearchResult[], topN: number) => Promise<SearchResult[]> } | undefined;
+  try {
+    reranker = await createReranker(runtimeCfg.rerank);
+  } catch {
+    console.warn("⚠ Spark reranker unavailable — rerank ablations will use score-only ranking");
+  }
+
   try {
     const perQuery: QueryResult[] = [];
     for (const q of queries) {
-      perQuery.push(await liveQuery(backend, q, cfg, vectorEnabled, embedQuery));
+      perQuery.push(await liveQuery(backend, q, cfg, vectorEnabled, embedQuery, reranker));
     }
 
     return compileResults(perQuery, {
@@ -480,7 +309,7 @@ function prettyConfigLabel(name: string, cfg: EvalConfig): string {
 }
 
 function buildSuite(
-  mode: "mock" | "live",
+  mode: "live",
   dataset: GroundTruthSet,
   runs: EvalRun[],
 ): EvaluationSuite {
@@ -555,9 +384,7 @@ async function main() {
 
   const runs: EvalRun[] = [];
   for (const entry of configs) {
-    const results = args.mock
-      ? await runMockEvaluation(gt.queries, entry.config)
-      : await runLiveEvaluation(gt.queries, entry.config);
+    const results = await runLiveEvaluation(gt.queries, entry.config);
 
     runs.push({
       name: entry.name,
@@ -567,7 +394,7 @@ async function main() {
     });
   }
 
-  const suite = buildSuite(args.mock ? "mock" : "live", gt, runs);
+  const suite = buildSuite("live", gt, runs);
   const suitePath = await writeResults(suite);
 
   console.log(`\\nEvaluation mode: ${suite.mode}`);

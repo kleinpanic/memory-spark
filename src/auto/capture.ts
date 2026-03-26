@@ -39,7 +39,7 @@ export function createAutoCaptureHandler(deps: AutoCaptureDeps) {
     if (!shouldProcessAgent(agentId, cfg.agents, cfg.ignoreAgents ?? [])) return;
 
     // Extract user messages + assistant decision/fact patterns
-    const minLen = cfg.minMessageLength ?? 80;
+    const minLen = cfg.minMessageLength ?? 30;
     const captureTexts = extractCaptureMessages(event.messages, minLen);
     if (captureTexts.length === 0) return;
 
@@ -169,7 +169,7 @@ function containsDecisionPattern(text: string): boolean {
 }
 
 function containsFactPattern(text: string): boolean {
-  return /\b(runs on|runs at|located at|IP is|port \d+|the server|version \d|deployed to|configured as)\b/i.test(
+  return /\b(runs on|runs at|located at|IP is|port \d+|the server|version \d|deployed to|configured as|the issue|root cause|fixed by|the problem|resolved|the answer|the solution|the fix is|because of|due to|caused by)\b/i.test(
     text,
   );
 }
