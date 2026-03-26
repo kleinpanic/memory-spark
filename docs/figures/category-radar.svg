@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 760" width="760" height="760" role="img" aria-label="memory-spark chart">
+  <defs>
+    <style>
+      text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+    </style>
+  </defs>
+  <rect x="0" y="0" width="760" height="760" fill="#0d1117"/>
+  <rect x="12" y="12" width="736" height="736" rx="12" fill="#161b22" stroke="#30363d"/>
+  
+    <text x="32" y="58" fill="#c9d1d9" font-size="30" font-weight="700">Per-Category NDCG@10 (Full Pipeline)</text>
+    <text x="32" y="84" fill="#8b949e" font-size="16">Eight-category retrieval profile</text>
+    <circle cx="380" cy="400" r="50.0" fill="none" stroke="#30363d"/>
+<circle cx="380" cy="400" r="100.0" fill="none" stroke="#30363d"/>
+<circle cx="380" cy="400" r="150.0" fill="none" stroke="#30363d"/>
+<circle cx="380" cy="400" r="200.0" fill="none" stroke="#30363d"/>
+<circle cx="380" cy="400" r="250.0" fill="none" stroke="#30363d"/>
+    
+        <line x1="380" y1="400" x2="380.0" y2="150.0" stroke="#30363d"/>
+        <text x="380.0" y="122.0" fill="#c9d1d9" font-size="14" text-anchor="middle">configuration</text>
+      
+
+        <line x1="380" y1="400" x2="556.8" y2="223.2" stroke="#30363d"/>
+        <text x="576.6" y="203.4" fill="#c9d1d9" font-size="14" text-anchor="middle">cross-agent</text>
+      
+
+        <line x1="380" y1="400" x2="630.0" y2="400.0" stroke="#30363d"/>
+        <text x="658.0" y="400.0" fill="#c9d1d9" font-size="14" text-anchor="middle">history</text>
+      
+
+        <line x1="380" y1="400" x2="556.8" y2="576.8" stroke="#30363d"/>
+        <text x="576.6" y="596.6" fill="#c9d1d9" font-size="14" text-anchor="middle">infrastructure</text>
+      
+
+        <line x1="380" y1="400" x2="380.0" y2="650.0" stroke="#30363d"/>
+        <text x="380.0" y="678.0" fill="#c9d1d9" font-size="14" text-anchor="middle">mistakes</text>
+      
+
+        <line x1="380" y1="400" x2="203.2" y2="576.8" stroke="#30363d"/>
+        <text x="183.4" y="596.6" fill="#c9d1d9" font-size="14" text-anchor="middle">reference</text>
+      
+
+        <line x1="380" y1="400" x2="130.0" y2="400.0" stroke="#30363d"/>
+        <text x="102.0" y="400.0" fill="#c9d1d9" font-size="14" text-anchor="middle">safety</text>
+      
+
+        <line x1="380" y1="400" x2="203.2" y2="223.2" stroke="#30363d"/>
+        <text x="183.4" y="203.4" fill="#c9d1d9" font-size="14" text-anchor="middle">workflow</text>
+      
+    <polygon points="380.0,219.7 546.3,233.7 601.5,400.0 539.1,559.1 380.0,641.3 203.2,576.8 155.1,400.0 219.1,239.1" fill="#58a6ff" fill-opacity="0.22" stroke="#58a6ff" stroke-width="2"/>
+    <circle cx="380.0" cy="219.7" r="4" fill="#58a6ff"/>
+<circle cx="546.3" cy="233.7" r="4" fill="#58a6ff"/>
+<circle cx="601.5" cy="400.0" r="4" fill="#58a6ff"/>
+<circle cx="539.1" cy="559.1" r="4" fill="#58a6ff"/>
+<circle cx="380.0" cy="641.3" r="4" fill="#58a6ff"/>
+<circle cx="203.2" cy="576.8" r="4" fill="#58a6ff"/>
+<circle cx="155.1" cy="400.0" r="4" fill="#58a6ff"/>
+<circle cx="219.1" cy="239.1" r="4" fill="#58a6ff"/>
+    
+</svg>

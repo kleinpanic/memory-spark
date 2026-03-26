@@ -34,6 +34,29 @@ jobs:
       - name: Run unit tests
         run: npm test
 
+      - name: Coverage report
+        run: |
+          npx --yes c8 --reporter=text-summary --reporter=lcov npm test | tee coverage-summary.txt
+          mkdir -p coverage
+          cp coverage-summary.txt coverage/summary.txt
+
+      - name: Run evaluation (mock mode)
+        run: node --import tsx evaluation/run.ts --mock
+
+      - name: Generate evaluation charts
+        run: node --import tsx evaluation/charts.ts --results evaluation/results/latest.json
+
+      - name: Upload coverage + evaluation artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: research-artifacts
+          path: |
+            coverage/
+            coverage/lcov.info
+            evaluation/results/
+            docs/figures/
+          if-no-files-found: warn
+
       - name: Dead code check
         run: npx knip
         continue-on-error: true
