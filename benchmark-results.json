@@ -1,0 +1,560 @@
+{
+  "timestamp": "2026-03-26T06:54:35.141Z",
+  "metrics": {
+    "mrr": 0.125,
+    "avgRecall": 0.140625,
+    "avgPrecision": 0.056249999999999994,
+    "foundInTop5": 6,
+    "total": 32,
+    "avgAge": 0.017429056495949072
+  },
+  "queries": [
+    {
+      "query": "Spark node IP address",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/2026-03-21-memory-spark-audit.md",
+        "AGENTS.md",
+        "memory/2026-03-16-gateway-binding.md",
+        "memory/2026-03-21-memory-spark-audit-report.md",
+        "memory/2026-03-16-gateway-binding.md"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.01235026851851852
+    },
+    {
+      "query": "model for complex coding tasks",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "MEMORY.md",
+        "WORKFLOW_AUTO.md",
+        "SOUL.md",
+        "memory/2026-03-21.md",
+        "memory/2026-02-11-klein-big-request.md"
+      ],
+      "recallAt5": 1,
+      "precisionAt5": 0.2,
+      "reciprocalRank": 1,
+      "avgAge": 0.01915958796296296
+    },
+    {
+      "query": "how to restart the gateway",
+      "expectedPaths": [
+        "AGENTS.md",
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/tech-digest/2026-03-09.md",
+        "AGENTS.md",
+        "memory/tech-digest/2026-02-13.md",
+        "mistakes.md",
+        "memory/tech-digest/2026-02-12.md"
+      ],
+      "recallAt5": 0.5,
+      "precisionAt5": 0.2,
+      "reciprocalRank": 0.5,
+      "avgAge": 0.025960259259259256
+    },
+    {
+      "query": "model alias incident",
+      "expectedPaths": [
+        "memory/2026-03-02-model-alias.md"
+      ],
+      "retrievedPaths": [
+        "memory/2026-02-24.md",
+        "memory/2026-02-24.md",
+        "memory/2026-02-25-config-revert.md",
+        "memory/2026-03-05.md",
+        "mistakes.md"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.02117362962962963
+    },
+    {
+      "query": "never use config.patch for agents.list",
+      "expectedPaths": [
+        "MEMORY.md",
+        "mistakes.md"
+      ],
+      "retrievedPaths": [
+        "MEMORY.md",
+        "SOUL.md",
+        "memory/2026-02-15.md",
+        "capture/meta/2026-03-26",
+        "MEMORY.md"
+      ],
+      "recallAt5": 0.5,
+      "precisionAt5": 0.4,
+      "reciprocalRank": 1,
+      "avgAge": 0.012597263888888887
+    },
+    {
+      "query": "embedding dimensions for nemotron",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/2026-03-20.md",
+        "memory/2026-03-19.md",
+        "memory/2026-03-20.md",
+        "capture/meta/2026-03-26",
+        "capture/meta/2026-03-26"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.022802516203703705
+    },
+    {
+      "query": "vLLM port for inference",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/2026-02-26-0433.md",
+        "memory/2026-03-21.md",
+        "memory/2026-03-21.md",
+        "memory/2026-02-22.md",
+        "memory/2026-03-06.md"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.017011439814814816
+    },
+    {
+      "query": "LanceDB data directory",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/2026-03-21-memory-spark-audit-report.md",
+        "memory/2026-03-06.md",
+        "memory/2026-03-21-memory-spark-audit-report.md",
+        "capture/meta/2026-03-26",
+        "memory/2026-03-06.md"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.021303796296296296
+    },
+    {
+      "query": "auto-recall hook implementation",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/2026-03-21-memory-spark-audit-report.md",
+        "memory/2026-03-21.md",
+        "memory/2026-02-11-autonomous-audit.md",
+        "capture/meta/2026-03-26",
+        "memory/2026-02-11-setup-review.md"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.02299420138888889
+    },
+    {
+      "query": "capture source weighting boost",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/2026-02-13.md",
+        "memory/2026-03-15-tcc-permissions.md",
+        "memory/2026-02-13.md",
+        "memory/2026-03-11-xcode-mcp-debugging.md",
+        "memory/2026-02-13.md"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.0052743379629629624
+    },
+    {
+      "query": "quality gate minimum score",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/epstein-rehaul-audit.md",
+        "capture/meta/2026-03-26",
+        "USER.md",
+        "capture/meta/2026-03-26",
+        "SOUL.md"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.01897780324074074
+    },
+    {
+      "query": "rerank model nvidia nemotron",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/2026-03-14-request-timed-out-before-a-res.md",
+        "memory/2026-03-01.md",
+        "nemotron_super_entry.txt",
+        "memory/2026-03-04-2251.md",
+        "PLAN-nemotron-super-production.md"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.01762670833333333
+    },
+    {
+      "query": "chokidar file watcher debounce",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/2026-02-15-triage-report.md",
+        "memory/2026-03-03-voice-bridge-fix.md",
+        "memory/2026-02-15.md",
+        "capture/meta/2026-03-26",
+        "memory/2026-02-15.md"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.01188660648148148
+    },
+    {
+      "query": "RRF reciprocal rank fusion",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/2026-03-18.md",
+        "memory/2026-03-17.md",
+        "memory/epstein-rehaul-audit.md",
+        "memory/2026-03-17.md",
+        "memory/2026-03-06-qwen-nemotron.md"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.01120595601851852
+    },
+    {
+      "query": "session compaction re-index",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/2026-02-13.md",
+        "memory/2026-02-28-0924.md",
+        "memory/2026-02-13.md",
+        "memory/2026-03-17.md",
+        "memory/2026-02-13.md"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.007207787037037038
+    },
+    {
+      "query": "LanceDB merge insert upsert",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "capture/meta/2026-03-26",
+        "memory/2026-03-21.md",
+        "memory/2026-03-21-memory-spark-audit-report.md",
+        "memory/2026-03-11.md",
+        "FORGE-OVERHAUL-PLAN.md"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.025277328703703705
+    },
+    {
+      "query": "OpenClaw plugin SDK registerTool",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/2026-03-21-session-summary.md",
+        "memory/2026-03-21.md",
+        "memory/2026-03-20.md",
+        "memory/2026-03-19-implementation-session-prep.md",
+        "memory/2026-03-21.md"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.013035254629629628
+    },
+    {
+      "query": "TypeBox schema for tools",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/2026-03-19.md",
+        "TOOLS.md",
+        "TOOLS.md",
+        "memory/2026-03-20.md",
+        "TOOLS.md"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.011524141203703703
+    },
+    {
+      "query": "memory spark plugin architecture",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/2026-03-05.md",
+        "capture/meta/2026-03-26",
+        "memory/2026-03-21-memory-spark-audit-report.md",
+        "capture/meta/2026-03-26",
+        "memory/2026-03-21-memory-spark-audit-report.md"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.02757761805555556
+    },
+    {
+      "query": "zero shot classifier categories",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/2026-02-26-0433.md",
+        "memory/epstein-rehaul-audit.md",
+        "capture/meta/2026-03-26",
+        "MEMORY.md",
+        "capture/meta/2026-03-26"
+      ],
+      "recallAt5": 1,
+      "precisionAt5": 0.2,
+      "reciprocalRank": 0.25,
+      "avgAge": 0.02111595601851852
+    },
+    {
+      "query": "NER entity extraction service",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/2026-03-17.md",
+        "memory/2026-02-28.md",
+        "memory/2026-02-28.md",
+        "memory/2026-03-17.md",
+        "memory/epstein-rehaul-audit.md"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.012461300925925926
+    },
+    {
+      "query": "agent bootstrap spam quality filter",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/2026-02-13.md",
+        "capture/meta/2026-03-26",
+        "memory/2026-02-15-clawrouter-agents-analysis.md",
+        "MEMORY.md",
+        "memory/epstein-rehaul-audit.md"
+      ],
+      "recallAt5": 1,
+      "precisionAt5": 0.2,
+      "reciprocalRank": 0.25,
+      "avgAge": 0.009932990740740739
+    },
+    {
+      "query": "archive path penalty scoring",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/epstein-rehaul-audit.md",
+        "memory/2026-03-12-full-infra-state.md",
+        "memory/2026-03-08.md",
+        "memory/2026-03-17.md",
+        "mt-srv-inventory-2026-03-12.txt"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.012934652777777778
+    },
+    {
+      "query": "SQLite to LanceDB migration",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "capture/meta/2026-03-26",
+        "memory/2026-03-19.md",
+        "memory/2026-03-21-memory-spark-audit-report.md",
+        "capture/meta/2026-03-26",
+        "memory/2026-03-01.md"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.027025444444444446
+    },
+    {
+      "query": "vector index IVF PQ partitions",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/2026-03-20.md",
+        "memory/2026-03-21-memory-spark-audit-report.md",
+        "capture/meta/2026-03-26",
+        "capture/meta/2026-03-26",
+        "memory/2026-02-26-0433.md"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.025347175925925926
+    },
+    {
+      "query": "contextual retrieval prefix embedding",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "capture/meta/2026-03-26",
+        "capture/meta/2026-03-26",
+        "memory/2026-03-15-request-timed-out-before-a-res.md",
+        "capture/meta/2026-03-26",
+        "memory/2026-03-02-rag-readme.md"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.02271292361111111
+    },
+    {
+      "query": "temporal decay floor 0.8",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/2026-02-15.md",
+        "capture/meta/2026-03-26",
+        "memory/2026-02-13.md",
+        "capture/meta/2026-03-26",
+        "memory/2026-02-13.md"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.018714997685185187
+    },
+    {
+      "query": "MMR maximum marginal relevance diversity",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/2026-03-13.md",
+        "memory/2026-03-16.md",
+        "memory/epstein-rehaul-audit.md",
+        "capture/meta/2026-03-26",
+        "memory/2026-03-15-request-timed-out-before-a-res.md"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.01812579861111111
+    },
+    {
+      "query": "prompt injection detection security",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/2026-02-11-setup-review.md",
+        "AGENTS.md",
+        "AGENTS.md",
+        "memory/2026-02-14-ghost-upgrade.md",
+        "memory/2026-02-14-ghost-upgrade.md"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.016492039351851853
+    },
+    {
+      "query": "MISTAKES.md source weight multiplier",
+      "expectedPaths": [
+        "MEMORY.md",
+        "MISTAKES.md"
+      ],
+      "retrievedPaths": [
+        "MISTAKES.md",
+        "capture/meta/2026-03-26",
+        "MISTAKES.md",
+        "memory/2026-03-20.md",
+        "MISTAKES.md"
+      ],
+      "recallAt5": 0.5,
+      "precisionAt5": 0.6,
+      "reciprocalRank": 1,
+      "avgAge": 0.01736065972222222
+    },
+    {
+      "query": "EmbedQueue retry backoff concurrency",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/2026-03-21.md",
+        "AGENTS.md",
+        "memory/2026-03-18.md",
+        "memory/2026-03-19.md",
+        "memory/2026-03-19.md"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.02056231712962963
+    },
+    {
+      "query": "FTS full text search BM25",
+      "expectedPaths": [
+        "MEMORY.md"
+      ],
+      "retrievedPaths": [
+        "memory/2026-03-17.md",
+        "memory/2026-03-21-memory-spark-audit-report.md",
+        "memory/2026-03-09-spark-fallback.md",
+        "memory/2026-03-17.md",
+        "memory/2026-02-13.md"
+      ],
+      "recallAt5": 0,
+      "precisionAt5": 0,
+      "reciprocalRank": 0,
+      "avgAge": 0.009997046296296297
+    }
+  ]
+}
