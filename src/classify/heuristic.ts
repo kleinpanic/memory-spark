@@ -8,7 +8,8 @@
  * resource pressure or the zero-shot container is down.
  */
 
-import type { ClassifyResult } from "./zero-shot.js";
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- CaptureCategory documents the label type in JSDoc below
+import type { ClassifyResult, CaptureCategory } from "./zero-shot.js";
 
 /**
  * Simple pattern-based classifier for user messages.
