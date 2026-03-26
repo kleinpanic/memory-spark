@@ -1,0 +1,47 @@
+{
+  "$schema": "./ground-truth.schema.json",
+  "_comment": "Deployment-specific ground truth for eval tests. Edit this file to match YOUR indexed content.",
+  "_instructions": "Each scenario tests whether memory-spark retrieves context that helps agents answer real questions. Customize mustContain/niceToHave to match YOUR knowledge base.",
+  "practical": [
+    {
+      "scenario": "Agent needs to find a critical safety rule",
+      "query": "gateway restart safety rules",
+      "mustContain": ["restart"],
+      "niceToHave": ["approval", "banned"],
+      "category": "safety"
+    },
+    {
+      "scenario": "Agent needs to locate a server or service",
+      "query": "primary inference server connection",
+      "mustContain": ["server"],
+      "niceToHave": [],
+      "category": "infrastructure"
+    },
+    {
+      "scenario": "Agent needs to follow a documented workflow",
+      "query": "task tracking workflow create",
+      "mustContain": ["task"],
+      "niceToHave": ["create", "track"],
+      "category": "workflow"
+    },
+    {
+      "scenario": "Agent needs to recall a past incident",
+      "query": "previous incident post-mortem",
+      "mustContain": [],
+      "niceToHave": ["incident", "fix"],
+      "category": "history"
+    }
+  ],
+  "ab": [
+    {
+      "question": "What are the safety rules for restarting services?",
+      "groundTruth": ["restart"],
+      "category": "safety"
+    },
+    {
+      "question": "How is the infrastructure connected?",
+      "groundTruth": ["server"],
+      "category": "infrastructure"
+    }
+  ]
+}

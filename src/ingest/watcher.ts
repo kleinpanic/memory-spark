@@ -256,6 +256,14 @@ export function createWatcher(opts: {
           dirToAgent.set(memDir, agentId);
         } catch { /* skip */ }
 
+        // Watch mistakes/ dir
+        const mistakesDir = path.join(wsDir, "mistakes");
+        try {
+          await fs.access(mistakesDir);
+          watchPaths.push(mistakesDir);
+          dirToAgent.set(mistakesDir, agentId);
+        } catch { /* skip */ }
+
         // Watch sessions dir
         try {
           await fs.access(sessDir);

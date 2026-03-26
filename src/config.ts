@@ -144,7 +144,7 @@ function loadSparkToken(): string | undefined {
   if (process.env["SPARK_BEARER_TOKEN"]) {
     return process.env["SPARK_BEARER_TOKEN"];
   }
-  // 2. ~/.openclaw/.env file (default when running as OpenClaw plugin on user)
+  // 2. ~/.openclaw/.env file (default when running as OpenClaw plugin)
   try {
     const envPath = path.join(os.homedir(), ".openclaw", ".env");
     const content = fs.readFileSync(envPath, "utf-8");
@@ -156,7 +156,7 @@ function loadSparkToken(): string | undefined {
 }
 
 /** Default Spark host fallback — used when neither config nor env specifies a host. */
-const FALLBACK_SPARK_HOST = "10.x.x.x";
+const FALLBACK_SPARK_HOST = "localhost";
 
 /**
  * Build a full default config using the resolved sparkHost and sparkToken.
@@ -278,7 +278,7 @@ function expandHome(p: string): string {
  *   1. userConfig.sparkHost / userConfig.sparkBearerToken  (openclaw.json plugin config)
  *   2. process.env.SPARK_HOST / SPARK_BEARER_TOKEN         (env var)
  *   3. ~/.openclaw/.env file                               (dotenv fallback)
- *   4. hardcoded fallback (10.x.x.x / undefined)
+ *   4. hardcoded fallback (localhost / undefined)
  */
 export function resolveConfig(userConfig?: Partial<MemorySparkConfig>): MemorySparkConfig {
   // Resolve host and token with proper precedence
