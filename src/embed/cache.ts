@@ -23,7 +23,7 @@ export interface EmbedCacheConfig {
   ttlMs: number;
 }
 
-export const DEFAULT_CACHE_CONFIG: EmbedCacheConfig = {
+const DEFAULT_CACHE_CONFIG: EmbedCacheConfig = {
   enabled: true,
   maxSize: 256,
   ttlMs: 30 * 60 * 1000, // 30 minutes

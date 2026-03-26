@@ -41,6 +41,7 @@ interface QueueItem<T> {
 
 export class EmbedQueue {
   private provider: EmbedProvider;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- heterogeneous queue items
   private queue: Array<QueueItem<any>> = [];
   private active = 0;
   private concurrency: number;

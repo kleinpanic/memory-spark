@@ -31,7 +31,7 @@ const EXCLUDED_PATH_PATTERNS: RegExp[] = [
  * Detect non-English content by character class ratio.
  * Returns the fraction of characters that are CJK, Cyrillic, Arabic, etc.
  */
-export function nonLatinRatio(text: string): number {
+function nonLatinRatio(text: string): number {
   if (!text) return 0;
   // Use Unicode property escapes for CJK, Hangul, Cyrillic, Arabic, Thai, Devanagari
   const nonLatin = text.match(

@@ -13,7 +13,7 @@ export interface ClassifyResult {
   score: number;
 }
 
-export const CAPTURE_LABELS: CaptureCategory[] = [
+const CAPTURE_LABELS: CaptureCategory[] = [
   "fact",
   "preference",
   "decision",

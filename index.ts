@@ -472,6 +472,7 @@ const memorySpark = {
           },
         };
 
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenClaw plugin SDK expects untyped tool arrays
         return [searchTool, getTool, storeTool, forgetTool, referenceSearchTool, indexStatusTool, forgetByPathTool] as any;
       },
       { names: ["memory_search", "memory_get", "memory_store", "memory_forget", "memory_reference_search", "memory_index_status", "memory_forget_by_path"] },
@@ -480,6 +481,7 @@ const memorySpark = {
     // -------------------------------------------------------------------
     // 2. Auto-recall (before_prompt_build)
     // -------------------------------------------------------------------
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenClaw plugin SDK hooks are untyped
     api.on("before_prompt_build", async (event: any, ctx: any) => {
       try {
         const s = await getState(cfg, api.logger);
@@ -495,6 +497,7 @@ const memorySpark = {
     // -------------------------------------------------------------------
     // 3. Auto-capture (agent_end)
     // -------------------------------------------------------------------
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenClaw plugin SDK hooks are untyped
     api.on("agent_end", async (event: any, ctx: any) => {
       try {
         const s = await getState(cfg, api.logger);
@@ -510,6 +513,7 @@ const memorySpark = {
     // -------------------------------------------------------------------
     // 4. After compaction — re-index compacted session
     // -------------------------------------------------------------------
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenClaw plugin SDK hooks are untyped
     api.on("after_compaction", async (event: any, ctx: any) => {
       try {
         if (!event.sessionFile) return;

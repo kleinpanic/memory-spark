@@ -178,7 +178,7 @@ export function hybridMerge(
   const merged = new Map<string, { result: SearchResult; score: number; sources: number }>();
 
   // Vector results: use original cosine similarity as base score
-  vectorResults.forEach((r, rank) => {
+  vectorResults.forEach((r, _rank) => {
     const id = r.chunk.id;
     merged.set(id, {
       result: r,
@@ -328,8 +328,8 @@ function cleanQueryText(text: string): string {
   text = text.replace(/<summary id="sum_[a-f0-9]+"[\s\S]*?<\/summary>/g, "");
 
   // Strip oc-tasks injection blocks
-  text = text.replace(/## Current Task Queue[\s\S]*?(?=\n## [^C]|\n---|\Z)/g, "");
-  text = text.replace(/### 🔄 In Progress[\s\S]*?(?=\n## |\n---|\Z)/g, "");
+  text = text.replace(/## Current Task Queue[\s\S]*?(?=\n## [^C]|\n---|$)/g, "");
+  text = text.replace(/### 🔄 In Progress[\s\S]*?(?=\n## |\n---|$)/g, "");
 
   // Strip media attachment lines
   text = text.replace(/\[media attached:[^\]]*\][^\n]*/g, "");

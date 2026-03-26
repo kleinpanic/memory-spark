@@ -22,7 +22,7 @@ export interface DimsLockInfo {
 
 const LOCK_FILE = "dims-lock.json";
 
-export async function readDimsLock(dataDir: string): Promise<DimsLockInfo | null> {
+async function readDimsLock(dataDir: string): Promise<DimsLockInfo | null> {
   try {
     const raw = await fs.readFile(path.join(dataDir, LOCK_FILE), "utf-8");
     return JSON.parse(raw) as DimsLockInfo;
@@ -31,7 +31,7 @@ export async function readDimsLock(dataDir: string): Promise<DimsLockInfo | null
   }
 }
 
-export async function writeDimsLock(dataDir: string, info: DimsLockInfo): Promise<void> {
+async function writeDimsLock(dataDir: string, info: DimsLockInfo): Promise<void> {
   await fs.mkdir(dataDir, { recursive: true });
   await fs.writeFile(path.join(dataDir, LOCK_FILE), JSON.stringify(info, null, 2) + "\n");
 }
