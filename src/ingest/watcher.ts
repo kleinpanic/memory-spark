@@ -107,7 +107,12 @@ export function createWatcher(opts: {
     return "shared";
   }
 
+  /** Common root for all reference library paths — set during init */
+  let referenceRoot: string | null = null;
+
   function resolveWorkspaceDir(agentId: string): string {
+    // "shared" agent = reference library files → use the common reference root
+    if (agentId === "shared" && referenceRoot) return referenceRoot;
     const ocDir = path.join(os.homedir(), ".openclaw");
     return path.join(ocDir, `workspace-${agentId}`);
   }
@@ -272,16 +277,27 @@ export function createWatcher(opts: {
 
       // 2b. Add reference library paths (indexed as content_type: "reference")
       if (opts.cfg.reference?.enabled && opts.cfg.reference.paths.length > 0) {
+        const resolvedRefPaths: string[] = [];
         for (const refPath of opts.cfg.reference.paths) {
           const resolved = refPath.startsWith("~/")
             ? path.join(os.homedir(), refPath.slice(2))
             : refPath;
           try {
             await fs.access(resolved);
+            resolvedRefPaths.push(resolved);
             watchPaths.push(resolved);
             dirToAgent.set(resolved, "shared");
             opts.logger.info(`memory-spark watcher: added reference path ${resolved}`);
           } catch { /* skip */ }
+        }
+        // Compute common root for meaningful relative paths (e.g. "ReferenceLibrary/vllm/quickstart.md")
+        if (resolvedRefPaths.length > 0) {
+          let common = resolvedRefPaths[0]!;
+          while (common !== "/" && !resolvedRefPaths.every((p) => p.startsWith(common + "/") || p === common)) {
+            common = path.dirname(common);
+          }
+          referenceRoot = common;
+          opts.logger.info(`memory-spark watcher: reference root = ${referenceRoot}`);
         }
       }
 
@@ -424,11 +440,23 @@ async function runBootPass(
   }
 
   // Boot pass: reference library paths (content_type will be set to "reference" by isReferencePath)
+  // Use the common reference root for relative path generation so tag filtering works.
+  // e.g. ~/Documents/OpenClaw/ as root → path = "ReferenceLibrary/vllm/quickstart.md"
   if (opts.cfg.reference?.enabled && opts.cfg.reference.paths.length > 0) {
+    const resolvedRefPaths: string[] = [];
     for (const refPath of opts.cfg.reference.paths) {
       const resolved = refPath.startsWith("~/")
         ? path.join(os.homedir(), refPath.slice(2))
         : refPath;
+      resolvedRefPaths.push(resolved);
+    }
+    // Compute common root (same logic as init, but boot pass runs standalone)
+    let refRoot = resolvedRefPaths[0] ?? "/";
+    while (refRoot !== "/" && !resolvedRefPaths.every((p) => p.startsWith(refRoot + "/") || p === refRoot)) {
+      refRoot = path.dirname(refRoot);
+    }
+
+    for (const resolved of resolvedRefPaths) {
       try {
         await fs.access(resolved);
         const refFiles = await walkSupportedFiles(resolved);
@@ -436,14 +464,16 @@ async function runBootPass(
           total++;
           try {
             const stat = await fs.stat(absPath);
-            const relPath = path.relative(resolved, absPath);
+            // Store path relative to common root so tag prefixes match
+            // e.g. "ReferenceLibrary/vllm/quickstart.md" or "InternalDocs/HARDWARE.md"
+            const relPath = path.relative(refRoot, absPath);
             const key = `shared::${relPath}`;
             const existing = indexedMap.get(key);
             if (existing && existing >= stat.mtime.toISOString()) {
               skipped++;
               continue;
             }
-            queue.push({ absPath, agentId: "shared", wsDir: resolved, source: "memory", contentType: "reference" });
+            queue.push({ absPath, agentId: "shared", wsDir: refRoot, source: "memory", contentType: "reference" });
           } catch {
             skipped++;
           }
