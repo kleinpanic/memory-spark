@@ -7,11 +7,12 @@ import type { MemorySparkConfig } from "../config.js";
 import type { StorageBackend, MemoryChunk } from "../storage/backend.js";
 import type { EmbedProvider } from "../embed/provider.js";
 import type { EmbedQueue } from "../embed/queue.js";
-import { chunkDocument } from "../embed/chunker.js";
+import { chunkDocument, cleanChunkText } from "../embed/chunker.js";
 import { extractText } from "./parsers.js";
 import { extractSessionText } from "./sessions.js";
 import { toRelativePath } from "./workspace.js";
 import { tagEntities } from "../classify/ner.js";
+import { scoreChunkQuality } from "../classify/quality.js";
 import crypto from "node:crypto";
 import path from "node:path";
 
@@ -77,9 +78,31 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
       return { filePath: opts.filePath, chunksAdded: 0, chunksRemoved: 0, durationMs: Date.now() - start };
     }
 
+    // 3b. Quality gate — score chunks and drop noise before embedding
+    const minQuality = opts.cfg.ingest?.minQuality ?? 0.3;
+    const qualifiedChunks = rawChunks.filter((c) => {
+      const q = scoreChunkQuality(c.text, relPath, source);
+      return q.score >= minQuality;
+    });
+
+    if (qualifiedChunks.length === 0) {
+      opts.logger?.info(`memory-spark: ${source} ${relPath} — all ${rawChunks.length} chunks filtered by quality gate`);
+      return { filePath: opts.filePath, chunksAdded: 0, chunksRemoved: 0, durationMs: Date.now() - start };
+    }
+
+    // 3c. Clean chunk text — strip metadata noise before embedding
+    const cleanedChunks = qualifiedChunks.map((c) => ({
+      ...c,
+      text: cleanChunkText(c.text),
+    })).filter((c) => c.text.trim().length > 0);
+
+    if (cleanedChunks.length === 0) {
+      return { filePath: opts.filePath, chunksAdded: 0, chunksRemoved: 0, durationMs: Date.now() - start };
+    }
+
     // 4. NER tag (best-effort, sequential to avoid overwhelming single-worker service)
     const entitiesPerChunk: string[][] = [];
-    for (const c of rawChunks) {
+    for (const c of cleanedChunks) {
       try {
         entitiesPerChunk.push(await tagEntities(c.text, opts.cfg));
       } catch {
@@ -87,12 +110,12 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
       }
     }
 
-    // 5. Embed batch
-    const vectors = await opts.embed.embedBatch(rawChunks.map((c) => c.text));
+    // 5. Embed batch (on cleaned text — vectors represent content, not metadata)
+    const vectors = await opts.embed.embedBatch(cleanedChunks.map((c) => c.text));
 
     // 6. Build MemoryChunk objects with RELATIVE paths
     const now = new Date().toISOString();
-    const chunks: MemoryChunk[] = rawChunks.map((raw, i) => ({
+    const chunks: MemoryChunk[] = cleanedChunks.map((raw, i) => ({
       id: chunkId(relPath, raw.startLine, opts.agentId),
       path: relPath,
       source,

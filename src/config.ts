@@ -47,6 +47,8 @@ export interface AutoRecallConfig {
   maxResults: number;
   minScore: number;
   queryMessageCount: number;
+  /** Maximum tokens to inject as recalled memories. Default: 2000 */
+  maxInjectionTokens: number;
 }
 
 export interface AutoCaptureConfig {
@@ -79,11 +81,22 @@ export interface WatchConfig {
   fileTypes: string[];
   debounceMs: number;
   indexOnBoot: boolean;
+  // Glob-like patterns for files to skip (e.g. archive dirs, backups)
+  excludePatterns: string[];
+  /** Exact relative paths to skip (e.g. "memory/learnings.md") */
+  excludePathsExact: string[];
+  /** Whether to index session JSONL transcripts. Default: false (LCM handles sessions) */
+  indexSessions: boolean;
 }
 
 export interface MigrateConfig {
   autoMigrateOnFirstBoot: boolean;
   statusFile: string;
+}
+
+export interface IngestConfig {
+  /** Minimum quality score (0-1) for a chunk to be indexed. Default: 0.3 */
+  minQuality: number;
 }
 
 export interface MemorySparkConfig {
@@ -95,6 +108,7 @@ export interface MemorySparkConfig {
   autoRecall: AutoRecallConfig;
   autoCapture: AutoCaptureConfig;
   watch: WatchConfig;
+  ingest: IngestConfig;
   migrate: MigrateConfig;
   spark: SparkEndpoints;
   /** Override SPARK_HOST env var. Used to point at a different Spark node. */
@@ -162,8 +176,9 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
       agents: ["*"],
       ignoreAgents: [],
       maxResults: 5,
-      minScore: 0.65,
-      queryMessageCount: 4,
+      minScore: 0.75,
+      queryMessageCount: 2,
+      maxInjectionTokens: 2000,
     },
     autoCapture: {
       enabled: true,
@@ -180,6 +195,12 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
       fileTypes: ["md", "txt", "pdf", "docx"],
       debounceMs: 2000,
       indexOnBoot: true,
+      excludePatterns: ["**/archive/**", "**/*.bak", "**/*-session-save.md"],
+      excludePathsExact: ["memory/learnings.md"],
+      indexSessions: false,
+    },
+    ingest: {
+      minQuality: 0.3,
     },
     migrate: {
       autoMigrateOnFirstBoot: true,
@@ -276,6 +297,7 @@ export function resolveConfig(userConfig?: Partial<MemorySparkConfig>): MemorySp
         path: expandHome(p.path),
       })) ?? defaults.watch.paths,
     },
+    ingest: { ...defaults.ingest, ...userConfig.ingest },
     migrate: {
       ...defaults.migrate,
       ...userConfig.migrate,

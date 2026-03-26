@@ -50,13 +50,17 @@ export function escapeMemoryText(text: string): string {
 /**
  * Format recalled memories with security preamble.
  * Wraps in XML tags with clear instructions to treat as untrusted data.
+ * Includes age and confidence metadata to help agents assess reliability.
  */
-export function formatRecalledMemories(memories: Array<{ source: string; text: string }>): string {
+export function formatRecalledMemories(memories: Array<{ source: string; text: string; score?: number; updatedAt?: string }>): string {
   if (memories.length === 0) return "";
 
   const lines = memories.map((m, i) => {
     const escaped = escapeMemoryText(m.text);
-    return `  <memory index="${i + 1}" source="${escapeMemoryText(m.source)}">${escaped}</memory>`;
+    const age = m.updatedAt ? humanAge(m.updatedAt) : "";
+    const ageAttr = age ? ` age="${age}"` : "";
+    const confAttr = m.score ? ` confidence="${m.score.toFixed(2)}"` : "";
+    return `  <memory index="${i + 1}" source="${escapeMemoryText(m.source)}"${ageAttr}${confAttr}>${escaped}</memory>`;
   });
 
   return [
@@ -68,4 +72,15 @@ export function formatRecalledMemories(memories: Array<{ source: string; text: s
     ...lines,
     "</relevant-memories>",
   ].join("\n");
+}
+
+function humanAge(isoDate: string): string {
+  const ms = Date.now() - new Date(isoDate).getTime();
+  if (ms < 0) return "just now";
+  const hours = ms / (3600 * 1000);
+  if (hours < 1) return `${Math.round(ms / 60000)}m ago`;
+  if (hours < 24) return `${Math.round(hours)}h ago`;
+  const days = Math.round(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return `${Math.round(days / 30)}mo ago`;
 }

@@ -21,6 +21,7 @@ import { ingestFile } from "./pipeline.js";
 import { discoverWorkspaceFiles, discoverAllAgents, toRelativePath } from "./workspace.js";
 import { SUPPORTED_EXTS } from "./parsers.js";
 import chokidar, { type FSWatcher } from "chokidar";
+import { minimatch } from "minimatch";
 import path from "node:path";
 import os from "node:os";
 import fs from "node:fs/promises";
@@ -112,8 +113,25 @@ export function createWatcher(opts: {
 
   function shouldIndex(filePath: string): boolean {
     const ext = path.extname(filePath).replace(".", "").toLowerCase();
-    if (ext === "jsonl") return true; // Session files
-    return SUPPORTED_EXTS.has(ext);
+
+    // Session JSONL: only index if explicitly enabled
+    if (ext === "jsonl") return opts.watch.indexSessions ?? false;
+
+    if (!SUPPORTED_EXTS.has(ext)) return false;
+
+    // Check exclude patterns (glob) and exact paths
+    const agentId = resolveAgentForPath(filePath);
+    const wsDir = resolveWorkspaceDir(agentId);
+    const relPath = path.relative(wsDir, filePath);
+
+    for (const pattern of opts.watch.excludePatterns ?? []) {
+      if (minimatch(relPath, pattern, { dot: true })) return false;
+    }
+    for (const exact of opts.watch.excludePathsExact ?? []) {
+      if (relPath === exact) return false;
+    }
+
+    return true;
   }
 
   function sourceForPath(filePath: string): "memory" | "sessions" | "ingest" {
