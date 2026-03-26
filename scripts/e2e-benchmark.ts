@@ -15,6 +15,7 @@
 import { resolveConfig } from "../src/config.js";
 import { LanceDBBackend } from "../src/storage/lancedb.js";
 import { createEmbedProvider } from "../src/embed/provider.js";
+import { EmbedQueue } from "../src/embed/queue.js";
 import { createReranker } from "../src/rerank/reranker.js";
 import { createAutoRecallHandler } from "../src/auto/recall.js";
 
@@ -89,18 +90,20 @@ async function main() {
   const backend = new LanceDBBackend(cfg);
   await backend.open();
   const embed = await createEmbedProvider(cfg.embed);
+  const queue = new EmbedQueue(embed, { concurrency: 1, maxRetries: 2, timeoutMs: 30000 });
   const reranker = await createReranker(cfg.rerank);
 
   const status = await backend.status();
   console.log(`Index: ${status.chunkCount} chunks`);
-  console.log(`Reranker: ${cfg.rerank.enabled ? "enabled" : "off"}\n`);
+  console.log(`Reranker: ${cfg.rerank.enabled ? "enabled" : "off"}`);
+  console.log(`EmbedQueue: enabled (production path)\n`);
 
-  // Use raw embed provider (not EmbedQueue) to avoid queue<>Promise.all
-  // concurrency issues during testing. Production uses EmbedQueue via cachedEmbed.
+  // Full production pipeline: EmbedQueue → vector → FTS → hybrid merge →
+  // source weighting → temporal decay → MMR → cross-encoder rerank
   const handler = createAutoRecallHandler({
     cfg: cfg.autoRecall,
     backend,
-    embed,
+    embed: queue,
     reranker,
   });
 

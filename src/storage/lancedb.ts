@@ -279,18 +279,15 @@ export class LanceDBBackend implements StorageBackend {
     if (opts.agentId) filters.push(`agent_id = '${escapeSql(opts.agentId)}'`);
     if (opts.source) filters.push(`source = '${escapeSql(opts.source)}'`);
     if (opts.contentType) filters.push(`content_type = '${escapeSql(opts.contentType)}'`);
+    // pathContains: LanceDB supports LIKE in WHERE on vector search (unlike FTS)
+    if (opts.pathContains) {
+      filters.push(`path LIKE '%${escapeSql(opts.pathContains)}%'`);
+    }
     if (filters.length > 0) {
       q = q.where(filters.join(" AND "));
     }
 
-    let rows = await q.toArray();
-    // Post-filter for path contains (LanceDB SQL doesn't have ILIKE on all builds)
-    if (opts.pathContains) {
-      const needle = opts.pathContains.toLowerCase();
-      rows = rows.filter((r: Record<string, unknown>) =>
-        typeof r["path"] === "string" && (r["path"] as string).toLowerCase().includes(needle),
-      );
-    }
+    const rows = await q.toArray();
     return rows.map(rowToSearchResult).filter((r) => {
       if (opts.minScore && r.score < opts.minScore) return false;
       return true;
@@ -313,16 +310,31 @@ export class LanceDBBackend implements StorageBackend {
 
     const limit = opts.maxResults ?? 20;
     try {
-      let q = this.table.search(query, "fts", "text").limit(limit);
-      const filters: string[] = [];
-      if (opts.agentId) filters.push(`agent_id = '${escapeSql(opts.agentId)}'`);
-      if (opts.source) filters.push(`source = '${escapeSql(opts.source)}'`);
-      if (opts.contentType) filters.push(`content_type = '${escapeSql(opts.contentType)}'`);
-      if (filters.length > 0) {
-        q = q.where(filters.join(" AND "));
+      // LanceDB bug: FTS + .where() causes Arrow cast panic (ExecNode(Take)).
+      // Workaround: fetch more results without .where(), then post-filter in JS.
+      // This is safe because FTS is a secondary ranking signal, not a primary filter.
+      const overFetch = limit * 3; // Fetch extra to compensate for post-filtering
+      const q = this.table.search(query, "fts", "text").limit(overFetch);
+      let rows = await q.toArray();
+
+      // Post-filter (avoids LanceDB WHERE bug on FTS queries)
+      if (opts.agentId) {
+        rows = rows.filter((r: Record<string, unknown>) => r["agent_id"] === opts.agentId);
       }
-      const rows = await q.toArray();
-      return rows.map(rowToSearchResult);
+      if (opts.source) {
+        rows = rows.filter((r: Record<string, unknown>) => r["source"] === opts.source);
+      }
+      if (opts.contentType) {
+        rows = rows.filter((r: Record<string, unknown>) => r["content_type"] === opts.contentType);
+      }
+      if (opts.pathContains) {
+        const needle = opts.pathContains.toLowerCase();
+        rows = rows.filter((r: Record<string, unknown>) =>
+          typeof r["path"] === "string" && (r["path"] as string).toLowerCase().includes(needle),
+        );
+      }
+
+      return rows.slice(0, limit).map(rowToSearchResult);
     } catch {
       // FTS search failed — return empty (non-fatal)
       return [];
