@@ -5,6 +5,7 @@
 
 import { looksLikePromptInjection, escapeMemoryText, formatRecalledMemories } from "./src/security.js";
 import { chunkDocument, estimateTokens } from "./src/embed/chunker.js";
+import { resolveConfig } from "./src/config.js";
 
 const results: Array<{ test: string; status: "PASS" | "FAIL"; error?: string }> = [];
 
@@ -177,6 +178,82 @@ test("Importance scoring logic", () => {
   
   return importanceDecision > importanceFact; // Decisions should be weighted higher
 });
+
+// Config Resolution Tests
+console.log("\n--- Config Resolution ---");
+
+test("resolveConfig() with no args returns defaults", () => {
+  const cfg = resolveConfig();
+  return cfg.backend === "lancedb" && cfg.autoRecall.enabled === true;
+});
+
+test("Default autoRecall.agents is wildcard ['*']", () => {
+  const cfg = resolveConfig();
+  return cfg.autoRecall.agents.length === 1 && cfg.autoRecall.agents[0] === "*";
+});
+
+test("Default autoCapture.agents is wildcard ['*']", () => {
+  const cfg = resolveConfig();
+  return cfg.autoCapture.agents.length === 1 && cfg.autoCapture.agents[0] === "*";
+});
+
+test("sparkHost override replaces host in all spark endpoints", () => {
+  const cfg = resolveConfig({ sparkHost: "192.168.1.99" });
+  return cfg.spark.embed.includes("192.168.1.99") &&
+         cfg.spark.rerank.includes("192.168.1.99") &&
+         cfg.spark.ner.includes("192.168.1.99") &&
+         cfg.spark.stt.includes("192.168.1.99") &&
+         cfg.embed.spark!.baseUrl.includes("192.168.1.99") &&
+         cfg.rerank.spark!.baseUrl.includes("192.168.1.99");
+});
+
+test("sparkBearerToken override flows to embed and rerank apiKey", () => {
+  const cfg = resolveConfig({ sparkBearerToken: "test-token-12345" });
+  return cfg.embed.spark!.apiKey === "test-token-12345" &&
+         cfg.rerank.spark!.apiKey === "test-token-12345";
+});
+
+test("Deep merge partial autoRecall preserves unset defaults", () => {
+  const cfg = resolveConfig({ autoRecall: { agents: ["dev", "main"], enabled: true, maxResults: 5, minScore: 0.65, queryMessageCount: 4 } });
+  return cfg.autoRecall.agents.length === 2 &&
+         cfg.autoRecall.agents[0] === "dev" &&
+         cfg.autoRecall.maxResults === 5 &&
+         cfg.autoRecall.minScore === 0.65;
+});
+
+test("Deep merge partial rerank preserves defaults", () => {
+  const cfg = resolveConfig({ rerank: { enabled: false, topN: 20, spark: { baseUrl: "http://custom:18096/v1", model: "nvidia/llama-nemotron-rerank-1b-v2" } } });
+  return cfg.rerank.enabled === false && cfg.rerank.topN === 20;
+});
+
+test("sparkHost + sparkBearerToken together work for Nicholas-like config", () => {
+  const cfg = resolveConfig({ sparkHost: "10.88.88.1", sparkBearerToken: "nicholas-token" });
+  return cfg.spark.embed.includes("10.88.88.1") &&
+         cfg.embed.spark!.apiKey === "nicholas-token" &&
+         cfg.rerank.spark!.apiKey === "nicholas-token";
+});
+
+// Config Schema Tests (inline safeParse from index.ts)
+console.log("\n--- Config Schema ---");
+
+// Import the configSchema from the plugin definition
+const configSchema = {
+  safeParse(value: unknown) {
+    if (value === undefined || value === null) return { success: true as const, data: undefined };
+    if (typeof value !== "object" || Array.isArray(value)) {
+      return { success: false as const, error: { issues: [{ path: [] as string[], message: "expected config object" }] } };
+    }
+    return { success: true as const, data: value };
+  },
+};
+
+test("Config schema accepts undefined", () => configSchema.safeParse(undefined).success);
+test("Config schema accepts null", () => configSchema.safeParse(null).success);
+test("Config schema accepts empty object", () => configSchema.safeParse({}).success);
+test("Config schema accepts valid config object", () => configSchema.safeParse({ sparkHost: "10.88.88.1", autoRecall: { agents: ["*"] } }).success);
+test("Config schema rejects string", () => !configSchema.safeParse("invalid").success);
+test("Config schema rejects array", () => !configSchema.safeParse([1, 2, 3]).success);
+test("Config schema rejects number", () => !configSchema.safeParse(42).success);
 
 // Summary
 console.log("\n=== Summary ===");

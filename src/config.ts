@@ -84,6 +84,10 @@ export interface MemorySparkConfig {
   watch: WatchConfig;
   migrate: MigrateConfig;
   spark: SparkEndpoints;
+  /** Override SPARK_HOST env var. Used to point at a different Spark node. */
+  sparkHost?: string;
+  /** Override SPARK_BEARER_TOKEN env var. Loaded from env/.env if not set. */
+  sparkBearerToken?: string;
 }
 
 import fs from "node:fs";
@@ -108,69 +112,83 @@ function loadSparkToken(): string | undefined {
   }
 }
 
-const SPARK_TOKEN = loadSparkToken();
+/** Default Spark host fallback — used when neither config nor env specifies a host. */
+const FALLBACK_SPARK_HOST = "10.x.x.x";
 
-export const DEFAULT_CONFIG: MemorySparkConfig = {
-  backend: "lancedb",
-  lancedbDir: path.join(os.homedir(), ".openclaw", "data", "memory-spark", "lancedb"),
-  sqliteVecDir: path.join(os.homedir(), ".openclaw", "memory"),
-  embed: {
-    provider: "spark",
-    spark: {
-      baseUrl: `http://${process.env["SPARK_HOST"] ?? "10.x.x.x"}:18091/v1`,
-      apiKey: SPARK_TOKEN,
-      model: "nvidia/llama-embed-nemotron-8b",
-      dimensions: 4096,
+/**
+ * Build a full default config using the resolved sparkHost and sparkToken.
+ * Called inside resolveConfig() so user config overrides take effect.
+ */
+function buildDefaults(sparkHost: string, sparkToken: string | undefined): MemorySparkConfig {
+  return {
+    backend: "lancedb",
+    lancedbDir: path.join(os.homedir(), ".openclaw", "data", "memory-spark", "lancedb"),
+    sqliteVecDir: path.join(os.homedir(), ".openclaw", "memory"),
+    embed: {
+      provider: "spark",
+      spark: {
+        baseUrl: `http://${sparkHost}:18091/v1`,
+        apiKey: sparkToken,
+        model: "nvidia/llama-embed-nemotron-8b",
+        dimensions: 4096,
+      },
+      openai: { model: "text-embedding-3-small" },
+      gemini: { model: "gemini-embedding-001" },
     },
-    openai: { model: "text-embedding-3-small" },
-    gemini: { model: "gemini-embedding-001" },
-  },
-  rerank: {
-    enabled: true,
-    spark: {
-      baseUrl: `http://${process.env["SPARK_HOST"] ?? "10.x.x.x"}:18096/v1`,
-      apiKey: SPARK_TOKEN,
-      model: "nvidia/llama-nemotron-rerank-1b-v2",
+    rerank: {
+      enabled: true,
+      spark: {
+        baseUrl: `http://${sparkHost}:18096/v1`,
+        apiKey: sparkToken,
+        model: "nvidia/llama-nemotron-rerank-1b-v2",
+      },
+      topN: 20,
     },
-    topN: 20,
-  },
-  autoRecall: {
-    enabled: true,
-    agents: ["main", "school", "research", "dev"],
-    maxResults: 5,
-    minScore: 0.65,
-    queryMessageCount: 4,
-  },
-  autoCapture: {
-    enabled: true,
-    agents: ["main", "school", "research"],
-    categories: ["fact", "preference", "decision", "code-snippet"],
-    minConfidence: 0.75,
-  },
-  watch: {
-    enabled: true,
-    paths: [],
-    fileTypes: ["md", "txt", "pdf", "docx"],
-    debounceMs: 2000,
-    indexOnBoot: true,
-  },
-  migrate: {
-    autoMigrateOnFirstBoot: true,
-    statusFile: path.join(os.homedir(), ".openclaw", "runtime", "state", "memory-spark-migrate.json"),
-  },
-  spark: {
-    // Default to WireGuard IP for direct access from user gateway
-    // Override via SPARK_HOST env var or config if running locally on Spark
-    embed: `http://${process.env["SPARK_HOST"] ?? "10.x.x.x"}:18091/v1`,
-    rerank: `http://${process.env["SPARK_HOST"] ?? "10.x.x.x"}:18096/v1`,
-    ocr: `http://${process.env["SPARK_HOST"] ?? "10.x.x.x"}:18097`,
-    glmOcr: `http://${process.env["SPARK_HOST"] ?? "10.x.x.x"}:18080/v1`,
-    ner: `http://${process.env["SPARK_HOST"] ?? "10.x.x.x"}:18112`,
-    zeroShot: `http://${process.env["SPARK_HOST"] ?? "10.x.x.x"}:18113`,
-    summarizer: `http://${process.env["SPARK_HOST"] ?? "10.x.x.x"}:18110`,
-    stt: `http://${process.env["SPARK_HOST"] ?? "10.x.x.x"}:18094`,
-  },
-};
+    autoRecall: {
+      enabled: true,
+      agents: ["*"],
+      maxResults: 5,
+      minScore: 0.65,
+      queryMessageCount: 4,
+    },
+    autoCapture: {
+      enabled: true,
+      agents: ["*"],
+      categories: ["fact", "preference", "decision", "code-snippet"],
+      minConfidence: 0.75,
+    },
+    watch: {
+      enabled: true,
+      paths: [],
+      fileTypes: ["md", "txt", "pdf", "docx"],
+      debounceMs: 2000,
+      indexOnBoot: true,
+    },
+    migrate: {
+      autoMigrateOnFirstBoot: true,
+      statusFile: path.join(os.homedir(), ".openclaw", "runtime", "state", "memory-spark-migrate.json"),
+    },
+    spark: {
+      embed: `http://${sparkHost}:18091/v1`,
+      rerank: `http://${sparkHost}:18096/v1`,
+      ocr: `http://${sparkHost}:18097`,
+      glmOcr: `http://${sparkHost}:18080/v1`,
+      ner: `http://${sparkHost}:18112`,
+      zeroShot: `http://${sparkHost}:18113`,
+      summarizer: `http://${sparkHost}:18110`,
+      stt: `http://${sparkHost}:18094`,
+    },
+  };
+}
+
+/**
+ * Exported for backward compat — snapshot using env-only resolution.
+ * Prefer resolveConfig() for runtime use (it accepts user overrides).
+ */
+export const DEFAULT_CONFIG: MemorySparkConfig = buildDefaults(
+  process.env["SPARK_HOST"] ?? FALLBACK_SPARK_HOST,
+  loadSparkToken(),
+);
 
 function expandHome(p: string): string {
   if (p.startsWith("~/") || p === "~") {
@@ -179,42 +197,63 @@ function expandHome(p: string): string {
   return p;
 }
 
-/** Deep merge user config over defaults */
+/**
+ * Deep merge user config over defaults.
+ *
+ * Resolution order for sparkHost / sparkBearerToken:
+ *   1. userConfig.sparkHost / userConfig.sparkBearerToken  (openclaw.json plugin config)
+ *   2. process.env.SPARK_HOST / SPARK_BEARER_TOKEN         (env var)
+ *   3. ~/.openclaw/.env file                               (dotenv fallback)
+ *   4. hardcoded fallback (10.x.x.x / undefined)
+ */
 export function resolveConfig(userConfig?: Partial<MemorySparkConfig>): MemorySparkConfig {
-  if (!userConfig) return { ...DEFAULT_CONFIG };
+  // Resolve host and token with proper precedence
+  const sparkHost = userConfig?.sparkHost
+    ?? process.env["SPARK_HOST"]
+    ?? FALLBACK_SPARK_HOST;
+  const sparkToken = userConfig?.sparkBearerToken
+    ?? loadSparkToken(); // checks process.env then ~/.openclaw/.env
+
+  // Build defaults using the resolved host/token
+  const defaults = buildDefaults(sparkHost, sparkToken);
+
+  if (!userConfig) return defaults;
 
   const merged: MemorySparkConfig = {
-    backend: userConfig.backend ?? DEFAULT_CONFIG.backend,
-    lancedbDir: expandHome(userConfig.lancedbDir ?? DEFAULT_CONFIG.lancedbDir),
-    sqliteVecDir: expandHome(userConfig.sqliteVecDir ?? DEFAULT_CONFIG.sqliteVecDir),
+    backend: userConfig.backend ?? defaults.backend,
+    lancedbDir: expandHome(userConfig.lancedbDir ?? defaults.lancedbDir),
+    sqliteVecDir: expandHome(userConfig.sqliteVecDir ?? defaults.sqliteVecDir),
     embed: {
-      ...DEFAULT_CONFIG.embed,
+      ...defaults.embed,
       ...userConfig.embed,
-      spark: { ...DEFAULT_CONFIG.embed.spark!, ...userConfig.embed?.spark },
-      openai: { ...DEFAULT_CONFIG.embed.openai!, ...userConfig.embed?.openai },
-      gemini: { ...DEFAULT_CONFIG.embed.gemini!, ...userConfig.embed?.gemini },
+      spark: { ...defaults.embed.spark!, ...userConfig.embed?.spark },
+      openai: { ...defaults.embed.openai!, ...userConfig.embed?.openai },
+      gemini: { ...defaults.embed.gemini!, ...userConfig.embed?.gemini },
     },
     rerank: {
-      ...DEFAULT_CONFIG.rerank,
+      ...defaults.rerank,
       ...userConfig.rerank,
-      spark: { ...DEFAULT_CONFIG.rerank.spark!, ...userConfig.rerank?.spark },
+      spark: { ...defaults.rerank.spark!, ...userConfig.rerank?.spark },
     },
-    autoRecall: { ...DEFAULT_CONFIG.autoRecall, ...userConfig.autoRecall },
-    autoCapture: { ...DEFAULT_CONFIG.autoCapture, ...userConfig.autoCapture },
+    autoRecall: { ...defaults.autoRecall, ...userConfig.autoRecall },
+    autoCapture: { ...defaults.autoCapture, ...userConfig.autoCapture },
     watch: {
-      ...DEFAULT_CONFIG.watch,
+      ...defaults.watch,
       ...userConfig.watch,
       paths: userConfig.watch?.paths?.map((p) => ({
         ...p,
         path: expandHome(p.path),
-      })) ?? DEFAULT_CONFIG.watch.paths,
+      })) ?? defaults.watch.paths,
     },
     migrate: {
-      ...DEFAULT_CONFIG.migrate,
+      ...defaults.migrate,
       ...userConfig.migrate,
-      statusFile: expandHome(userConfig.migrate?.statusFile ?? DEFAULT_CONFIG.migrate.statusFile),
+      statusFile: expandHome(userConfig.migrate?.statusFile ?? defaults.migrate.statusFile),
     },
-    spark: { ...DEFAULT_CONFIG.spark, ...userConfig.spark },
+    spark: { ...defaults.spark, ...userConfig.spark },
+    // Carry through the resolved overrides so downstream can inspect them
+    sparkHost: userConfig.sparkHost,
+    sparkBearerToken: userConfig.sparkBearerToken,
   };
 
   return merged;

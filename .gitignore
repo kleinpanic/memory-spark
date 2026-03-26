@@ -7,3 +7,4 @@ lancedb/
 *.lance
 .DS_Store
 *.log
+PLAN.md
