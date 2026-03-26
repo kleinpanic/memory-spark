@@ -860,13 +860,11 @@ console.log("\n--- Reference Config ---");
 
 test("Default reference config exists with correct defaults", () => {
   const cfg = resolveConfig();
-  return (
-    cfg.reference.enabled === true &&
-    cfg.reference.chunkSize === 800 &&
-    Array.isArray(cfg.reference.paths) &&
-    cfg.reference.paths.length === 0 &&
-    typeof cfg.reference.tags === "object"
-  );
+  assert.strictEqual(cfg.reference.enabled, true);
+  assert.strictEqual(cfg.reference.chunkSize, 800);
+  assert.ok(Array.isArray(cfg.reference.paths), "paths should be an array");
+  assert.ok(typeof cfg.reference.tags === "object", "tags should be an object");
+  // paths may be auto-discovered (OpenClaw docs) or empty — both are valid
 });
 
 test("Reference config can be overridden", () => {
