@@ -174,7 +174,7 @@ export class EmbedQueue {
           const cbs = this._recoveryCallbacks.slice();
           setImmediate(() => {
             for (const cb of cbs) {
-              try { cb(); } catch {}
+              try { cb(); } catch { /* swallow callback errors */ }
             }
           });
         }

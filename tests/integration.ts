@@ -17,14 +17,14 @@
  *   npx tsx test-integration.ts --verbose          # show all scores
  */
 
-import { chunkDocument } from "./src/embed/chunker.js";
-import { createEmbedProvider, type EmbedProvider } from "./src/embed/provider.js";
-import { LanceDBBackend } from "./src/storage/lancedb.js";
-import { createReranker, type Reranker } from "./src/rerank/reranker.js";
-import { MemorySparkManager } from "./src/manager.js";
-import { resolveConfig, type MemorySparkConfig } from "./src/config.js";
-import { ingestFile } from "./src/ingest/pipeline.js";
-import { EmbedQueue } from "./src/embed/queue.js";
+import { chunkDocument } from "../src/embed/chunker.js";
+import { createEmbedProvider, type EmbedProvider } from "../src/embed/provider.js";
+import { LanceDBBackend } from "../src/storage/lancedb.js";
+import { createReranker, type Reranker } from "../src/rerank/reranker.js";
+import { MemorySparkManager } from "../src/manager.js";
+import { resolveConfig, type MemorySparkConfig } from "../src/config.js";
+import { ingestFile } from "../src/ingest/pipeline.js";
+import { EmbedQueue } from "../src/embed/queue.js";
 import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
