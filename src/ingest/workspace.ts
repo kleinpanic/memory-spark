@@ -80,6 +80,15 @@ export async function discoverWorkspaceFiles(agentId: string, workspaceDir?: str
     // No memory dir
   }
 
+  // 2b. mistakes/ directory (recursive, all supported types)
+  const mistakesDir = path.join(wsDir, "mistakes");
+  try {
+    const files = await walkSupportedFiles(mistakesDir);
+    memoryFiles.push(...files);
+  } catch {
+    // No mistakes dir
+  }
+
   // 3. Session files
   const sessDir = path.join(ocDir, "agents", agentId, "sessions");
   try {

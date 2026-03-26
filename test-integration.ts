@@ -30,7 +30,7 @@ import * as os from "node:os";
 import * as path from "node:path";
 
 // ── Config ──────────────────────────────────────────────────────────────────
-const SPARK_HOST = process.env.SPARK_HOST ?? "10.99.1.1";
+const SPARK_HOST = process.env.SPARK_HOST ?? "localhost";
 const SPARK_TOKEN = (() => {
   if (process.env["SPARK_BEARER_TOKEN"]) return process.env["SPARK_BEARER_TOKEN"];
   try {
@@ -90,14 +90,14 @@ const CORPUS: Array<{ path: string; text: string }> = [
     path: "memory/spark-setup.md",
     text: `# DGX Spark Node Setup
 
-The DGX Spark node is the primary AI inference server located at 10.99.1.1.
+The DGX Spark node is the primary AI inference server located at 192.0.2.1.
 It runs 8 microservices: embed, rerank, TTS, STT, OCR, NER, zero-shot, and summarizer.
 The vLLM server hosts Nemotron-Super-120B for general inference.
 GPU memory utilization is set to 0.65 to leave headroom for other services.
 
 ## Access
 - SSH: \`ssh dgx\` (alias in ~/.ssh/config)
-- WireGuard tunnel: 10.99.1.2 → 10.99.1.1
+- WireGuard tunnel: 192.0.2.2 → 192.0.2.1
 - Nginx proxy: external port 18080 → internal port 8080
 
 ## Services
@@ -118,7 +118,7 @@ Parakeet CTC model and TTS (text-to-speech) via Kokoro on the Spark node.
 
 ## Configuration
 - Service: oc-voice-bridge running as systemd user service
-- STT endpoint: http://10.99.1.1:18094/v1/audio/transcriptions
+- STT endpoint: http://192.0.2.1:18094/v1/audio/transcriptions
 - TTS endpoint: Kokoro TTS on Spark
 - Discord bot token: stored in ~/.openclaw/.env
 
@@ -129,7 +129,7 @@ Parakeet CTC model and TTS (text-to-speech) via Kokoro on the Spark node.
   },
   {
     path: "memory/klein-preferences.md",
-    text: `# Klein's Preferences
+    text: `# User Preferences
 
 ## Coding
 - Primary language: TypeScript for all agent tools and plugins
@@ -139,13 +139,11 @@ Parakeet CTC model and TTS (text-to-speech) via Kokoro on the Spark node.
 
 ## Communication
 - Wants peer-like interaction, not subservient
-- Appreciates snarky humor outside work context
-- Timezone: America/New_York (Blacksburg, VA)
 - Direct and concise preferred over verbose
 
 ## System
-- Runs Debian sid on broklein (OpenClaw host)
-- Runs Debian 13 stable on kernelpanic (daily driver)
+- Runs Debian sid on dev-host (OpenClaw host)
+- Runs Debian stable on workstation (daily driver)
 - Uses tailscale for mesh networking
 `,
   },
@@ -171,18 +169,18 @@ Primary coding agent. Handles feature implementation, bug fixes, and code review
     path: "memory/teleport-setup.md",
     text: `# Teleport Cluster Configuration
 
-Cluster name: kleinpanic-homelab v18.2.4
-Auth server: tp.kleinpanic.com → DO edge → wg-teleport → 10.70.80.2
+Cluster name: example-homelab v18.2.4
+Auth server: tp.example.internal → edge → wg-teleport → 192.0.2.10
 CA pin: sha256:298fd061c1aa7728dc7a13db89195b064364abd913d3c7744af5bfae39f40077
 
 ## Nodes
-- broklein: v18.7.3 (ahead of auth server)
-- nicholas: v18.7.2 (ahead of auth server)
+- dev-host: v18.7.3 (ahead of auth server)
+- worker: v18.7.2 (ahead of auth server)
 - mt: pending enrollment
 
 ## Known Issues
-- SAN mismatch: cert covers mt-teleport-auth, localhost, teleport.kleinpanic.com
-  but NOT tp.kleinpanic.com
+- SAN mismatch: cert covers mt-teleport-auth, localhost, teleport.example.internal
+  but NOT tp.example.internal
 - tsh login requires --insecure flag due to SAN mismatch
 - Node agents use ca_pin which bypasses SAN check
 `,
@@ -193,11 +191,11 @@ CA pin: sha256:298fd061c1aa7728dc7a13db89195b064364abd913d3c7744af5bfae39f40077
 const QUERIES: Array<{ query: string; expectPath: string; label: string }> = [
   { query: "What port does the Spark embed service use?", expectPath: "memory/spark-setup.md", label: "Spark port question" },
   { query: "How does voice chat work with Discord?", expectPath: "memory/voice-bridge.md", label: "Voice bridge question" },
-  { query: "What coding language does Klein prefer?", expectPath: "memory/klein-preferences.md", label: "Klein language preference" },
+  { query: "What coding language does the user prefer?", expectPath: "memory/klein-preferences.md", label: "User language preference" },
   { query: "Which model should I use for coding tasks?", expectPath: "AGENTS.md", label: "Model selection for coding" },
-  { query: "Teleport CA pin hash", expectPath: "memory/teleport-setup.md", label: "Teleport CA pin" },
+  { query: "Teleport cluster CA pin hash", expectPath: "memory/teleport-setup.md", label: "Teleport CA pin" },
   { query: "GPU memory utilization setting", expectPath: "memory/spark-setup.md", label: "GPU memory config" },
-  { query: "Klein's preferred editor and programming language", expectPath: "memory/klein-preferences.md", label: "User editor preference" },
+  { query: "User's preferred editor and programming language", expectPath: "memory/klein-preferences.md", label: "User editor preference" },
   { query: "STT speech to text endpoint", expectPath: "memory/voice-bridge.md", label: "STT endpoint" },
 ];
 
