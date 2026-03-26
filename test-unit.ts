@@ -283,7 +283,7 @@ test("ignoreAgents override merges into autoRecall", () => {
 });
 
 test("ignoreAgents override merges into autoCapture", () => {
-  const cfg = resolveConfig({ autoCapture: { agents: ["*"], ignoreAgents: ["ghost"], enabled: true, categories: ["fact"], minConfidence: 0.75, minMessageLength: 30 } });
+  const cfg = resolveConfig({ autoCapture: { agents: ["*"], ignoreAgents: ["ghost"], enabled: true, categories: ["fact"], minConfidence: 0.75, minMessageLength: 30, useClassifier: true } });
   return cfg.autoCapture.ignoreAgents.length === 1 &&
          cfg.autoCapture.ignoreAgents[0] === "ghost";
 });
@@ -297,7 +297,7 @@ test("Default minMessageLength is 30", () => {
 });
 
 test("minMessageLength override works", () => {
-  const cfg = resolveConfig({ autoCapture: { agents: ["*"], ignoreAgents: [], enabled: true, categories: ["fact"], minConfidence: 0.75, minMessageLength: 50 } });
+  const cfg = resolveConfig({ autoCapture: { agents: ["*"], ignoreAgents: [], enabled: true, categories: ["fact"], minConfidence: 0.75, minMessageLength: 50, useClassifier: true } });
   return cfg.autoCapture.minMessageLength === 50;
 });
 

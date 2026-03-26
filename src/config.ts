@@ -58,6 +58,13 @@ export interface AutoCaptureConfig {
   minConfidence: number;
   /** Minimum message length (chars) to consider for capture. Default: 30 */
   minMessageLength: number;
+  /**
+   * Whether to use the Spark zero-shot classifier (POST /v1/classify) for
+   * categorizing captured messages. When false, falls back to a lightweight
+   * keyword/regex heuristic that runs locally (no HTTP call).
+   * Default: true (use Spark classifier when available).
+   */
+  useClassifier: boolean;
 }
 
 export interface WatchPath {
@@ -165,6 +172,7 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
       categories: ["fact", "preference", "decision", "code-snippet"],
       minConfidence: 0.75,
       minMessageLength: 30,
+      useClassifier: true,
     },
     watch: {
       enabled: true,
