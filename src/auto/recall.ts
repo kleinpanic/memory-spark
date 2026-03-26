@@ -9,6 +9,7 @@ import { shouldProcessAgent } from "../config.js";
 import type { StorageBackend, SearchResult } from "../storage/backend.js";
 import type { EmbedProvider } from "../embed/provider.js";
 import type { EmbedQueue } from "../embed/queue.js";
+import type { EmbedLike } from "../embed/cached-provider.js";
 import type { Reranker } from "../rerank/reranker.js";
 import { looksLikePromptInjection, formatRecalledMemories } from "../security.js";
 
@@ -19,7 +20,7 @@ type HookContext = { agentId?: string; sessionKey?: string };
 export interface AutoRecallDeps {
   cfg: AutoRecallConfig;
   backend: StorageBackend;
-  embed: EmbedProvider | EmbedQueue;
+  embed: EmbedProvider | EmbedQueue | EmbedLike;
   reranker: Reranker;
 }
 

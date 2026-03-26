@@ -25,6 +25,7 @@ import { LanceDBBackend } from "./src/storage/lancedb.js";
 import { createEmbedProvider, type EmbedProvider } from "./src/embed/provider.js";
 import { EmbedQueue } from "./src/embed/queue.js";
 import { validateDimsLock } from "./src/embed/dims-lock.js";
+import { withCache, type CachedEmbedProvider } from "./src/embed/cached-provider.js";
 import { createReranker, type Reranker } from "./src/rerank/reranker.js";
 import { MemorySparkManager } from "./src/manager.js";
 import { createWatcher, type Watcher } from "./src/ingest/watcher.js";
@@ -41,6 +42,7 @@ interface PluginState {
   backend: StorageBackend;
   embed: EmbedProvider;
   queue: EmbedQueue;
+  cachedEmbed: CachedEmbedProvider;
   reranker: Reranker;
   watcher: Watcher | null;
 }
@@ -84,7 +86,15 @@ async function getState(
 
     const reranker = await createReranker(cfg.rerank);
 
-    state = { cfg, backend, embed, queue, reranker, watcher: null };
+    // Cache wraps the queue for query embeddings only (recall).
+    // Document embeddings (indexing) bypass the cache via queue directly.
+    const cachedEmbed = withCache(queue, {
+      enabled: true,
+      maxSize: 256,
+      ttlMs: 30 * 60 * 1000, // 30 minutes
+    });
+
+    state = { cfg, backend, embed, queue, cachedEmbed, reranker, watcher: null };
     logger.info("memory-spark: ready");
     return state;
   })();
@@ -405,6 +415,8 @@ const memorySpark = {
             }
 
             statsText += `\nEmbed: ${s.embed.id}/${s.embed.model} (${s.embed.dims}d)\n`;
+            const cs = s.cachedEmbed.cacheStats();
+            statsText += `EmbedCache: ${cs.size}/${cs.maxSize} entries, hit rate ${cs.hitRate} (${cs.hits} hits, ${cs.misses} misses)\n`;
             statsText += `Reranker: ${cfg.rerank.enabled ? "enabled" : "off"}\n`;
             statsText += `AutoRecall: ${cfg.autoRecall.enabled ? cfg.autoRecall.agents.join(",") : "off"}\n`;
 
@@ -442,7 +454,7 @@ const memorySpark = {
       try {
         const s = await getState(cfg, api.logger);
         const handler = createAutoRecallHandler({
-          cfg: cfg.autoRecall, backend: s.backend, embed: s.queue, reranker: s.reranker,
+          cfg: cfg.autoRecall, backend: s.backend, embed: s.cachedEmbed, reranker: s.reranker,
         });
         return await handler(event, ctx);
       } catch {
