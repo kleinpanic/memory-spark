@@ -110,7 +110,7 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
       return true;
     });
 
-    // Filter prompt injection + format with security preamble
+    // Filter prompt injection + format with rich metadata
     const safeMemories = deduplicated
       .filter((r) => !looksLikePromptInjection(r.chunk.text))
       .map((r) => ({
@@ -118,6 +118,9 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
         text: r.chunk.text.slice(0, 500),
         score: r.score,
         updatedAt: r.chunk.updated_at,
+        contentType: r.chunk.content_type ?? "knowledge",
+        agentId: r.chunk.agent_id,
+        path: r.chunk.path,
       }));
 
     if (safeMemories.length === 0) return undefined;
