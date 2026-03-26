@@ -4,8 +4,10 @@
  */
 
 import { looksLikePromptInjection, escapeMemoryText, formatRecalledMemories } from "./src/security.js";
-import { chunkDocument, estimateTokens } from "./src/embed/chunker.js";
+import { chunkDocument, estimateTokens, cleanChunkText } from "./src/embed/chunker.js";
 import { resolveConfig } from "./src/config.js";
+import { scoreChunkQuality } from "./src/classify/quality.js";
+import { heuristicClassify } from "./src/classify/heuristic.js";
 
 const results: Array<{ test: string; status: "PASS" | "FAIL"; error?: string }> = [];
 
@@ -214,7 +216,7 @@ test("sparkBearerToken override flows to embed and rerank apiKey", () => {
 });
 
 test("Deep merge partial autoRecall preserves unset defaults", () => {
-  const cfg = resolveConfig({ autoRecall: { agents: ["dev", "main"], ignoreAgents: [], enabled: true, maxResults: 5, minScore: 0.65, queryMessageCount: 4 } });
+  const cfg = resolveConfig({ autoRecall: { agents: ["dev", "main"], ignoreAgents: [], enabled: true, maxResults: 5, minScore: 0.65, queryMessageCount: 4, maxInjectionTokens: 2000 } });
   return cfg.autoRecall.agents.length === 2 &&
          cfg.autoRecall.agents[0] === "dev" &&
          cfg.autoRecall.maxResults === 5 &&
@@ -276,7 +278,7 @@ test("Default ignoreAgents is empty array", () => {
 });
 
 test("ignoreAgents override merges into autoRecall", () => {
-  const cfg = resolveConfig({ autoRecall: { agents: ["*"], ignoreAgents: ["bench", "lens"], enabled: true, maxResults: 5, minScore: 0.65, queryMessageCount: 4 } });
+  const cfg = resolveConfig({ autoRecall: { agents: ["*"], ignoreAgents: ["bench", "lens"], enabled: true, maxResults: 5, minScore: 0.65, queryMessageCount: 4, maxInjectionTokens: 2000 } });
   return cfg.autoRecall.ignoreAgents.length === 2 &&
          cfg.autoRecall.ignoreAgents[0] === "bench" &&
          cfg.autoRecall.agents[0] === "*";
@@ -342,6 +344,173 @@ test("Config schema accepts valid config object", () => configSchema.safeParse({
 test("Config schema rejects string", () => !configSchema.safeParse("invalid").success);
 test("Config schema rejects array", () => !configSchema.safeParse([1, 2, 3]).success);
 test("Config schema rejects number", () => !configSchema.safeParse(42).success);
+
+// --- Quality Scorer ---
+console.log("\n--- Quality Scorer ---");
+
+test("Agent bootstrap spam gets score 0.0", () => {
+  const r = scoreChunkQuality("## 2026-03-25T14:30:00.000Z — agent bootstrap\n- Agent: meta\n- Bootstrap files: AGENTS.md, SOUL.md", "memory/learnings.md", "memory");
+  return r.score === 0 && r.flags.includes("agent-bootstrap");
+});
+
+test("Session new entry gets score 0.0", () => {
+  const r = scoreChunkQuality("## 2026-03-25T14:30:00.000Z — session new\n- Session: abc123", "memory/learnings.md", "memory");
+  return r.score === 0;
+});
+
+test("Discord metadata penalized heavily", () => {
+  const r = scoreChunkQuality('Conversation info (untrusted metadata):\n```json\n{"message_id": "123456"}\n```', "memory/2026-03-25.md", "memory");
+  return r.score < 0.3 && r.flags.includes("discord-metadata");
+});
+
+test("High-quality knowledge chunk scores well", () => {
+  const r = scoreChunkQuality("The Spark node runs at 10.99.1.1 with NVIDIA GH200 Grace Hopper architecture. The vLLM service handles Nemotron-Super 120B inference on port 18080.", "MEMORY.md", "memory");
+  return r.score >= 0.7;
+});
+
+test("Capture source gets boosted", () => {
+  const r = scoreChunkQuality("Klein decided to use opus for all complex coding tasks and sonnet for moderate work", "capture/meta/2026-03-25", "capture");
+  return r.score >= 0.8;
+});
+
+test("Archive path gets penalized", () => {
+  const r = scoreChunkQuality("Some old configuration notes about the system setup from last month", "memory/archive/old-notes.md", "memory");
+  return r.score < 1.0 && r.score > 0;
+});
+
+test("Very short chunk penalized", () => {
+  const r = scoreChunkQuality("hello", "notes.md", "memory");
+  return r.flags.includes("too-short");
+});
+
+// --- Chunk Text Cleaning ---
+console.log("\n--- Chunk Text Cleaning ---");
+
+test("cleanChunkText strips Discord metadata", () => {
+  const input = 'Some content\nConversation info (untrusted metadata):\n```json\n{"message_id": "123"}\n```\nMore content';
+  const cleaned = cleanChunkText(input);
+  return !cleaned.includes("message_id") && cleaned.includes("Some content") && cleaned.includes("More content");
+});
+
+test("cleanChunkText strips timestamp headers", () => {
+  const cleaned = cleanChunkText("[Wed 2026-03-25 22:06 EDT] Klein says hello");
+  return !cleaned.includes("[Wed") && cleaned.includes("Klein says hello");
+});
+
+test("cleanChunkText strips exec session IDs", () => {
+  const cleaned = cleanChunkText("Command output (session=abc123-def4, code 0)");
+  return !cleaned.includes("session=abc123");
+});
+
+test("cleanChunkText preserves meaningful content", () => {
+  const cleaned = cleanChunkText("The server runs on port 8080 with nginx reverse proxy configuration");
+  return cleaned === "The server runs on port 8080 with nginx reverse proxy configuration";
+});
+
+// --- Heuristic Classifier ---
+console.log("\n--- Heuristic Classifier ---");
+
+test("Heuristic detects decision pattern", () => {
+  const r = heuristicClassify("We decided to use opus for all complex coding tasks going forward");
+  return r.label === "decision" && r.score >= 0.60;
+});
+
+test("Heuristic detects preference pattern", () => {
+  const r = heuristicClassify("I prefer using TypeScript over JavaScript for all new projects");
+  return r.label === "preference" && r.score >= 0.60;
+});
+
+test("Heuristic detects fact with IP address", () => {
+  const r = heuristicClassify("The Spark node is located at 10.99.1.1 in the network");
+  return r.label === "fact" && r.score >= 0.60;
+});
+
+test("Heuristic detects code snippet", () => {
+  const r = heuristicClassify("```typescript\nconst x = await fetch(url);\n```");
+  return r.label === "code-snippet" && r.score >= 0.60;
+});
+
+test("Heuristic returns none for generic text", () => {
+  const r = heuristicClassify("Hello how are you today");
+  return r.label === "none";
+});
+
+test("Heuristic scores never exceed 0.70", () => {
+  const tests = [
+    "We decided to use opus",
+    "I prefer TypeScript",
+    "Server at 10.99.1.1",
+    "```code here```",
+  ];
+  return tests.every((t) => heuristicClassify(t).score <= 0.70);
+});
+
+// --- Security: formatRecalledMemories with metadata ---
+console.log("\n--- Security: formatRecalledMemories with metadata ---");
+
+test("formatRecalledMemories includes age attribute", () => {
+  const result = formatRecalledMemories([{
+    source: "memory:test.md:1",
+    text: "Some fact",
+    updatedAt: new Date(Date.now() - 3600000).toISOString(),
+  }]);
+  return result.includes('age="1h ago"');
+});
+
+test("formatRecalledMemories includes confidence attribute", () => {
+  const result = formatRecalledMemories([{
+    source: "memory:test.md:1",
+    text: "Some fact",
+    score: 0.85,
+  }]);
+  return result.includes('confidence="0.85"');
+});
+
+test("formatRecalledMemories handles missing metadata gracefully", () => {
+  const result = formatRecalledMemories([{
+    source: "memory:test.md:1",
+    text: "Some fact",
+  }]);
+  return result.includes("memory") && !result.includes("age=") && !result.includes("confidence=");
+});
+
+// --- Config: New Fields ---
+console.log("\n--- Config: New Fields ---");
+
+test("Default maxInjectionTokens is 2000", () => {
+  const cfg = resolveConfig();
+  return cfg.autoRecall.maxInjectionTokens === 2000;
+});
+
+test("Default ingest.minQuality is 0.3", () => {
+  const cfg = resolveConfig();
+  return cfg.ingest.minQuality === 0.3;
+});
+
+test("Default watch.indexSessions is false", () => {
+  const cfg = resolveConfig();
+  return cfg.watch.indexSessions === false;
+});
+
+test("Default excludePatterns includes archive", () => {
+  const cfg = resolveConfig();
+  return cfg.watch.excludePatterns.some((p) => p.includes("archive"));
+});
+
+test("Default excludePathsExact includes learnings.md", () => {
+  const cfg = resolveConfig();
+  return cfg.watch.excludePathsExact.includes("memory/learnings.md");
+});
+
+test("Default minScore is 0.75", () => {
+  const cfg = resolveConfig();
+  return cfg.autoRecall.minScore === 0.75;
+});
+
+test("Default queryMessageCount is 2", () => {
+  const cfg = resolveConfig();
+  return cfg.autoRecall.queryMessageCount === 2;
+});
 
 // Summary
 console.log("\n=== Summary ===");

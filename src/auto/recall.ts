@@ -34,7 +34,8 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     const agentId = ctx.agentId ?? "unknown";
     if (!shouldProcessAgent(agentId, cfg.agents, cfg.ignoreAgents ?? [])) return undefined;
 
-    const queryText = buildQuery(event.messages, cfg.queryMessageCount);
+    const rawQueryText = buildQuery(event.messages, cfg.queryMessageCount);
+    const queryText = cleanQueryText(rawQueryText);
     if (!queryText.trim()) return undefined;
 
     let queryVector: number[];
@@ -69,17 +70,59 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     const reranked = await reranker.rerank(queryText, diverse, cfg.maxResults);
     if (reranked.length === 0) return undefined;
 
+    // Source weighting — boost captures & MEMORY.md, penalize archives
+    applySourceWeighting(reranked);
+
+    // Re-sort after source weighting
+    reranked.sort((a, b) => b.score - a.score);
+
+    // LCM recency suppression — skip chunks that overlap heavily with recent messages
+    const recentTexts = event.messages
+      .slice(-cfg.queryMessageCount)
+      .map(extractMessageText)
+      .map(cleanQueryText)
+      .filter(Boolean);
+
+    const deduplicated = reranked.filter((r) => {
+      const chunkAge = Date.now() - new Date(r.chunk.updated_at).getTime();
+      if (chunkAge > 2 * 60 * 60 * 1000) return true; // older than 2h — keep
+      const chunkTokens = new Set((r.chunk.text.match(/\b\w{4,}\b/g) ?? []).map((w) => w.toLowerCase()));
+      if (chunkTokens.size === 0) return true;
+      for (const msg of recentTexts) {
+        const msgTokens = new Set((msg.match(/\b\w{4,}\b/g) ?? []).map((w) => w.toLowerCase()));
+        let overlap = 0;
+        for (const t of chunkTokens) { if (msgTokens.has(t)) overlap++; }
+        if (overlap / chunkTokens.size > 0.4) return false; // >40% overlap = redundant
+      }
+      return true;
+    });
+
     // Filter prompt injection + format with security preamble
-    const safeMemories = reranked
+    const safeMemories = deduplicated
       .filter((r) => !looksLikePromptInjection(r.chunk.text))
       .map((r) => ({
         source: `${r.chunk.source}:${r.chunk.path}:${r.chunk.start_line}`,
         text: r.chunk.text.slice(0, 500),
+        score: r.score,
+        updatedAt: r.chunk.updated_at,
       }));
 
     if (safeMemories.length === 0) return undefined;
 
-    return { prependContext: formatRecalledMemories(safeMemories) };
+    // Token budget enforcement
+    const maxTokens = cfg.maxInjectionTokens ?? 2000;
+    let totalTokens = 0;
+    const budgeted: typeof safeMemories = [];
+    for (const mem of safeMemories) {
+      const tokens = Math.ceil(mem.text.split(/\s+/).length * 1.3);
+      if (totalTokens + tokens > maxTokens) break;
+      totalTokens += tokens;
+      budgeted.push(mem);
+    }
+
+    if (budgeted.length === 0) return undefined;
+
+    return { prependContext: formatRecalledMemories(budgeted) };
   };
 }
 
@@ -202,6 +245,54 @@ function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
   }
   const union = a.size + b.size - intersection;
   return union === 0 ? 0 : intersection / union;
+}
+
+/**
+ * Clean query text — strip Discord metadata, timestamps, and injected blocks
+ * so the embedding vector represents the actual conversational content.
+ */
+function cleanQueryText(text: string): string {
+  // Strip Discord conversation metadata blocks
+  text = text.replace(/```json\s*\{[\s\S]*?"message_id"[\s\S]*?\}\s*```/g, "");
+  text = text.replace(/Conversation info \(untrusted metadata\):[\s\S]*?```\s*/g, "");
+  text = text.replace(/Sender \(untrusted metadata\):[\s\S]*?```\s*/g, "");
+  text = text.replace(/Untrusted context \(metadata[^)]*\):[\s\S]*?<<<END_EXTERNAL_UNTRUSTED_CONTENT[^>]*>>>/g, "");
+  text = text.replace(/<<<EXTERNAL_UNTRUSTED_CONTENT[^>]*>>>[\s\S]*?<<<END_EXTERNAL_UNTRUSTED_CONTENT[^>]*>>>/g, "");
+
+  // Strip timestamp headers
+  text = text.replace(/\[\w{3} \d{4}-\d{2}-\d{2} \d{2}:\d{2} \w+\]/g, "");
+
+  // Strip <relevant-memories> blocks (avoid recursive recall)
+  text = text.replace(/<relevant-memories>[\s\S]*?<\/relevant-memories>/g, "");
+
+  // Strip XML/HTML comments
+  text = text.replace(/<!--[\s\S]*?-->/g, "");
+
+  // Collapse excessive whitespace
+  return text.replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/**
+ * Source weighting — adjust scores based on content source and path.
+ * Captures and curated knowledge get boosted, archives and stale content penalized.
+ */
+function applySourceWeighting(results: SearchResult[]): void {
+  for (const r of results) {
+    const source = r.chunk.source;
+    const chunkPath = r.chunk.path;
+
+    let weight = 1.0;
+    // Source-level weights
+    if (source === "capture") weight = 1.5;
+    else if (source === "sessions") weight = 0.5;
+
+    // Path-level refinements
+    if (chunkPath === "MEMORY.md") weight *= 1.4;
+    else if (chunkPath.startsWith("memory/archive/")) weight *= 0.4;
+    else if (chunkPath === "memory/learnings.md") weight *= 0.1;
+
+    r.score *= weight;
+  }
 }
 
 function buildQuery(messages: unknown[], maxMessages: number): string {

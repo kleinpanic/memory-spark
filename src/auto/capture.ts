@@ -41,14 +41,14 @@ export function createAutoCaptureHandler(deps: AutoCaptureDeps) {
     const agentId = ctx.agentId ?? "unknown";
     if (!shouldProcessAgent(agentId, cfg.agents, cfg.ignoreAgents ?? [])) return;
 
-    // Extract ONLY user messages (no assistant — prevents self-poisoning)
-    const minLen = cfg.minMessageLength ?? 30;
-    const userTexts = extractUserMessages(event.messages, minLen);
-    if (userTexts.length === 0) return;
+    // Extract user messages + assistant decision/fact patterns
+    const minLen = cfg.minMessageLength ?? 80;
+    const captureTexts = extractCaptureMessages(event.messages, minLen);
+    if (captureTexts.length === 0) return;
 
     let captured = 0;
 
-    for (const text of userTexts) {
+    for (const text of captureTexts) {
       if (captured >= MAX_CAPTURES_PER_TURN) break;
       if (text.length < minLen) continue;
 
@@ -60,10 +60,17 @@ export function createAutoCaptureHandler(deps: AutoCaptureDeps) {
         let result: ClassifyResult;
         if (cfg.useClassifier !== false) {
           result = await classifyForCapture(text, globalCfg, cfg.minConfidence);
+          // If zero-shot returned "none", try heuristic as a safety net
+          if (result.label === "none") {
+            result = heuristicClassify(text);
+          }
         } else {
           result = heuristicClassify(text);
         }
+        // Heuristic scores cap at 0.70 — use a lower threshold for heuristic results
+        const effectiveMinConfidence = result.score <= 0.70 ? 0.60 : cfg.minConfidence;
         if (result.label === "none") continue;
+        if (result.score < effectiveMinConfidence) continue;
         if (!cfg.categories.includes(result.label)) continue;
 
         // Embed
@@ -121,10 +128,11 @@ export function createAutoCaptureHandler(deps: AutoCaptureDeps) {
 }
 
 /**
- * Extract only user messages — never capture assistant output.
- * Returns individual user message texts, deduplicated.
+ * Extract capture-worthy messages: all user messages + assistant messages
+ * containing decision/fact patterns. Prevents self-poisoning by limiting
+ * assistant capture to specific knowledge patterns.
  */
-function extractUserMessages(messages: unknown[], minLen = 30): string[] {
+function extractCaptureMessages(messages: unknown[], minLen = 80): string[] {
   if (!Array.isArray(messages)) return [];
 
   const texts: string[] = [];
@@ -133,8 +141,7 @@ function extractUserMessages(messages: unknown[], minLen = 30): string[] {
   for (const msg of messages) {
     if (!msg || typeof msg !== "object") continue;
     const obj = msg as Record<string, unknown>;
-    if (obj.role !== "user") continue;
-
+    const role = obj.role as string;
     const text = extractContent(obj).trim();
     if (!text || text.length < minLen) continue;
 
@@ -143,10 +150,25 @@ function extractUserMessages(messages: unknown[], minLen = 30): string[] {
     if (seen.has(key)) continue;
     seen.add(key);
 
-    texts.push(text.slice(0, 2000));
+    if (role === "user") {
+      texts.push(text.slice(0, 2000));
+    } else if (role === "assistant") {
+      // Only capture assistant messages with decision/fact patterns
+      if (containsDecisionPattern(text) || containsFactPattern(text)) {
+        texts.push(text.slice(0, 2000));
+      }
+    }
   }
 
   return texts;
+}
+
+function containsDecisionPattern(text: string): boolean {
+  return /\b(decided|going with|switched to|approved|we'll use|migrated? to|the fix is|conclusion|we should|the solution is)\b/i.test(text);
+}
+
+function containsFactPattern(text: string): boolean {
+  return /\b(runs on|runs at|located at|IP is|port \d+|the server|version \d|deployed to|configured as)\b/i.test(text);
 }
 
 function extractContent(msg: Record<string, unknown>): string {

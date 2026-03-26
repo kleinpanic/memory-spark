@@ -119,6 +119,28 @@ function splitParagraphs(text: string): string[] {
 }
 
 /**
+ * Clean chunk text before embedding — strip noise patterns so the vector
+ * represents the actual content, not metadata wrappers.
+ */
+export function cleanChunkText(text: string): string {
+  // Strip conversation metadata blocks
+  text = text.replace(/```json\s*\{[^}]*"message_id"[^}]*\}\s*```/gs, "");
+  text = text.replace(/Conversation info \(untrusted metadata\):[^]*?```\s*/gs, "");
+  text = text.replace(/Sender \(untrusted metadata\):[^]*?```\s*/gs, "");
+
+  // Strip timestamp headers
+  text = text.replace(/\[\w{3} \d{4}-\d{2}-\d{2} \d{2}:\d{2} \w+\]/g, "");
+
+  // Strip exec session IDs
+  text = text.replace(/\(session=[a-f0-9-]+,?\s*(?:id=[a-f0-9-]+,?\s*)?code \d+\)/g, "");
+
+  // Collapse excessive whitespace
+  text = text.replace(/\n{3,}/g, "\n\n").trim();
+
+  return text;
+}
+
+/**
  * Hard-split a string at character boundaries with overlap.
  */
 function hardSplitWithOverlap(text: string, maxChars: number, overlapChars: number, baseLineOffset: number): RawChunk[] {
