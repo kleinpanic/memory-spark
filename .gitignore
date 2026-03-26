@@ -22,8 +22,6 @@ dims-lock.json
 .vscode/
 .idea/
 
-# Temp planning docs (keep PLAN.md local, not in repo)
-PLAN.md
 
 # Eval results (regenerated, not committed)
 *-results.json
