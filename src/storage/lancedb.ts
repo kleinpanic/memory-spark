@@ -4,7 +4,6 @@
 
 import * as lancedb from "@lancedb/lancedb";
 import type { Table } from "@lancedb/lancedb";
-import type { AddColumnsSql } from "@lancedb/lancedb";
 import type {
   StorageBackend, MemoryChunk, SearchOptions, SearchResult, BackendStatus,
 } from "./backend.js";
@@ -57,24 +56,23 @@ export class LanceDBBackend implements StorageBackend {
   }
 
   /**
-   * Track whether schema has evolved columns — controls upsert behavior.
-   * If the table was created before the new columns existed, we skip setting them
-   * in upsert to avoid Arrow nullability mismatches.
+   * Track whether the table schema includes the new columns natively
+   * (i.e., from seed record creation, not from addColumns migration).
+   * When true, upsert includes the new fields. When false, upsert skips them
+   * to avoid Arrow nullability/type mismatches.
    */
   private schemaHasNewColumns = false;
 
   /**
-   * Check if table already has the new columns. If not, we set a flag
-   * so that _upsert knows to OMIT those fields (letting the existing
-   * rows keep their NULL/default values). New columns will be added
-   * via addColumns but upserts won't include them until a fresh table
-   * is created (e.g., after a full re-index).
-   *
-   * NOTE: LanceDB addColumns creates nullable columns, but seed-record-based
-   * tables create non-nullable columns. Mixing nullable and non-nullable
-   * in mergeInsert causes Arrow schema errors. The safe approach is:
-   * - Old table (addColumns path): skip new fields in upsert
-   * - New table (seed record path): include new fields in upsert
+   * Check if the table has the new columns (content_type, quality_score, etc.).
+   * 
+   * IMPORTANT: We do NOT use addColumns to migrate old tables. LanceDB's addColumns
+   * creates columns with different nullability than seed-record columns, causing
+   * Arrow schema mismatches on mergeInsert. Instead:
+   * - Old tables (pre-overhaul): skip new fields in upsert, data works fine without them
+   * - New tables (created via seed record): include new fields, schema is consistent
+   * 
+   * To migrate: create a fresh table via scripts/purge-noise.ts --rebuild
    */
   private async ensureSchema(): Promise<void> {
     if (!this.table) return;
@@ -82,40 +80,11 @@ export class LanceDBBackend implements StorageBackend {
       const schema = await this.table.schema();
       const existingFields = new Set(schema.fields.map((f) => f.name));
 
-      // Check if all new columns already exist
+      // Check if all 4 new columns exist in the schema
       const needed = ["content_type", "quality_score", "token_count", "parent_heading"];
-      const missing = needed.filter((n) => !existingFields.has(n));
-
-      if (missing.length === 0) {
-        // All columns exist — check if they came from seed record (non-nullable)
-        // or from addColumns (nullable). If non-nullable, safe to include in upsert.
-        const contentTypeField = schema.fields.find((f) => f.name === "content_type");
-        this.schemaHasNewColumns = contentTypeField ? !contentTypeField.nullable : false;
-        return;
-      }
-
-      // Add missing columns via SQL (creates nullable columns)
-      const newColumns: AddColumnsSql[] = [];
-      if (!existingFields.has("content_type")) {
-        newColumns.push({ name: "content_type", valueSql: "'knowledge'" });
-      }
-      if (!existingFields.has("quality_score")) {
-        newColumns.push({ name: "quality_score", valueSql: "CAST(0.5 AS DOUBLE)" });
-      }
-      if (!existingFields.has("token_count")) {
-        newColumns.push({ name: "token_count", valueSql: "CAST(0 AS DOUBLE)" });
-      }
-      if (!existingFields.has("parent_heading")) {
-        newColumns.push({ name: "parent_heading", valueSql: "''" });
-      }
-
-      if (newColumns.length > 0) {
-        await this.table.addColumns(newColumns);
-      }
-      // addColumns creates nullable columns — do NOT include them in upsert
-      this.schemaHasNewColumns = false;
+      const hasAll = needed.every((n) => existingFields.has(n));
+      this.schemaHasNewColumns = hasAll;
     } catch {
-      // Schema evolution failure is non-fatal — old tables will still work
       this.schemaHasNewColumns = false;
     }
   }
