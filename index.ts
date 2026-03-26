@@ -144,6 +144,10 @@ const InspectParams = Type.Object({
   maxResults: Type.Optional(Type.Number({ description: "Max results to show (default: 5)" })),
 });
 
+const ReindexParams = Type.Object({
+  path: Type.Optional(Type.String({ description: "Specific file path to re-index (omit for full re-scan)" })),
+});
+
 // ---------------------------------------------------------------------------
 // Plugin definition
 // ---------------------------------------------------------------------------
@@ -227,7 +231,7 @@ const memorySpark = {
 
         const searchTool = {
           name: "memory_search",
-          description: "Search the knowledge base and memory for relevant information.",
+          description: "Search the knowledge base and memory for relevant information. Use when auto-recall didn't surface what you need, or when you need to search for something specific (a fact, config detail, past decision, or mistake). Searches across all agent workspaces, reference docs, and captured knowledge.",
           label: "Memory Search",
           parameters: SearchParams,
           execute: async (_toolCallId: string, params: { query: string; maxResults?: number }) => {
@@ -547,10 +551,59 @@ const memorySpark = {
           },
         };
 
+        const reindexTool = {
+          name: "memory_reindex",
+          description: "Trigger a re-index of memory files. With a path, re-indexes just that file. Without a path, triggers a full boot-pass re-scan of all workspace files.",
+          label: "Re-index",
+          parameters: ReindexParams,
+          execute: async (_toolCallId: string, params: { path?: string }) => {
+            const s = await getState(cfg, api.logger);
+            if (params.path) {
+              // Single file re-index
+              try {
+                const { ingestFile } = await import("./src/ingest/pipeline.js");
+                // Delete existing chunks first to force a fresh re-index
+                await s.backend.deleteByPath(params.path, agentId);
+                const result = await ingestFile({
+                  filePath: params.path,
+                  backend: s.backend,
+                  embed: s.queue,
+                  cfg,
+                  agentId,
+                  workspaceDir,
+                  source: "memory",
+                });
+                return {
+                  content: [{ type: "text" as const, text: `Re-indexed: ${params.path} → ${result.chunksAdded} chunks` }],
+                  details: { chunks: result.chunksAdded },
+                };
+              } catch (err) {
+                return {
+                  content: [{ type: "text" as const, text: `Failed to re-index ${params.path}: ${err instanceof Error ? err.message : String(err)}` }],
+                  details: {},
+                };
+              }
+            } else {
+              // Full re-scan
+              if (s.watcher) {
+                s.watcher.triggerBootPass();
+                return {
+                  content: [{ type: "text" as const, text: "Full re-scan triggered. New and modified files will be indexed in the background." }],
+                  details: {},
+                };
+              }
+              return {
+                content: [{ type: "text" as const, text: "Watcher not active — cannot trigger re-scan. Try restarting the plugin." }],
+                details: {},
+              };
+            }
+          },
+        };
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenClaw plugin SDK expects untyped tool arrays
-        return [searchTool, getTool, storeTool, forgetTool, referenceSearchTool, indexStatusTool, forgetByPathTool, inspectTool] as any;
+        return [searchTool, getTool, storeTool, forgetTool, referenceSearchTool, indexStatusTool, forgetByPathTool, inspectTool, reindexTool] as any;
       },
-      { names: ["memory_search", "memory_get", "memory_store", "memory_forget", "memory_reference_search", "memory_index_status", "memory_forget_by_path", "memory_inspect"] },
+      { names: ["memory_search", "memory_get", "memory_store", "memory_forget", "memory_reference_search", "memory_index_status", "memory_forget_by_path", "memory_inspect", "memory_reindex"] },
     );
 
     // -------------------------------------------------------------------

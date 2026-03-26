@@ -1157,6 +1157,48 @@ test("applySourceWeighting boosts MISTAKES.md", () => {
   assert.ok(results[0]!.score >= 1.5, `MISTAKES.md should get 1.6x boost (got ${results[0]!.score})`);
 });
 
+test("applySourceWeighting with custom weights config", () => {
+  const results = [
+    makeSearchResult("mistakes", 1.0, "memory", "MISTAKES.md"),
+    makeSearchResult("regular", 1.0, "memory", "notes.md"),
+  ];
+  // Custom config: MISTAKES.md at 2.0x instead of default 1.6x
+  applySourceWeighting(results, {
+    sources: { capture: 1.5, memory: 1.0, sessions: 0.5, reference: 1.0 },
+    paths: { "MISTAKES.md": 2.0 },
+    pathPatterns: {},
+  });
+  assert.ok(results[0]!.score >= 2.0, `Custom MISTAKES weight should be 2.0x (got ${results[0]!.score})`);
+});
+
+test("applySourceWeighting pathPatterns match substrings", () => {
+  const results = [
+    makeSearchResult("deep mistake", 1.0, "memory", "mistakes/2026-03-01-config-bug.md"),
+  ];
+  applySourceWeighting(results, {
+    sources: { capture: 1.5, memory: 1.0, sessions: 0.5, reference: 1.0 },
+    paths: {},
+    pathPatterns: { "mistakes": 1.8 },
+  });
+  assert.ok(results[0]!.score >= 1.8, `Pattern match should apply 1.8x (got ${results[0]!.score})`);
+});
+
+test("applySourceWeighting exact path takes precedence over pattern", () => {
+  const results = [
+    makeSearchResult("exact match", 1.0, "memory", "MISTAKES.md"),
+  ];
+  applySourceWeighting(results, {
+    sources: { capture: 1.5, memory: 1.0, sessions: 0.5, reference: 1.0 },
+    paths: { "MISTAKES.md": 2.5 },
+    pathPatterns: { "mistakes": 1.6 },
+  });
+  // Exact path match = 2.5x, pattern should NOT also apply
+  assert.ok(
+    Math.abs(results[0]!.score - 2.5) < 0.01,
+    `Exact path should win (got ${results[0]!.score}, expected 2.5)`,
+  );
+});
+
 test("applyTemporalDecay: recent chunk decays less than old chunk", () => {
   const recent = makeSearchResult("recent", 1.0);
   recent.chunk.updated_at = new Date().toISOString();
