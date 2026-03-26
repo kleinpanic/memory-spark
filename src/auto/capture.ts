@@ -11,6 +11,8 @@ import type { StorageBackend, MemoryChunk } from "../storage/backend.js";
 import type { EmbedProvider } from "../embed/provider.js";
 import type { EmbedQueue } from "../embed/queue.js";
 import { classifyForCapture } from "../classify/zero-shot.js";
+import type { ClassifyResult } from "../classify/zero-shot.js";
+import { heuristicClassify } from "../classify/heuristic.js";
 import { tagEntities } from "../classify/ner.js";
 import { looksLikePromptInjection } from "../security.js";
 import crypto from "node:crypto";
@@ -54,8 +56,13 @@ export function createAutoCaptureHandler(deps: AutoCaptureDeps) {
       if (looksLikePromptInjection(text)) continue;
 
       try {
-        // Classify
-        const result = await classifyForCapture(text, globalCfg, cfg.minConfidence);
+        // Classify — use Spark zero-shot or local heuristic fallback
+        let result: ClassifyResult;
+        if (cfg.useClassifier !== false) {
+          result = await classifyForCapture(text, globalCfg, cfg.minConfidence);
+        } else {
+          result = heuristicClassify(text);
+        }
         if (result.label === "none") continue;
         if (!cfg.categories.includes(result.label)) continue;
 
