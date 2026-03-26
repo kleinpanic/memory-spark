@@ -9,6 +9,12 @@ import type { EmbedProvider } from "./embed/provider.js";
 import type { Reranker } from "./rerank/reranker.js";
 import { EmbedQueue } from "./embed/queue.js";
 import { toAbsolutePath } from "./ingest/workspace.js";
+import {
+  hybridMerge,
+  applySourceWeighting,
+  applyTemporalDecay,
+  mmrRerank,
+} from "./auto/recall.js";
 import fs from "node:fs/promises";
 
 export interface MemorySearchResult {
@@ -78,8 +84,11 @@ export class MemorySparkManager {
       // Write-side pending queue will replay when Spark comes back.
     }
 
-    const fetchN = maxResults * 3;
-    const [vectorResults, ftsResults] = await Promise.all([
+    // Use the same pipeline as auto-recall (recall.ts) for consistent results.
+    // Previously this used a naive dedup+sort merge — agents using memory_search
+    // got materially worse results than the silent before_prompt_build hook.
+    const fetchN = maxResults * 4;
+    const [vectorResults, rawFtsResults] = await Promise.all([
       queryVector
         ? this.backend
             .vectorSearch(queryVector, {
@@ -99,17 +108,17 @@ export class MemorySparkManager {
         .catch(() => [] as SearchResult[]),
     ]);
 
-    const seen = new Set<string>();
-    const merged = [...vectorResults, ...ftsResults]
-      .filter((r) => {
-        if (seen.has(r.chunk.id)) return false;
-        seen.add(r.chunk.id);
-        return true;
-      })
-      .sort((a, b) => b.score - a.score)
-      .slice(0, fetchN);
+    // Filter FTS: exclude sessions source, apply minScore (matches recall.ts)
+    const ftsResults = rawFtsResults.filter(
+      (r) => r.chunk.source !== "sessions" && r.score >= minScore,
+    );
 
-    const reranked = await this.reranker.rerank(query, merged, maxResults);
+    // Full pipeline: hybridMerge → sourceWeighting → temporalDecay → MMR → rerank
+    const merged = hybridMerge(vectorResults, ftsResults, fetchN);
+    applySourceWeighting(merged);
+    applyTemporalDecay(merged);
+    const diverse = mmrRerank(merged, maxResults * 2, 0.7);
+    const reranked = await this.reranker.rerank(query, diverse, maxResults);
 
     return reranked.map((r) => ({
       path: r.chunk.path,

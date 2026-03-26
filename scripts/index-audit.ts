@@ -1,59 +1,62 @@
-import { connect } from "@lancedb/lancedb";
-import path from "path";
-import os from "os";
+/**
+ * Audit the LanceDB index — show what's in it, find garbage.
+ */
+import { LanceDBBackend } from "../src/storage/lancedb.js";
+import { resolveConfig } from "../src/config.js";
 
-async function main() {
-  const dbPath = path.join(os.homedir(), ".openclaw", "data", "memory-spark", "lancedb");
-  const db = await connect(dbPath);
-  const table = await db.openTable("memory_chunks");
+const cfg = resolveConfig();
+const backend = new LanceDBBackend(cfg);
 
-  const rows = await table.query().select(["path", "source", "updated_at"]).limit(200000).toArray();
-  console.log("Total chunks:", rows.length);
+await backend.open();
+const paths = await backend.listPaths();
 
-  // Source distribution
-  const sources = new Map<string, number>();
-  for (const r of rows as any[]) {
-    sources.set(r.source, (sources.get(r.source) ?? 0) + 1);
-  }
-  console.log("\nSource distribution:");
-  for (const [k, v] of [...sources.entries()].sort((a, b) => b[1] - a[1])) {
-    console.log(`  ${k}: ${v} (${((v / rows.length) * 100).toFixed(1)}%)`);
-  }
-
-  // Age distribution
-  const now = Date.now();
-  let lt1d = 0,
-    lt7d = 0,
-    lt30d = 0,
-    older = 0;
-  for (const r of rows as any[]) {
-    const age = now - new Date(r.updated_at).getTime();
-    if (age < 86400000) lt1d++;
-    else if (age < 7 * 86400000) lt7d++;
-    else if (age < 30 * 86400000) lt30d++;
-    else older++;
-  }
-  console.log("\nAge distribution:");
-  console.log("  <1 day:", lt1d);
-  console.log("  1-7 days:", lt7d);
-  console.log("  7-30 days:", lt30d);
-  console.log("  >30 days:", older);
-
-  // Remaining noise
-  const zhCount = (rows as any[]).filter((r) => r.path?.includes("/zh-CN/")).length;
-  console.log("\nRemaining zh-CN chunks:", zhCount);
-
-  const sessionDumps = (rows as any[]).filter((r) => r.path?.match(/2026-0[12]-/)).length;
-  console.log("Old session dumps (Jan/Feb):", sessionDumps);
-
-  // Disk usage
-  const { execSync } = await import("child_process");
-  const diskUsage = execSync(`du -sh ${dbPath}`).toString().trim();
-  console.log("\nLanceDB disk usage:", diskUsage);
-
-  // Index info
-  const indices = await table.listIndices();
-  console.log("\nIndices:", JSON.stringify(indices, null, 2));
+// Group by top-level directory
+const byDir: Record<string, { chunks: number; paths: string[] }> = {};
+for (const p of paths) {
+  const dir = p.path.includes("/") ? p.path.split("/")[0]! : "(root)";
+  if (!byDir[dir]) byDir[dir] = { chunks: 0, paths: [] };
+  byDir[dir]!.chunks += p.chunkCount;
+  byDir[dir]!.paths.push(p.path);
 }
 
-main().catch(console.error);
+console.log("=== Chunks by directory ===");
+Object.entries(byDir)
+  .sort((a, b) => b[1].chunks - a[1].chunks)
+  .forEach(([dir, info]) => {
+    console.log(`${String(info.chunks).padStart(6)} chunks | ${String(info.paths.length).padStart(4)} files | ${dir}/`);
+  });
+
+// Show source distribution
+const bySource: Record<string, number> = {};
+for (const p of paths) {
+  // We can't get source from listPaths, so infer from path patterns
+  if (p.path.startsWith("capture/")) bySource["capture"] = (bySource["capture"] || 0) + p.chunkCount;
+  else if (p.path.startsWith("sessions/")) bySource["sessions"] = (bySource["sessions"] || 0) + p.chunkCount;
+  else bySource["memory"] = (bySource["memory"] || 0) + p.chunkCount;
+}
+console.log("\n=== By source (inferred) ===");
+Object.entries(bySource).forEach(([s, c]) => console.log(`${s}: ${c}`));
+
+// Identify potential garbage paths
+console.log("\n=== Potential garbage (session dumps, archives, default bootstrap) ===");
+const garbagePatterns = [
+  /^sessions\//,
+  /archive\//,
+  /knowledge-base\//,
+  /\.jsonl$/,
+  /learnings\.md$/,
+];
+let garbageChunks = 0;
+for (const p of paths) {
+  if (garbagePatterns.some(pat => pat.test(p.path))) {
+    console.log(`  ${p.chunkCount} chunks: ${p.path}`);
+    garbageChunks += p.chunkCount;
+  }
+}
+console.log(`\nTotal: ${paths.reduce((s, p) => s + p.chunkCount, 0)} chunks in ${paths.length} files`);
+console.log(`Potential garbage: ${garbageChunks} chunks`);
+
+const status = await backend.status();
+console.log(`\nBackend: ${status.backend}, dims: ${status.vectorDims}, ready: ${status.ready}`);
+
+await backend.close();
