@@ -355,9 +355,13 @@ export function applySourceWeighting(results: SearchResult[]): void {
     if (source === "capture") weight = 1.5;
     else if (source === "sessions") weight = 0.5;
 
-    // Path-level refinements
+    // Path-level refinements — core bootstrap files get priority
     if (chunkPath === "MEMORY.md") weight *= 1.4;
     else if (chunkPath.toLowerCase().includes("mistakes")) weight *= 1.6;
+    else if (chunkPath === "TOOLS.md") weight *= 1.3;
+    else if (chunkPath === "AGENTS.md") weight *= 1.2;
+    else if (chunkPath === "SOUL.md") weight *= 1.2;
+    else if (chunkPath === "USER.md") weight *= 1.3;
     else if (chunkPath.startsWith("memory/archive/")) weight *= 0.4;
     else if (chunkPath === "memory/learnings.md") weight *= 0.1;
 
