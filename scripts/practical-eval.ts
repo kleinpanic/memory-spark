@@ -1,9 +1,9 @@
 /**
  * Practical Agent Utility Eval
- * 
+ *
  * Tests whether memory-spark retrieval actually helps agents
  * answer real questions they'd encounter in practice.
- * 
+ *
  * Each test case is a real scenario an agent might face,
  * with keywords that MUST appear in retrieved context for
  * the agent to answer correctly without hallucinating.
@@ -14,10 +14,10 @@ import { LanceDBBackend } from "../src/storage/lancedb.js";
 import { createEmbedProvider } from "../src/embed/provider.js";
 
 interface PracticalTest {
-  scenario: string;           // What the agent is trying to do
-  query: string;              // What memory-spark would search for
-  mustContain: string[];      // Keywords that MUST be in results for agent to succeed
-  niceToHave?: string[];      // Bonus context that would help
+  scenario: string; // What the agent is trying to do
+  query: string; // What memory-spark would search for
+  mustContain: string[]; // Keywords that MUST be in results for agent to succeed
+  niceToHave?: string[]; // Bonus context that would help
   category: "safety" | "infrastructure" | "workflow" | "history" | "reference";
 }
 
@@ -28,27 +28,27 @@ const TESTS: PracticalTest[] = [
     query: "how to restart openclaw gateway",
     mustContain: ["oc-restart", "banned", "approval"],
     niceToHave: ["Discord", "staged", "config-guardian"],
-    category: "safety"
+    category: "safety",
   },
   {
     scenario: "Agent is editing openclaw.json during a heartbeat run",
     query: "editing openclaw.json during heartbeat cron",
     mustContain: ["NEVER", "heartbeat", "config"],
     niceToHave: ["2026-02-20", "production break"],
-    category: "safety"
+    category: "safety",
   },
   {
     scenario: "Agent wants to use config.patch for agents.list changes",
     query: "config.patch agents.list array mutation",
     mustContain: ["never", "config.patch", "agents.list"],
-    category: "safety"
+    category: "safety",
   },
   {
     scenario: "Agent considers using Gemini Flash for a coding task",
     query: "gemini flash for coding tasks",
     mustContain: ["never", "coding", "opus"],
     niceToHave: ["broken work", "2026-03-08"],
-    category: "safety"
+    category: "safety",
   },
 
   // INFRASTRUCTURE — agents need to know the topology
@@ -57,28 +57,28 @@ const TESTS: PracticalTest[] = [
     query: "Spark node IP address connection",
     mustContain: ["127.0.0.1"],
     niceToHave: ["WireGuard", "wg-spark", "127.0.0.1"],
-    category: "infrastructure"
+    category: "infrastructure",
   },
   {
     scenario: "Agent needs to SSH to the mt server",
     query: "mt server SSH access PowerEdge",
     mustContain: ["mt", "PowerEdge"],
     niceToHave: ["192.168.1.133", "EXTREME CAUTION", "sacred"],
-    category: "infrastructure"
+    category: "infrastructure",
   },
   {
     scenario: "Agent needs to know which machine is user vs kernelpanic",
     query: "user kernelpanic machine difference",
     mustContain: ["user", "kernelpanic"],
     niceToHave: ["Debian", "sid", "laptop"],
-    category: "infrastructure"
+    category: "infrastructure",
   },
   {
     scenario: "Agent needs to manage BlueBubbles MCP",
     query: "BlueBubbles MCP tunnel service",
     mustContain: ["bluebubbles", "18800"],
     niceToHave: ["autossh", "collins", "mcporter"],
-    category: "infrastructure"
+    category: "infrastructure",
   },
 
   // WORKFLOW — how things are done
@@ -87,21 +87,21 @@ const TESTS: PracticalTest[] = [
     query: "oc-tasks create track task workflow",
     mustContain: ["oc-tasks", "add"],
     niceToHave: ["dispatch", "comment", "advance"],
-    category: "workflow"
+    category: "workflow",
   },
   {
     scenario: "Agent wants to run sudo commands on user",
     query: "sudo tmux root commands user",
     mustContain: ["tmux", "sudo"],
     niceToHave: ["send-keys", "capture-pane"],
-    category: "workflow"
+    category: "workflow",
   },
   {
     scenario: "Agent wants to send an iMessage to someone",
     query: "send iMessage via BlueBubbles",
     mustContain: ["bluebubbles", "mcporter"],
     niceToHave: ["send-message", "collins"],
-    category: "workflow"
+    category: "workflow",
   },
 
   // HISTORY — learning from past mistakes
@@ -110,21 +110,21 @@ const TESTS: PracticalTest[] = [
     query: "spark reboot checklist what to check",
     mustContain: ["WireGuard", "reboot"],
     niceToHave: ["nvidia-persistenced", "wg-spark"],
-    category: "history"
+    category: "history",
   },
   {
     scenario: "Agent sees model aliases missing from config and wants to understand why",
     query: "model alias fields removed from config incident",
     mustContain: ["alias", "removed"],
     niceToHave: ["30", "2026-02-25", "heartbeat"],
-    category: "history"
+    category: "history",
   },
   {
     scenario: "Agent needs to understand the LCM corruption issue",
     query: "LCM database corruption tail messages",
     mustContain: ["lcm", "corruption"],
     niceToHave: ["lcm.db", "tail messages"],
-    category: "history"
+    category: "history",
   },
 
   // REFERENCE — technical knowledge
@@ -133,14 +133,14 @@ const TESTS: PracticalTest[] = [
     query: "Nemotron-Super maxTokens token budget",
     mustContain: ["65536"],
     niceToHave: ["budget_tokens", "reasoning", "think"],
-    category: "reference"
+    category: "reference",
   },
   {
     scenario: "Agent needs GPU memory utilization for Spark services",
     query: "GPU_MEMORY_UTIL spark services VRAM",
     mustContain: ["GPU_MEMORY"],
     niceToHave: ["0.65", "VRAM", "boot-loop"],
-    category: "reference"
+    category: "reference",
   },
 ];
 
@@ -156,22 +156,34 @@ async function main() {
   console.log(`Embed: ${embed.id}/${embed.model} (${embed.dims}d)`);
   console.log(`Testing ${TESTS.length} real agent scenarios...\n`);
 
-  const results: { pass: boolean; scenario: string; category: string; missing: string[]; found: string[]; bonus: string[] }[] = [];
+  const results: {
+    pass: boolean;
+    scenario: string;
+    category: string;
+    missing: string[];
+    found: string[];
+    bonus: string[];
+  }[] = [];
 
   for (const test of TESTS) {
     // Embed the query
     const queryVec = await embed.embedQuery(test.query);
-    
+
     // Search via both vector and FTS (mimicking what the plugin does)
     const [vectorResults, ftsResults] = await Promise.all([
-      db.vectorSearch(queryVec, { query: test.query, maxResults: 10, minScore: 0.0 }).catch(() => []),
+      db
+        .vectorSearch(queryVec, { query: test.query, maxResults: 10, minScore: 0.0 })
+        .catch(() => []),
       db.ftsSearch(test.query, { query: test.query, maxResults: 10 }).catch(() => []),
     ]);
 
     // Combine all retrieved text from both result sets
     const allChunks = [...vectorResults, ...ftsResults];
-    const allText = allChunks.map((r: any) => `${r.chunk?.text || r.text || ""}`).join("\n").toLowerCase();
-    
+    const allText = allChunks
+      .map((r: any) => `${r.chunk?.text || r.text || ""}`)
+      .join("\n")
+      .toLowerCase();
+
     // Check must-contain
     const found: string[] = [];
     const missing: string[] = [];
@@ -208,7 +220,7 @@ async function main() {
 
   // Summary
   const total = results.length;
-  const passed = results.filter(r => r.pass).length;
+  const passed = results.filter((r) => r.pass).length;
   const byCategory = new Map<string, { pass: number; total: number }>();
   for (const r of results) {
     const cat = byCategory.get(r.category) || { pass: 0, total: 0 };
@@ -218,10 +230,12 @@ async function main() {
   }
 
   console.log("\n=== Results ===");
-  console.log(`Overall: ${passed}/${total} scenarios pass (${Math.round(passed/total*100)}%)`);
+  console.log(
+    `Overall: ${passed}/${total} scenarios pass (${Math.round((passed / total) * 100)}%)`,
+  );
   console.log("\nBy category:");
   for (const [cat, stats] of [...byCategory].sort()) {
-    const pct = Math.round(stats.pass / stats.total * 100);
+    const pct = Math.round((stats.pass / stats.total) * 100);
     const bar = "█".repeat(Math.round(pct / 10)) + "░".repeat(10 - Math.round(pct / 10));
     console.log(`  ${cat.padEnd(16)} ${bar} ${stats.pass}/${stats.total} (${pct}%)`);
   }
@@ -229,8 +243,10 @@ async function main() {
   // Compute bonus coverage
   const totalBonus = results.reduce((sum, r) => sum + (r.bonus?.length || 0), 0);
   const maxBonus = TESTS.reduce((sum, t) => sum + (t.niceToHave?.length || 0), 0);
-  console.log(`\nBonus context coverage: ${totalBonus}/${maxBonus} (${Math.round(totalBonus/maxBonus*100)}%)`);
-  
+  console.log(
+    `\nBonus context coverage: ${totalBonus}/${maxBonus} (${Math.round((totalBonus / maxBonus) * 100)}%)`,
+  );
+
   console.log("\n=== What This Means ===");
   if (passed / total >= 0.8) {
     console.log("✅ GOOD: Agents can answer most real scenarios using memory context.");
@@ -239,7 +255,9 @@ async function main() {
   } else {
     console.log("❌ POOR: Memory isn't providing meaningful help for agent tasks.");
   }
-  console.log(`\nFailed scenarios need attention — agents will hallucinate or ask Klein to repeat info.`);
+  console.log(
+    `\nFailed scenarios need attention — agents will hallucinate or ask Klein to repeat info.`,
+  );
 
   process.exit(passed === total ? 0 : 1);
 }

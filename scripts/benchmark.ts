@@ -14,7 +14,7 @@ import { createEmbedProvider } from "../src/embed/provider.js";
 
 interface TestQuery {
   query: string;
-  expectedPaths: string[];  // Relative paths we expect in top-5
+  expectedPaths: string[]; // Relative paths we expect in top-5
   expectedSnippets?: string[]; // Optional: keywords expected in results
 }
 
@@ -57,10 +57,10 @@ interface EvalResult {
   query: string;
   expectedPaths: string[];
   retrievedPaths: string[];
-  recallAt5: number;     // fraction of expected paths found in top 5
-  precisionAt5: number;  // fraction of top 5 that match expected paths
+  recallAt5: number; // fraction of expected paths found in top 5
+  precisionAt5: number; // fraction of top 5 that match expected paths
   reciprocalRank: number; // 1/rank of first match (0 if not found)
-  avgAge: number;         // average age of top-5 results in days
+  avgAge: number; // average age of top-5 results in days
 }
 
 function computeRR(retrievedPaths: string[], expectedPaths: string[]): number {
@@ -74,8 +74,11 @@ function computeRR(retrievedPaths: string[], expectedPaths: string[]): number {
 }
 
 function pathMatches(retrieved: string, expected: string): boolean {
-  return retrieved.includes(expected) || expected.includes(retrieved) ||
-    retrieved.toLowerCase().includes(expected.toLowerCase());
+  return (
+    retrieved.includes(expected) ||
+    expected.includes(retrieved) ||
+    retrieved.toLowerCase().includes(expected.toLowerCase())
+  );
 }
 
 async function main() {
@@ -111,12 +114,19 @@ async function main() {
       const queryVector = await embed.embedQuery(testCase.query);
 
       const [vectorResults, ftsResults] = await Promise.all([
-        backend.vectorSearch(queryVector, {
-          query: testCase.query, maxResults: N * 2, minScore: 0.0,
-        }).catch(() => []),
-        backend.ftsSearch(testCase.query, {
-          query: testCase.query, maxResults: N * 2,
-        }).catch(() => []),
+        backend
+          .vectorSearch(queryVector, {
+            query: testCase.query,
+            maxResults: N * 2,
+            minScore: 0.0,
+          })
+          .catch(() => []),
+        backend
+          .ftsSearch(testCase.query, {
+            query: testCase.query,
+            maxResults: N * 2,
+          })
+          .catch(() => []),
       ]);
 
       // Simple RRF merge
@@ -124,12 +134,20 @@ async function main() {
       vectorResults.forEach((r, rank) => {
         const existing = seen.get(r.chunk.id);
         const rrfScore = (existing?.score ?? 0) + 1 / (60 + rank);
-        seen.set(r.chunk.id, { path: r.chunk.path, score: rrfScore, updatedAt: r.chunk.updated_at });
+        seen.set(r.chunk.id, {
+          path: r.chunk.path,
+          score: rrfScore,
+          updatedAt: r.chunk.updated_at,
+        });
       });
       ftsResults.forEach((r, rank) => {
         const existing = seen.get(r.chunk.id);
         const rrfScore = (existing?.score ?? 0) + 1 / (60 + rank);
-        seen.set(r.chunk.id, { path: r.chunk.path, score: rrfScore, updatedAt: r.chunk.updated_at });
+        seen.set(r.chunk.id, {
+          path: r.chunk.path,
+          score: rrfScore,
+          updatedAt: r.chunk.updated_at,
+        });
       });
 
       const sorted = Array.from(seen.values())
@@ -140,31 +158,30 @@ async function main() {
 
       // Recall@N: fraction of expected paths found in top N
       const found = testCase.expectedPaths.filter((ep) =>
-        retrievedPaths.some((rp) => pathMatches(rp, ep))
+        retrievedPaths.some((rp) => pathMatches(rp, ep)),
       );
-      const recallAt5 = testCase.expectedPaths.length > 0
-        ? found.length / testCase.expectedPaths.length
-        : 0;
+      const recallAt5 =
+        testCase.expectedPaths.length > 0 ? found.length / testCase.expectedPaths.length : 0;
 
       // Precision@N: fraction of top N that match any expected path
       const matchedRetrieved = retrievedPaths.filter((rp) =>
-        testCase.expectedPaths.some((ep) => pathMatches(rp, ep))
+        testCase.expectedPaths.some((ep) => pathMatches(rp, ep)),
       );
-      const precisionAt5 = retrievedPaths.length > 0
-        ? matchedRetrieved.length / retrievedPaths.length
-        : 0;
+      const precisionAt5 =
+        retrievedPaths.length > 0 ? matchedRetrieved.length / retrievedPaths.length : 0;
 
       // Reciprocal Rank
       const rr = computeRR(retrievedPaths, testCase.expectedPaths);
 
       // Average age of top-N results
       const now = Date.now();
-      const avgAge = sorted.length > 0
-        ? sorted.reduce((sum, r) => {
-            const updatedAt = r.updatedAt ? new Date(r.updatedAt).getTime() : now;
-            return sum + (now - updatedAt) / (86400 * 1000);
-          }, 0) / sorted.length
-        : 0;
+      const avgAge =
+        sorted.length > 0
+          ? sorted.reduce((sum, r) => {
+              const updatedAt = r.updatedAt ? new Date(r.updatedAt).getTime() : now;
+              return sum + (now - updatedAt) / (86400 * 1000);
+            }, 0) / sorted.length
+          : 0;
 
       results.push({
         query: testCase.query,
@@ -177,7 +194,9 @@ async function main() {
       });
 
       const symbol = rr > 0 ? "✓" : "✗";
-      console.log(`${symbol} R@5=${recallAt5.toFixed(2)} P@5=${precisionAt5.toFixed(2)} RR=${rr.toFixed(2)}`);
+      console.log(
+        `${symbol} R@5=${recallAt5.toFixed(2)} P@5=${precisionAt5.toFixed(2)} RR=${rr.toFixed(2)}`,
+      );
     } catch (err) {
       console.log(`ERROR: ${err}`);
       results.push({
@@ -204,7 +223,9 @@ async function main() {
 
   console.log("\n=== Benchmark Results ===");
   console.log(`Total queries:     ${results.length}`);
-  console.log(`Found in top-5:    ${found}/${results.length} (${(found / results.length * 100).toFixed(0)}%)`);
+  console.log(
+    `Found in top-5:    ${found}/${results.length} (${((found / results.length) * 100).toFixed(0)}%)`,
+  );
   console.log(`MRR:               ${mrr.toFixed(3)}`);
   console.log(`Avg Recall@5:      ${avgRecall.toFixed(3)}`);
   console.log(`Avg Precision@5:   ${avgPrecision.toFixed(3)}`);

@@ -48,12 +48,21 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     // Hybrid search: vector + FTS
     const fetchN = cfg.maxResults * 4;
     const [vectorResults, ftsResults] = await Promise.all([
-      backend.vectorSearch(queryVector, {
-        query: queryText, maxResults: fetchN, minScore: cfg.minScore, agentId,
-      }).catch(() => [] as SearchResult[]),
-      backend.ftsSearch(queryText, {
-        query: queryText, maxResults: fetchN, agentId,
-      }).catch(() => [] as SearchResult[]),
+      backend
+        .vectorSearch(queryVector, {
+          query: queryText,
+          maxResults: fetchN,
+          minScore: cfg.minScore,
+          agentId,
+        })
+        .catch(() => [] as SearchResult[]),
+      backend
+        .ftsSearch(queryText, {
+          query: queryText,
+          maxResults: fetchN,
+          agentId,
+        })
+        .catch(() => [] as SearchResult[]),
     ]);
 
     // RRF (Reciprocal Rank Fusion) merge
@@ -86,12 +95,16 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     const deduplicated = reranked.filter((r) => {
       const chunkAge = Date.now() - new Date(r.chunk.updated_at).getTime();
       if (chunkAge > 2 * 60 * 60 * 1000) return true; // older than 2h — keep
-      const chunkTokens = new Set((r.chunk.text.match(/\b\w{4,}\b/g) ?? []).map((w) => w.toLowerCase()));
+      const chunkTokens = new Set(
+        (r.chunk.text.match(/\b\w{4,}\b/g) ?? []).map((w) => w.toLowerCase()),
+      );
       if (chunkTokens.size === 0) return true;
       for (const msg of recentTexts) {
         const msgTokens = new Set((msg.match(/\b\w{4,}\b/g) ?? []).map((w) => w.toLowerCase()));
         let overlap = 0;
-        for (const t of chunkTokens) { if (msgTokens.has(t)) overlap++; }
+        for (const t of chunkTokens) {
+          if (msgTokens.has(t)) overlap++;
+        }
         if (overlap / chunkTokens.size > 0.4) return false; // >40% overlap = redundant
       }
       return true;
@@ -130,7 +143,12 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
  * Reciprocal Rank Fusion — proper hybrid merge.
  * RRF(d) = Σ 1 / (k + rank_i(d)) across all ranking lists.
  */
-function rrfMerge(vectorResults: SearchResult[], ftsResults: SearchResult[], limit: number, k = 60): SearchResult[] {
+function rrfMerge(
+  vectorResults: SearchResult[],
+  ftsResults: SearchResult[],
+  limit: number,
+  k = 60,
+): SearchResult[] {
   const scores = new Map<string, { result: SearchResult; rrfScore: number }>();
 
   // Score from vector ranking
@@ -236,9 +254,7 @@ function mmrRerank(results: SearchResult[], limit: number, lambda: number): Sear
 }
 
 function tokenize(text: string): Set<string> {
-  return new Set(
-    text.toLowerCase().match(/\b\w{3,}\b/g) ?? []
-  );
+  return new Set(text.toLowerCase().match(/\b\w{3,}\b/g) ?? []);
 }
 
 function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
@@ -260,8 +276,14 @@ function cleanQueryText(text: string): string {
   text = text.replace(/```json\s*\{[\s\S]*?"message_id"[\s\S]*?\}\s*```/g, "");
   text = text.replace(/Conversation info \(untrusted metadata\):[\s\S]*?```\s*/g, "");
   text = text.replace(/Sender \(untrusted metadata\):[\s\S]*?```\s*/g, "");
-  text = text.replace(/Untrusted context \(metadata[^)]*\):[\s\S]*?<<<END_EXTERNAL_UNTRUSTED_CONTENT[^>]*>>>/g, "");
-  text = text.replace(/<<<EXTERNAL_UNTRUSTED_CONTENT[^>]*>>>[\s\S]*?<<<END_EXTERNAL_UNTRUSTED_CONTENT[^>]*>>>/g, "");
+  text = text.replace(
+    /Untrusted context \(metadata[^)]*\):[\s\S]*?<<<END_EXTERNAL_UNTRUSTED_CONTENT[^>]*>>>/g,
+    "",
+  );
+  text = text.replace(
+    /<<<EXTERNAL_UNTRUSTED_CONTENT[^>]*>>>[\s\S]*?<<<END_EXTERNAL_UNTRUSTED_CONTENT[^>]*>>>/g,
+    "",
+  );
 
   // Strip timestamp headers
   text = text.replace(/\[\w{3} \d{4}-\d{2}-\d{2} \d{2}:\d{2} \w+\]/g, "");

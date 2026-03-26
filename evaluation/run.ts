@@ -101,7 +101,14 @@ const ABLATIONS: Array<{ name: string; label: string; config: EvalConfig }> = [
   {
     name: "vanilla",
     label: "Vanilla Retrieval",
-    config: { rerank: false, decay: false, fts: false, quality: false, context: false, mistakes: false },
+    config: {
+      rerank: false,
+      decay: false,
+      fts: false,
+      quality: false,
+      context: false,
+      mistakes: false,
+    },
   },
 ];
 
@@ -207,12 +214,15 @@ function scoreCandidate(
   const base = Math.max(0.01, candidate.score || 0.3);
   const lexical = similarityScore(query, `${chunk.path} ${chunk.text}`);
   const qualityScore = chunk.quality_score ?? inferQuality(chunk.path);
-  const ageDays = Math.max(0, (Date.now() - new Date(chunk.updated_at || new Date().toISOString()).getTime()) / 86400_000);
+  const ageDays = Math.max(
+    0,
+    (Date.now() - new Date(chunk.updated_at || new Date().toISOString()).getTime()) / 86400_000,
+  );
 
   let score = base;
 
   if (cfg.context) {
-    score *= 1 + 0.10 * lexical;
+    score *= 1 + 0.1 * lexical;
   }
 
   if (cfg.quality) {
@@ -228,12 +238,12 @@ function scoreCandidate(
   }
 
   if (cfg.rerank) {
-    score *= 1 + 0.20 * lexical;
+    score *= 1 + 0.2 * lexical;
     score *= 1 + 0.015 * Math.max(0, 20 - rankHint);
   }
 
   if (!cfg.fts) {
-    score *= 0.90;
+    score *= 0.9;
   }
 
   return score;
@@ -282,9 +292,9 @@ function mockConfigStrength(cfg: EvalConfig): number {
   if (cfg.decay) strength += 0.06;
   if (cfg.fts) strength += 0.11;
   if (cfg.quality) strength += 0.07;
-  if (cfg.context) strength += 0.10;
+  if (cfg.context) strength += 0.1;
   if (cfg.mistakes) strength += 0.06;
-  return Math.min(0.90, strength);
+  return Math.min(0.9, strength);
 }
 
 function mockQueryResult(q: GroundTruthQuery, cfg: EvalConfig): QueryResult {
@@ -295,9 +305,12 @@ function mockQueryResult(q: GroundTruthQuery, cfg: EvalConfig): QueryResult {
   for (const rel of q.relevant) {
     const includeChance = Math.min(0.965, 0.12 + strength * 0.56 + rel.grade * 0.11);
     if (rng() < includeChance) {
-      const jitter = (rng() - 0.5) * 0.20;
+      const jitter = (rng() - 0.5) * 0.2;
       const decayPenalty = cfg.decay ? 1 : 0.94;
-      const score = Math.max(0.04, (0.20 + rel.grade * 0.095 + strength * 0.21 + jitter) * decayPenalty);
+      const score = Math.max(
+        0.04,
+        (0.2 + rel.grade * 0.095 + strength * 0.21 + jitter) * decayPenalty,
+      );
       relevantDocs.push({
         path: `memory/${rel.path_contains.replace(/\s+/g, "-").toLowerCase()}.md`,
         text: rel.snippet_contains ?? `${q.query} ${rel.path_contains}`,
@@ -330,7 +343,10 @@ function mockQueryResult(q: GroundTruthQuery, cfg: EvalConfig): QueryResult {
   };
 }
 
-async function runMockEvaluation(queries: GroundTruthQuery[], cfg: EvalConfig): Promise<EvalResults> {
+async function runMockEvaluation(
+  queries: GroundTruthQuery[],
+  cfg: EvalConfig,
+): Promise<EvalResults> {
   const perQuery = queries.map((q) => mockQueryResult(q, cfg));
   return compileResults(perQuery, {
     mode: "mock",
@@ -344,7 +360,7 @@ function mergeCandidates(vector: SearchResult[], fts: SearchResult[]): SearchRes
     items.forEach((item, rank) => {
       const id = item.chunk.id;
       const existing = byId.get(id);
-      const boost = 1 / (60 + rank) * weight;
+      const boost = (1 / (60 + rank)) * weight;
       if (!existing) {
         byId.set(id, {
           ...item,
@@ -374,21 +390,28 @@ async function liveQuery(
 
   const fetchLimit = 50;
   const ftsPromise = cfg.fts
-    ? backend.ftsSearch(q.query, { query: q.query, maxResults: fetchLimit }).catch(() => [] as SearchResult[])
-    : Promise.resolve([] as SearchResult[]);
-
-  const vectorPromise = vectorEnabled && embedQuery
-    ? embedQuery(q.query)
-        .then((vec) => backend.vectorSearch(vec, { query: q.query, maxResults: fetchLimit, minScore: 0.0 }))
+    ? backend
+        .ftsSearch(q.query, { query: q.query, maxResults: fetchLimit })
         .catch(() => [] as SearchResult[])
     : Promise.resolve([] as SearchResult[]);
+
+  const vectorPromise =
+    vectorEnabled && embedQuery
+      ? embedQuery(q.query)
+          .then((vec) =>
+            backend.vectorSearch(vec, { query: q.query, maxResults: fetchLimit, minScore: 0.0 }),
+          )
+          .catch(() => [] as SearchResult[])
+      : Promise.resolve([] as SearchResult[]);
 
   const [vector, fts] = await Promise.all([vectorPromise, ftsPromise]);
   let candidates = mergeCandidates(vector, fts);
 
   if (!cfg.fts && candidates.length === 0 && vector.length === 0) {
     // Fallback so ablations still run if vector retrieval is unavailable.
-    candidates = await backend.ftsSearch(q.query, { query: q.query, maxResults: fetchLimit }).catch(() => []);
+    candidates = await backend
+      .ftsSearch(q.query, { query: q.query, maxResults: fetchLimit })
+      .catch(() => []);
   }
 
   const scored = candidates
@@ -412,7 +435,10 @@ async function liveQuery(
   };
 }
 
-async function runLiveEvaluation(queries: GroundTruthQuery[], cfg: EvalConfig): Promise<EvalResults> {
+async function runLiveEvaluation(
+  queries: GroundTruthQuery[],
+  cfg: EvalConfig,
+): Promise<EvalResults> {
   const runtimeCfg = resolveConfig();
   const backend = new LanceDBBackend(runtimeCfg);
   await backend.open();
@@ -453,8 +479,14 @@ function prettyConfigLabel(name: string, cfg: EvalConfig): string {
   return configKey(cfg);
 }
 
-function buildSuite(mode: "mock" | "live", dataset: GroundTruthSet, runs: EvalRun[]): EvaluationSuite {
-  const sorted = [...runs].sort((a, b) => b.results.metrics.ndcg_at_10.mean - a.results.metrics.ndcg_at_10.mean);
+function buildSuite(
+  mode: "mock" | "live",
+  dataset: GroundTruthSet,
+  runs: EvalRun[],
+): EvaluationSuite {
+  const sorted = [...runs].sort(
+    (a, b) => b.results.metrics.ndcg_at_10.mean - a.results.metrics.ndcg_at_10.mean,
+  );
   const full = runs.find((r) => r.name === "full") ?? sorted[0]!;
   const vanilla = runs.find((r) => r.name === "vanilla") ?? sorted[sorted.length - 1]!;
 
@@ -472,7 +504,9 @@ function buildSuite(mode: "mock" | "live", dataset: GroundTruthSet, runs: EvalRu
       bestByNdcgAt10: sorted[0]!.name,
       baselineNdcgAt10: Number(full.results.metrics.ndcg_at_10.mean.toFixed(4)),
       vanillaNdcgAt10: Number(vanilla.results.metrics.ndcg_at_10.mean.toFixed(4)),
-      absoluteGainVsVanilla: Number((full.results.metrics.ndcg_at_10.mean - vanilla.results.metrics.ndcg_at_10.mean).toFixed(4)),
+      absoluteGainVsVanilla: Number(
+        (full.results.metrics.ndcg_at_10.mean - vanilla.results.metrics.ndcg_at_10.mean).toFixed(4),
+      ),
     },
   };
 }
@@ -511,7 +545,13 @@ async function main() {
 
   const configs = args.suiteMode
     ? ABLATIONS
-    : [{ name: configKey(args.selectedConfig), label: prettyConfigLabel(configKey(args.selectedConfig), args.selectedConfig), config: args.selectedConfig }];
+    : [
+        {
+          name: configKey(args.selectedConfig),
+          label: prettyConfigLabel(configKey(args.selectedConfig), args.selectedConfig),
+          config: args.selectedConfig,
+        },
+      ];
 
   const runs: EvalRun[] = [];
   for (const entry of configs) {

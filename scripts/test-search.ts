@@ -22,12 +22,12 @@ async function embed(text: string): Promise<number[]> {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${TOKEN}`,
+      Authorization: `Bearer ${TOKEN}`,
     },
     body: JSON.stringify({ input: text, model: MODEL }),
   });
   if (!resp.ok) throw new Error(`Embed failed: ${resp.status} ${await resp.text()}`);
-  const data = await resp.json() as any;
+  const data = (await resp.json()) as any;
   return data.data[0].embedding;
 }
 
@@ -39,7 +39,7 @@ async function main() {
   // 1. Embed the query
   console.log("\n--- Embedding query ---");
   const vec = await embed(query);
-  console.log(`Vector: ${vec.length} dims, first 3: [${vec.slice(0, 3).map(v => v.toFixed(4))}]`);
+  console.log(`Vector: ${vec.length} dims, first 3: [${vec.slice(0, 3).map((v) => v.toFixed(4))}]`);
 
   // 2. Open table
   const db = await lancedb.connect(DB);
@@ -49,15 +49,15 @@ async function main() {
 
   // 3. Vector search (raw, no filter)
   console.log("\n--- Vector search (top 5, no filter) ---");
-  const results = await t.vectorSearch(vec)
-    .limit(5)
-    .toArray();
+  const results = await t.vectorSearch(vec).limit(5).toArray();
 
   if (results.length === 0) {
     console.log("NO RESULTS — vector search returned empty");
   } else {
     for (const r of results) {
-      console.log(`  score=${(r._distance ?? -1).toFixed(4)} path=${r.path} text=${String(r.text).slice(0, 80)}...`);
+      console.log(
+        `  score=${(r._distance ?? -1).toFixed(4)} path=${r.path} text=${String(r.text).slice(0, 80)}...`,
+      );
     }
   }
 
@@ -69,7 +69,9 @@ async function main() {
       console.log("NO FTS RESULTS");
     } else {
       for (const r of fts) {
-        console.log(`  score=${(r._score ?? r._relevance_score ?? -1).toFixed?.(4) ?? "N/A"} path=${r.path} text=${String(r.text).slice(0, 80)}...`);
+        console.log(
+          `  score=${(r._score ?? r._relevance_score ?? -1).toFixed?.(4) ?? "N/A"} path=${r.path} text=${String(r.text).slice(0, 80)}...`,
+        );
       }
     }
   } catch (e: any) {

@@ -1,10 +1,10 @@
 /**
  * Dimension Lock — ensures vector dimensions stay consistent.
- * 
+ *
  * On first index: writes a lock file with the provider/model/dims.
  * On subsequent boots: refuses to start if the active provider produces
  * different dimensions than what's stored.
- * 
+ *
  * This prevents the silent corruption scenario where Spark (4096d) indexes
  * data, then Gemini fallback (3072d) tries to search against it.
  */
@@ -33,10 +33,7 @@ export async function readDimsLock(dataDir: string): Promise<DimsLockInfo | null
 
 export async function writeDimsLock(dataDir: string, info: DimsLockInfo): Promise<void> {
   await fs.mkdir(dataDir, { recursive: true });
-  await fs.writeFile(
-    path.join(dataDir, LOCK_FILE),
-    JSON.stringify(info, null, 2) + "\n",
-  );
+  await fs.writeFile(path.join(dataDir, LOCK_FILE), JSON.stringify(info, null, 2) + "\n");
 }
 
 /**
@@ -65,7 +62,8 @@ export async function validateDimsLock(
   if (lock.dims !== currentDims) {
     return {
       ok: false,
-      error: `Dimension mismatch! Stored data uses ${lock.dims}d (${lock.provider}/${lock.model}) but current provider would produce ${currentDims}d (${currentProvider}/${currentModel}). ` +
+      error:
+        `Dimension mismatch! Stored data uses ${lock.dims}d (${lock.provider}/${lock.model}) but current provider would produce ${currentDims}d (${currentProvider}/${currentModel}). ` +
         `To fix: either restore the original provider, or wipe the data dir and re-index. ` +
         `Delete ${path.join(dataDir, LOCK_FILE)} to force a re-lock (WILL CORRUPT existing vectors).`,
       lock,

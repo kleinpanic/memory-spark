@@ -81,13 +81,22 @@ export class MemorySparkManager {
     const fetchN = maxResults * 3;
     const [vectorResults, ftsResults] = await Promise.all([
       queryVector
-        ? this.backend.vectorSearch(queryVector, {
-            query, maxResults: fetchN, minScore, agentId: this.agentId,
-          }).catch(() => [] as SearchResult[])
+        ? this.backend
+            .vectorSearch(queryVector, {
+              query,
+              maxResults: fetchN,
+              minScore,
+              agentId: this.agentId,
+            })
+            .catch(() => [] as SearchResult[])
         : Promise.resolve([] as SearchResult[]),
-      this.backend.ftsSearch(query, {
-        query, maxResults: fetchN, agentId: this.agentId,
-      }).catch(() => [] as SearchResult[]),
+      this.backend
+        .ftsSearch(query, {
+          query,
+          maxResults: fetchN,
+          agentId: this.agentId,
+        })
+        .catch(() => [] as SearchResult[]),
     ]);
 
     const seen = new Set<string>();
@@ -117,7 +126,11 @@ export class MemorySparkManager {
    * Read file content. First tries the indexed chunks in storage,
    * then falls back to reading from disk (using workspace-relative path).
    */
-  async readFile(params: { relPath: string; from?: number; lines?: number }): Promise<{ text: string; path: string }> {
+  async readFile(params: {
+    relPath: string;
+    from?: number;
+    lines?: number;
+  }): Promise<{ text: string; path: string }> {
     // Try storage first
     const fromStorage = await this.backend.readFile({
       path: params.relPath,

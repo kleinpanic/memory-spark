@@ -27,13 +27,17 @@ export async function createEmbedProvider(cfg: EmbedConfig): Promise<EmbedProvid
   const providers: Array<() => EmbedProvider> = [];
 
   if (cfg.spark) {
-    providers.push(() => makeOpenAiCompat("spark", cfg.spark!.baseUrl, cfg.spark!.apiKey ?? "none", cfg.spark!.model));
+    providers.push(() =>
+      makeOpenAiCompat("spark", cfg.spark!.baseUrl, cfg.spark!.apiKey ?? "none", cfg.spark!.model),
+    );
   }
 
   if (cfg.openai) {
     const key = cfg.openai.apiKey ?? process.env["OPENAI_API_KEY"] ?? "";
     if (key) {
-      providers.push(() => makeOpenAiCompat("openai", "https://api.openai.com/v1", key, cfg.openai!.model));
+      providers.push(() =>
+        makeOpenAiCompat("openai", "https://api.openai.com/v1", key, cfg.openai!.model),
+      );
     }
   }
 
@@ -64,7 +68,12 @@ export async function createEmbedProvider(cfg: EmbedConfig): Promise<EmbedProvid
 // OpenAI-compatible provider (covers Spark + OpenAI)
 // ---------------------------------------------------------------------------
 
-function makeOpenAiCompat(id: string, baseUrl: string, apiKey: string, model: string): EmbedProvider {
+function makeOpenAiCompat(
+  id: string,
+  baseUrl: string,
+  apiKey: string,
+  model: string,
+): EmbedProvider {
   const dims = DIMS[model] ?? 1536;
 
   async function embed(input: string | string[]): Promise<number[][]> {
@@ -72,7 +81,7 @@ function makeOpenAiCompat(id: string, baseUrl: string, apiKey: string, model: st
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({ model, input }),
     });
@@ -80,7 +89,7 @@ function makeOpenAiCompat(id: string, baseUrl: string, apiKey: string, model: st
       const body = await resp.text().catch(() => "");
       throw new Error(`Embed ${id} failed (${resp.status}): ${body.slice(0, 200)}`);
     }
-    const data = await resp.json() as { data: Array<{ embedding: number[]; index: number }> };
+    const data = (await resp.json()) as { data: Array<{ embedding: number[]; index: number }> };
     // Sort by index to preserve order
     return data.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
   }
@@ -139,7 +148,7 @@ function makeGemini(model: string, apiKey: string): EmbedProvider {
         }),
       });
       if (!resp.ok) throw new Error(`Gemini embed failed: ${resp.status}`);
-      const data = await resp.json() as { embedding: { values: number[] } };
+      const data = (await resp.json()) as { embedding: { values: number[] } };
       return data.embedding.values;
     },
     async embedBatch(texts) {
@@ -156,7 +165,7 @@ function makeGemini(model: string, apiKey: string): EmbedProvider {
         body: JSON.stringify({ requests }),
       });
       if (!resp.ok) throw new Error(`Gemini batch embed failed: ${resp.status}`);
-      const data = await resp.json() as { embeddings: Array<{ values: number[] }> };
+      const data = (await resp.json()) as { embeddings: Array<{ values: number[] }> };
       return data.embeddings.map((e) => e.values);
     },
     async probe() {

@@ -31,10 +31,7 @@ export interface AutoCaptureDeps {
 }
 
 export function createAutoCaptureHandler(deps: AutoCaptureDeps) {
-  return async function captureHandler(
-    event: AgentEndEvent,
-    ctx: HookContext,
-  ): Promise<void> {
+  return async function captureHandler(event: AgentEndEvent, ctx: HookContext): Promise<void> {
     const { cfg, globalCfg, backend, embed } = deps;
 
     if (!cfg.enabled || !event.success) return;
@@ -68,7 +65,7 @@ export function createAutoCaptureHandler(deps: AutoCaptureDeps) {
           result = heuristicClassify(text);
         }
         // Heuristic scores cap at 0.70 — use a lower threshold for heuristic results
-        const effectiveMinConfidence = result.score <= 0.70 ? 0.60 : cfg.minConfidence;
+        const effectiveMinConfidence = result.score <= 0.7 ? 0.6 : cfg.minConfidence;
         if (result.label === "none") continue;
         if (result.score < effectiveMinConfidence) continue;
         if (!cfg.categories.includes(result.label)) continue;
@@ -77,13 +74,15 @@ export function createAutoCaptureHandler(deps: AutoCaptureDeps) {
         const vector = await embed.embedQuery(text);
 
         // Duplicate detection: search for similar existing memories
-        const existing = await backend.vectorSearch(vector, {
-          query: text,
-          maxResults: 1,
-          minScore: DEDUP_THRESHOLD,
-          agentId,
-          source: "capture",
-        }).catch(() => []);
+        const existing = await backend
+          .vectorSearch(vector, {
+            query: text,
+            maxResults: 1,
+            minScore: DEDUP_THRESHOLD,
+            agentId,
+            source: "capture",
+          })
+          .catch(() => []);
 
         if (existing.length > 0 && existing[0]!.score >= DEDUP_THRESHOLD) {
           continue; // Duplicate — skip
@@ -94,9 +93,9 @@ export function createAutoCaptureHandler(deps: AutoCaptureDeps) {
 
         // Importance scoring: confidence from classifier + category weight
         const categoryWeights: Record<string, number> = {
-          "decision": 0.9,
-          "preference": 0.8,
-          "fact": 0.7,
+          decision: 0.9,
+          preference: 0.8,
+          fact: 0.7,
           "code-snippet": 0.6,
         };
         const importance = (result.score + (categoryWeights[result.label] ?? 0.5)) / 2;
@@ -164,11 +163,15 @@ function extractCaptureMessages(messages: unknown[], minLen = 80): string[] {
 }
 
 function containsDecisionPattern(text: string): boolean {
-  return /\b(decided|going with|switched to|approved|we'll use|migrated? to|the fix is|conclusion|we should|the solution is)\b/i.test(text);
+  return /\b(decided|going with|switched to|approved|we'll use|migrated? to|the fix is|conclusion|we should|the solution is)\b/i.test(
+    text,
+  );
 }
 
 function containsFactPattern(text: string): boolean {
-  return /\b(runs on|runs at|located at|IP is|port \d+|the server|version \d|deployed to|configured as)\b/i.test(text);
+  return /\b(runs on|runs at|located at|IP is|port \d+|the server|version \d|deployed to|configured as)\b/i.test(
+    text,
+  );
 }
 
 function extractContent(msg: Record<string, unknown>): string {

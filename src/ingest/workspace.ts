@@ -20,8 +20,13 @@ import { SUPPORTED_EXTS } from "./parsers.js";
 
 /** Files in workspace root that should always be indexed */
 const ROOT_FILES = [
-  "MEMORY.md", "SOUL.md", "USER.md", "AGENTS.md",
-  "HEARTBEAT.md", "IDENTITY.md", "TOOLS.md",
+  "MEMORY.md",
+  "SOUL.md",
+  "USER.md",
+  "AGENTS.md",
+  "HEARTBEAT.md",
+  "IDENTITY.md",
+  "TOOLS.md",
 ];
 
 /** Extensions we'll pick up from workspace root scan */
@@ -39,7 +44,10 @@ export interface WorkspaceFiles {
 /**
  * Discover all indexable files for an agent.
  */
-export async function discoverWorkspaceFiles(agentId: string, workspaceDir?: string): Promise<WorkspaceFiles> {
+export async function discoverWorkspaceFiles(
+  agentId: string,
+  workspaceDir?: string,
+): Promise<WorkspaceFiles> {
   const ocDir = path.join(os.homedir(), ".openclaw");
   const wsDir = workspaceDir ?? path.join(ocDir, `workspace-${agentId}`);
 
@@ -69,7 +77,9 @@ export async function discoverWorkspaceFiles(agentId: string, workspaceDir?: str
         memoryFiles.push(fp);
       }
     }
-  } catch { /* skip */ }
+  } catch {
+    /* skip */
+  }
 
   // 2. memory/ directory (recursive, all supported types)
   const memDir = path.join(wsDir, "memory");
@@ -94,7 +104,12 @@ export async function discoverWorkspaceFiles(agentId: string, workspaceDir?: str
   try {
     const files = await fs.readdir(sessDir);
     for (const f of files) {
-      if (f.endsWith(".jsonl") && !f.includes(".reset.") && !f.includes(".deleted.") && !f.includes(".bak")) {
+      if (
+        f.endsWith(".jsonl") &&
+        !f.includes(".reset.") &&
+        !f.includes(".deleted.") &&
+        !f.includes(".bak")
+      ) {
         sessionFiles.push(path.join(sessDir, f));
       }
     }
@@ -161,7 +176,7 @@ export async function walkSupportedFiles(dir: string): Promise<string[]> {
       if (entry.name.startsWith(".")) continue;
       const fullPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        results.push(...await walkSupportedFiles(fullPath));
+        results.push(...(await walkSupportedFiles(fullPath)));
       } else {
         const ext = path.extname(entry.name).replace(".", "").toLowerCase();
         if (SUPPORTED_EXTS.has(ext)) {

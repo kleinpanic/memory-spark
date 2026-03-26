@@ -31,7 +31,7 @@ export async function tagEntities(text: string, cfg: MemorySparkConfig): Promise
     });
     if (!resp.ok) return [];
 
-    const data = await resp.json() as NerResponse;
+    const data = (await resp.json()) as NerResponse;
     const entities = new Set<string>();
     for (const e of data.entities) {
       const word = e.word.trim().replace(/^##/, "");

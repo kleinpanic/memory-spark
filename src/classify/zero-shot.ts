@@ -14,7 +14,11 @@ export interface ClassifyResult {
 }
 
 export const CAPTURE_LABELS: CaptureCategory[] = [
-  "fact", "preference", "decision", "code-snippet", "none",
+  "fact",
+  "preference",
+  "decision",
+  "code-snippet",
+  "none",
 ];
 
 export async function classifyForCapture(
@@ -38,7 +42,7 @@ export async function classifyForCapture(
     });
     if (!resp.ok) return { label: "none", score: 0 };
 
-    const data = await resp.json() as { labels: string[]; scores: number[] };
+    const data = (await resp.json()) as { labels: string[]; scores: number[] };
     const topLabel = data.labels[0] as CaptureCategory;
     const topScore = data.scores[0]!;
 

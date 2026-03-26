@@ -5,7 +5,11 @@
 import * as lancedb from "@lancedb/lancedb";
 import type { Table } from "@lancedb/lancedb";
 import type {
-  StorageBackend, MemoryChunk, SearchOptions, SearchResult, BackendStatus,
+  StorageBackend,
+  MemoryChunk,
+  SearchOptions,
+  SearchResult,
+  BackendStatus,
 } from "./backend.js";
 import type { MemorySparkConfig } from "../config.js";
 import fs from "node:fs/promises";
@@ -24,7 +28,10 @@ export class LanceDBBackend implements StorageBackend {
   private withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
     const next = this.writeLock.then(() => fn());
     // Settle the lock chain even if fn throws, so subsequent writes aren't blocked forever
-    this.writeLock = next.then(() => {}, () => {});
+    this.writeLock = next.then(
+      () => {},
+      () => {},
+    );
     return next;
   }
 
@@ -64,7 +71,7 @@ export class LanceDBBackend implements StorageBackend {
 
   /**
    * Detect whether the table has the new columns from the RAG overhaul.
-   * 
+   *
    * We do NOT use addColumns() to migrate old tables — it creates columns with
    * different Arrow nullability than seed-record columns, causing schema errors
    * on mergeInsert. Instead:
@@ -170,7 +177,9 @@ export class LanceDBBackend implements StorageBackend {
       token_count: 0,
       parent_heading: "",
     };
-    this.table = await this.db.createTable(TABLE_NAME, [seed as unknown as Record<string, unknown>]);
+    this.table = await this.db.createTable(TABLE_NAME, [
+      seed as unknown as Record<string, unknown>,
+    ]);
     await this.table.delete("id = '__seed__'");
     // Fresh table has all columns from seed record — mark them as available
     this.schemaHasNewColumns = true;
@@ -219,7 +228,8 @@ export class LanceDBBackend implements StorageBackend {
     const MAX_RETRIES = 3;
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
-        await table.mergeInsert("id")
+        await table
+          .mergeInsert("id")
           .whenMatchedUpdateAll()
           .whenNotMatchedInsertAll()
           .execute(normalized as unknown as Record<string, unknown>[]);
@@ -259,7 +269,8 @@ export class LanceDBBackend implements StorageBackend {
     if (!this.table) return [];
     const limit = opts.maxResults ?? 20;
 
-    let q = this.table.vectorSearch(queryVector)
+    let q = this.table
+      .vectorSearch(queryVector)
       .distanceType("cosine")
       .refineFactor(20)
       .limit(limit);
@@ -311,7 +322,9 @@ export class LanceDBBackend implements StorageBackend {
     }
   }
 
-  async listPaths(agentId?: string): Promise<Array<{ path: string; agentId: string; updatedAt: string; chunkCount: number }>> {
+  async listPaths(
+    agentId?: string,
+  ): Promise<Array<{ path: string; agentId: string; updatedAt: string; chunkCount: number }>> {
     if (!this.table) return [];
 
     let q = this.table.query().select(["path", "agent_id", "updated_at"]);
@@ -321,7 +334,10 @@ export class LanceDBBackend implements StorageBackend {
     const rows = await q.toArray();
 
     // Group by agentId::path to avoid cross-agent collisions on same relative paths
-    const groups = new Map<string, { path: string; agentId: string; updatedAt: string; count: number }>();
+    const groups = new Map<
+      string,
+      { path: string; agentId: string; updatedAt: string; count: number }
+    >();
     for (const row of rows) {
       const key = `${row.agent_id}::${row.path}`;
       const existing = groups.get(key);
@@ -347,17 +363,24 @@ export class LanceDBBackend implements StorageBackend {
 
   async getById(id: string): Promise<MemoryChunk | null> {
     if (!this.table) return null;
-    const rows = await this.table.query()
+    const rows = await this.table
+      .query()
       .where(`id = '${escapeSql(id)}'`)
       .limit(1)
       .toArray();
     return rows.length > 0 ? (rows[0] as MemoryChunk) : null;
   }
 
-  async readFile(params: { path: string; from?: number; lines?: number; agentId?: string }): Promise<{ text: string; path: string }> {
+  async readFile(params: {
+    path: string;
+    from?: number;
+    lines?: number;
+    agentId?: string;
+  }): Promise<{ text: string; path: string }> {
     if (!this.table) return { text: "", path: params.path };
 
-    let q = this.table.query()
+    let q = this.table
+      .query()
       .where(`path = '${escapeSql(params.path)}'`)
       .select(["text", "start_line", "end_line"]);
 
@@ -367,8 +390,9 @@ export class LanceDBBackend implements StorageBackend {
 
     const rows = await q.toArray();
     // Sort by start_line and reconstruct
-    rows.sort((a: Record<string, unknown>, b: Record<string, unknown>) =>
-      (a.start_line as number) - (b.start_line as number)
+    rows.sort(
+      (a: Record<string, unknown>, b: Record<string, unknown>) =>
+        (a.start_line as number) - (b.start_line as number),
     );
 
     let text = rows.map((r: Record<string, unknown>) => r.text as string).join("\n");
@@ -385,7 +409,7 @@ export class LanceDBBackend implements StorageBackend {
 
   async status(): Promise<BackendStatus> {
     if (!this.table) {
-      return { backend: "lancedb", chunkCount: 0, tableExists: false, ready: !!this.db, };
+      return { backend: "lancedb", chunkCount: 0, tableExists: false, ready: !!this.db };
     }
     try {
       const count = await this.table.countRows();
@@ -420,7 +444,9 @@ export class LanceDBBackend implements StorageBackend {
       const filter = agentId ? `agent_id = '${escapeSql(agentId)}'` : undefined;
       const [totalChunks, indices, paths] = await Promise.all([
         this.table.countRows(filter),
-        this.table.listIndices().catch(() => [] as Array<{ name: string; indexType: string; columns: string[] }>),
+        this.table
+          .listIndices()
+          .catch(() => [] as Array<{ name: string; indexType: string; columns: string[] }>),
         this.listPaths(agentId),
       ]);
       const topPaths = paths

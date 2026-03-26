@@ -22,7 +22,7 @@ async function main() {
     console.log(`[sync-rag] OpenClaw installed version: ${currentVer}`);
 
     const installDir = path.join(KB_DIR, `installed-v${currentVer}`);
-    
+
     await fs.mkdir(KB_DIR, { recursive: true });
 
     let alreadyIndexed = false;
@@ -38,12 +38,14 @@ async function main() {
     } else {
       console.log(`[sync-rag] New version detected! Copying docs for v${currentVer}...`);
       await fs.mkdir(installDir, { recursive: true });
-      await execAsync(`rsync -a --include="*.md" --include="*/" --exclude="*" "${OC_DOCS}/" "${installDir}/"`);
+      await execAsync(
+        `rsync -a --include="*.md" --include="*/" --exclude="*" "${OC_DOCS}/" "${installDir}/"`,
+      );
       console.log(`[sync-rag] ✅ Copied docs to installed-v${currentVer}/`);
 
       // Clean up old versions (keep newest 2)
       const dirs = await fs.readdir(KB_DIR);
-      const installDirs = dirs.filter(d => d.startsWith("installed-v"));
+      const installDirs = dirs.filter((d) => d.startsWith("installed-v"));
       installDirs.sort(); // Sorting lexically is fine for now, or maybe sort by stat time if needed
       if (installDirs.length > 2) {
         const toRemove = installDirs.slice(0, installDirs.length - 2);
@@ -62,14 +64,21 @@ async function main() {
         console.log(`[sync-rag] Syncing git-latest...`);
         const latestDir = path.join(KB_DIR, "git-latest");
         await fs.mkdir(latestDir, { recursive: true });
-        await execAsync(`rsync -a --delete --include="*.md" --include="*/" --exclude="*" "${GIT_DOCS}/" "${latestDir}/"`);
-        
+        await execAsync(
+          `rsync -a --delete --include="*.md" --include="*/" --exclude="*" "${GIT_DOCS}/" "${latestDir}/"`,
+        );
+
         try {
           const { stdout } = await execAsync(`git -C "${GIT_DOCS}/.." rev-parse --short HEAD`);
           gitHash = stdout.trim();
-        } catch { /* git hash optional */ }
-        
-        await fs.writeFile(path.join(latestDir, "_version.md"), `# OpenClaw git-latest as of ${new Date().toISOString()} (commit: ${gitHash})\n`);
+        } catch {
+          /* git hash optional */
+        }
+
+        await fs.writeFile(
+          path.join(latestDir, "_version.md"),
+          `# OpenClaw git-latest as of ${new Date().toISOString()} (commit: ${gitHash})\n`,
+        );
         console.log(`[sync-rag] ✅ git-latest synced (commit: ${gitHash})`);
       }
     } catch {

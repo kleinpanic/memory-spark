@@ -38,7 +38,10 @@ function parseArgs(argv: string[]): { resultsPath: string } {
 }
 
 function esc(s: string): string {
-  return s.replace(/[&<>"']/g, (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch] ?? ch);
+  return s.replace(
+    /[&<>"']/g,
+    (ch) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[ch] ?? ch,
+  );
 }
 
 function frame(width: number, height: number, inner: string): string {
@@ -61,7 +64,9 @@ function findRun(runs: EvalRun[], name: string): EvalRun | undefined {
 
 function linePath(points: Array<{ x: number; y: number }>): string {
   if (points.length === 0) return "";
-  return points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(2)} ${p.y.toFixed(2)}`).join(" ");
+  return points
+    .map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(2)} ${p.y.toFixed(2)}`)
+    .join(" ");
 }
 
 function ablationChart(runs: EvalRun[]): string {
@@ -72,13 +77,22 @@ function ablationChart(runs: EvalRun[]): string {
   const barH = 42;
   const gap = 18;
 
-  const order = ["full", "no-rerank", "no-decay", "no-fts", "no-quality", "no-context", "no-mistakes", "vanilla"];
+  const order = [
+    "full",
+    "no-rerank",
+    "no-decay",
+    "no-fts",
+    "no-quality",
+    "no-context",
+    "no-mistakes",
+    "vanilla",
+  ];
   const rows = order
     .map((name) => findRun(runs, name))
     .filter((r): r is EvalRun => !!r)
     .map((r) => ({ label: r.label, value: r.results.metrics.ndcg_at_10.mean, name: r.name }));
 
-  const x = (v: number) => margin.left + (Math.max(0, Math.min(1, v)) * plotW);
+  const x = (v: number) => margin.left + Math.max(0, Math.min(1, v)) * plotW;
 
   const bars = rows
     .map((row, i) => {
@@ -139,20 +153,28 @@ function recallCurve(runs: EvalRun[]): string {
   const makeSeries = (run: EvalRun, color: string) => {
     const points = kVals.map((k, i) => ({ x: x(i), y: y(getRecall(run, k)) }));
     const circles = points
-      .map((p, i) => `<circle cx="${p.x}" cy="${p.y}" r="5" fill="${color}"><title>K=${kVals[i]} ${getRecall(run, kVals[i]!).toFixed(3)}</title></circle>`)
+      .map(
+        (p, i) =>
+          `<circle cx="${p.x}" cy="${p.y}" r="5" fill="${color}"><title>K=${kVals[i]} ${getRecall(run, kVals[i]!).toFixed(3)}</title></circle>`,
+      )
       .join("\n");
     return `<path d="${linePath(points)}" fill="none" stroke="${color}" stroke-width="3"/>${circles}`;
   };
 
   const hTicks = [0, 0.25, 0.5, 0.75, 1.0]
-    .map((t) => `
+    .map(
+      (t) => `
       <line x1="${margin.left}" x2="${width - margin.right}" y1="${y(t)}" y2="${y(t)}" stroke="${C.grid}"/>
       <text x="${margin.left - 10}" y="${y(t) + 5}" fill="${C.muted}" text-anchor="end" font-size="13">${t.toFixed(2)}</text>
-    `)
+    `,
+    )
     .join("\n");
 
   const xTicks = kVals
-    .map((k, i) => `<text x="${x(i)}" y="${height - margin.bottom + 28}" fill="${C.muted}" text-anchor="middle" font-size="14">${k}</text>`)
+    .map(
+      (k, i) =>
+        `<text x="${x(i)}" y="${height - margin.bottom + 28}" fill="${C.muted}" text-anchor="middle" font-size="14">${k}</text>`,
+    )
     .join("\n");
 
   return frame(
@@ -185,7 +207,10 @@ function radarChart(runs: EvalRun[]): string {
   const n = entries.length;
 
   const rings = [0.2, 0.4, 0.6, 0.8, 1.0]
-    .map((r) => `<circle cx="${cx}" cy="${cy}" r="${(radius * r).toFixed(1)}" fill="none" stroke="${C.grid}"/>`)
+    .map(
+      (r) =>
+        `<circle cx="${cx}" cy="${cy}" r="${(radius * r).toFixed(1)}" fill="none" stroke="${C.grid}"/>`,
+    )
     .join("\n");
 
   const axes = entries
@@ -202,17 +227,18 @@ function radarChart(runs: EvalRun[]): string {
     })
     .join("\n");
 
-  const points = entries
-    .map(([, m], i) => {
-      const a = (Math.PI * 2 * i) / n - Math.PI / 2;
-      const r = Math.max(0, Math.min(1, m.ndcg_at_10)) * radius;
-      const x = cx + Math.cos(a) * r;
-      const y = cy + Math.sin(a) * r;
-      return { x, y };
-    });
+  const points = entries.map(([, m], i) => {
+    const a = (Math.PI * 2 * i) / n - Math.PI / 2;
+    const r = Math.max(0, Math.min(1, m.ndcg_at_10)) * radius;
+    const x = cx + Math.cos(a) * r;
+    const y = cy + Math.sin(a) * r;
+    return { x, y };
+  });
 
   const poly = points.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
-  const markers = points.map((p) => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4" fill="${C.primary}"/>`).join("\n");
+  const markers = points
+    .map((p) => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="4" fill="${C.primary}"/>`)
+    .join("\n");
 
   return frame(
     width,
@@ -256,10 +282,12 @@ function decayChart(): string {
     .join("\n");
 
   const yTicks = [0.8, 0.85, 0.9, 0.95, 1.0]
-    .map((v) => `
+    .map(
+      (v) => `
       <line x1="${margin.left}" x2="${width - margin.right}" y1="${y(v)}" y2="${y(v)}" stroke="${C.grid}"/>
       <text x="${margin.left - 10}" y="${y(v) + 5}" fill="${C.muted}" text-anchor="end" font-size="13">${v.toFixed(2)}</text>
-    `)
+    `,
+    )
     .join("\n");
 
   return frame(
@@ -354,7 +382,9 @@ async function main() {
     ["latency-distribution.svg", latencyChart(suite.runs)],
   ];
 
-  await Promise.all(files.map(([file, svg]) => fs.writeFile(path.join(FIGURES_DIR, file), svg, "utf8")));
+  await Promise.all(
+    files.map(([file, svg]) => fs.writeFile(path.join(FIGURES_DIR, file), svg, "utf8")),
+  );
 
   console.log(`Generated ${files.length} charts in ${FIGURES_DIR}`);
 }

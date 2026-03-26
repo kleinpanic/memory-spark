@@ -18,9 +18,9 @@ export interface RawChunk {
 }
 
 export interface ChunkerOptions {
-  maxTokens?: number;      // default: 400
-  overlapTokens?: number;  // default: 50
-  minTokens?: number;      // default: 20
+  maxTokens?: number; // default: 400
+  overlapTokens?: number; // default: 50
+  minTokens?: number; // default: 20
 }
 
 /** Approximate tokens from character count (4 chars ≈ 1 token for English) */
@@ -45,9 +45,7 @@ export function chunkDocument(input: ChunkInput, opts: ChunkerOptions = {}): Raw
   const isMarkdown = ext === "md" || ext === "rst";
 
   // Step 1: Split into sections
-  const sections = isMarkdown
-    ? splitMarkdownSections(input.text)
-    : splitParagraphs(input.text);
+  const sections = isMarkdown ? splitMarkdownSections(input.text) : splitParagraphs(input.text);
 
   // Step 2: Split oversized sections + merge tiny ones
   const chunks: RawChunk[] = [];
@@ -165,7 +163,12 @@ export function cleanChunkText(text: string): string {
 /**
  * Hard-split a string at character boundaries with overlap.
  */
-function hardSplitWithOverlap(text: string, maxChars: number, overlapChars: number, baseLineOffset: number): RawChunk[] {
+function hardSplitWithOverlap(
+  text: string,
+  maxChars: number,
+  overlapChars: number,
+  baseLineOffset: number,
+): RawChunk[] {
   const chunks: RawChunk[] = [];
   let offset = 0;
 

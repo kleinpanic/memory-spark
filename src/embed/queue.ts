@@ -1,6 +1,6 @@
 /**
  * EmbedQueue — serialized embed requests with retry, backoff, and health monitoring.
- * 
+ *
  * Prevents hammering the embed server. All embed calls go through this queue.
  * Single-concurrency by default (Spark embed is single-worker uvicorn).
  * Retries with exponential backoff on failure.
@@ -120,9 +120,15 @@ export class EmbedQueue {
   }
 
   /** The embed provider's model/dims info */
-  get model() { return this.provider.model; }
-  get dims() { return this.provider.dims; }
-  get id() { return this.provider.id; }
+  get model() {
+    return this.provider.model;
+  }
+  get dims() {
+    return this.provider.dims;
+  }
+  get id() {
+    return this.provider.id;
+  }
 
   /** Drain remaining queue items with errors (for shutdown) */
   drain(): void {
@@ -153,8 +159,11 @@ export class EmbedQueue {
   private async process(): Promise<void> {
     while (this.queue.length > 0 && this.active < this.concurrency) {
       if (!this.isHealthy()) {
-        const waitMs = this.unhealthyCooldownMs - (Date.now() - (this.unhealthySince ?? Date.now()));
-        this.logger.warn(`memory-spark queue: unhealthy, waiting ${Math.round(waitMs / 1000)}s cooldown`);
+        const waitMs =
+          this.unhealthyCooldownMs - (Date.now() - (this.unhealthySince ?? Date.now()));
+        this.logger.warn(
+          `memory-spark queue: unhealthy, waiting ${Math.round(waitMs / 1000)}s cooldown`,
+        );
         setTimeout(() => this.process(), Math.min(waitMs + 1000, this.unhealthyCooldownMs));
         return;
       }
@@ -174,7 +183,11 @@ export class EmbedQueue {
           const cbs = this._recoveryCallbacks.slice();
           setImmediate(() => {
             for (const cb of cbs) {
-              try { cb(); } catch { /* swallow callback errors */ }
+              try {
+                cb();
+              } catch {
+                /* swallow callback errors */
+              }
             }
           });
         }
@@ -185,12 +198,9 @@ export class EmbedQueue {
         if (item.retries < this.maxRetries) {
           // Retry with exponential backoff
           item.retries++;
-          const delay = Math.min(
-            this.baseDelayMs * Math.pow(2, item.retries - 1),
-            this.maxDelayMs
-          );
+          const delay = Math.min(this.baseDelayMs * Math.pow(2, item.retries - 1), this.maxDelayMs);
           this.logger.warn(
-            `memory-spark queue: retry ${item.retries}/${this.maxRetries} in ${delay}ms: ${errMsg}`
+            `memory-spark queue: retry ${item.retries}/${this.maxRetries} in ${delay}ms: ${errMsg}`,
           );
           setTimeout(() => {
             this.queue.unshift(item); // Re-add to front of queue
@@ -199,7 +209,9 @@ export class EmbedQueue {
         } else {
           // Max retries exceeded
           this._failed++;
-          this.logger.error(`memory-spark queue: gave up after ${this.maxRetries} retries: ${errMsg}`);
+          this.logger.error(
+            `memory-spark queue: gave up after ${this.maxRetries} retries: ${errMsg}`,
+          );
           item.reject(err instanceof Error ? err : new Error(errMsg));
         }
 
@@ -208,7 +220,7 @@ export class EmbedQueue {
           this.unhealthySince = Date.now();
           this._wasUnhealthy = true;
           this.logger.error(
-            `memory-spark queue: ${this.consecutiveFailures} consecutive failures — marking UNHEALTHY for ${this.unhealthyCooldownMs / 1000}s`
+            `memory-spark queue: ${this.consecutiveFailures} consecutive failures — marking UNHEALTHY for ${this.unhealthyCooldownMs / 1000}s`,
           );
         }
       } finally {
@@ -222,10 +234,19 @@ export class EmbedQueue {
 
   private withTimeout<T>(promise: Promise<T>): Promise<T> {
     return new Promise<T>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error(`Embed timeout (${this.timeoutMs}ms)`)), this.timeoutMs);
+      const timer = setTimeout(
+        () => reject(new Error(`Embed timeout (${this.timeoutMs}ms)`)),
+        this.timeoutMs,
+      );
       promise
-        .then((v) => { clearTimeout(timer); resolve(v); })
-        .catch((e) => { clearTimeout(timer); reject(e); });
+        .then((v) => {
+          clearTimeout(timer);
+          resolve(v);
+        })
+        .catch((e) => {
+          clearTimeout(timer);
+          reject(e);
+        });
     });
   }
 }

@@ -15,7 +15,9 @@ async function main() {
   const rows = await t.countRows();
   console.log(`\nRows: ${rows}`);
   const indices = await t.listIndices();
-  console.log(`Indices: ${indices.length > 0 ? JSON.stringify(indices, null, 2) : "none yet (table may be too small)"}`);
+  console.log(
+    `Indices: ${indices.length > 0 ? JSON.stringify(indices, null, 2) : "none yet (table may be too small)"}`,
+  );
 
   // Sample a row to verify data
   const sample = await t.query().limit(1).toArray();

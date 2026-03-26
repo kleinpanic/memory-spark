@@ -1,12 +1,12 @@
 /**
  * Migration script — imports existing memory-core data into LanceDB.
  * Called on first boot via gateway_start hook.
- * 
+ *
  * This is a no-op now because the boot pass in watcher.ts handles
  * all file discovery and indexing. The migration is effectively
  * the boot pass itself — it discovers all workspace files and
  * session transcripts and indexes them with Spark embeddings.
- * 
+ *
  * This file exists to prevent the dynamic import error in index.ts.
  */
 

@@ -17,7 +17,10 @@ interface MigrationStatus {
   version: 1;
   startedAt: string;
   completedAt?: string;
-  agents: Record<string, { status: string; memoryFiles: number; sessionFiles: number; chunks: number; error?: string }>;
+  agents: Record<
+    string,
+    { status: string; memoryFiles: number; sessionFiles: number; chunks: number; error?: string }
+  >;
 }
 
 export async function runMigration(): Promise<void> {
@@ -102,9 +105,17 @@ export async function runMigration(): Promise<void> {
         sessionFiles: wsFiles.sessionFiles.length,
         chunks: totalChunks,
       };
-      console.log(`${agentId}: ${wsFiles.memoryFiles.length} memory + ${wsFiles.sessionFiles.length} sessions → ${totalChunks} chunks`);
+      console.log(
+        `${agentId}: ${wsFiles.memoryFiles.length} memory + ${wsFiles.sessionFiles.length} sessions → ${totalChunks} chunks`,
+      );
     } catch (err) {
-      status.agents[agentId] = { status: "error", memoryFiles: 0, sessionFiles: 0, chunks: 0, error: String(err) };
+      status.agents[agentId] = {
+        status: "error",
+        memoryFiles: 0,
+        sessionFiles: 0,
+        chunks: 0,
+        error: String(err),
+      };
       console.error(`${agentId} FAILED: ${err}`);
     }
   }

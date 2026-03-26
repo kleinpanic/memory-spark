@@ -15,7 +15,7 @@ export interface MemoryChunk {
   vector: number[];
   updated_at: string;
   category?: string;
-  entities?: string;    // JSON-serialized string[] for storage
+  entities?: string; // JSON-serialized string[] for storage
   confidence?: number;
   /** Content classification: "knowledge" (default), "reference", "capture" */
   content_type?: string;
@@ -33,7 +33,7 @@ export interface SearchOptions {
   maxResults?: number;
   minScore?: number;
   agentId?: string;
-  userId?: string;  // Filter by user/gateway for multi-user isolation
+  userId?: string; // Filter by user/gateway for multi-user isolation
   source?: string;
   /** Filter by content_type (e.g. "reference", "knowledge") */
   contentType?: string;
@@ -62,8 +62,15 @@ export interface StorageBackend {
   deleteById(ids: string[]): Promise<void>;
   vectorSearch(queryVector: number[], opts: SearchOptions): Promise<SearchResult[]>;
   ftsSearch(query: string, opts: SearchOptions): Promise<SearchResult[]>;
-  listPaths(agentId?: string): Promise<Array<{ path: string; agentId: string; updatedAt: string; chunkCount: number }>>;
+  listPaths(
+    agentId?: string,
+  ): Promise<Array<{ path: string; agentId: string; updatedAt: string; chunkCount: number }>>;
   getById(id: string): Promise<MemoryChunk | null>;
-  readFile(params: { path: string; from?: number; lines?: number; agentId?: string }): Promise<{ text: string; path: string }>;
+  readFile(params: {
+    path: string;
+    from?: number;
+    lines?: number;
+    agentId?: string;
+  }): Promise<{ text: string; path: string }>;
   status(): Promise<BackendStatus>;
 }

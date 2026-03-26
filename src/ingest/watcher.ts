@@ -18,7 +18,12 @@ import type { EmbedProvider } from "../embed/provider.js";
 import { EmbedQueue } from "../embed/queue.js";
 import type { Embedder } from "./pipeline.js";
 import { ingestFile } from "./pipeline.js";
-import { discoverWorkspaceFiles, discoverAllAgents, toRelativePath, walkSupportedFiles } from "./workspace.js";
+import {
+  discoverWorkspaceFiles,
+  discoverAllAgents,
+  toRelativePath,
+  walkSupportedFiles,
+} from "./workspace.js";
 import { SUPPORTED_EXTS } from "./parsers.js";
 import { enforceMistakesFiles } from "../auto/mistakes.js";
 import chokidar, { type FSWatcher } from "chokidar";
@@ -36,7 +41,11 @@ import fs from "node:fs/promises";
 // ---------------------------------------------------------------------------
 
 const PENDING_QUEUE_PATH = path.join(
-  os.homedir(), ".openclaw", "data", "memory-spark", "pending-embed.jsonl"
+  os.homedir(),
+  ".openclaw",
+  "data",
+  "memory-spark",
+  "pending-embed.jsonl",
 );
 
 interface PendingEntry {
@@ -50,20 +59,26 @@ async function appendPending(entry: PendingEntry): Promise<void> {
   try {
     await fs.mkdir(path.dirname(PENDING_QUEUE_PATH), { recursive: true });
     await fs.appendFile(PENDING_QUEUE_PATH, JSON.stringify(entry) + "\n", "utf8");
-  } catch { /* best-effort — don't let queue write failures break anything */ }
+  } catch {
+    /* best-effort — don't let queue write failures break anything */
+  }
 }
 
 async function clearPendingQueue(): Promise<void> {
   try {
     await fs.unlink(PENDING_QUEUE_PATH);
-  } catch { /* file may not exist */ }
+  } catch {
+    /* file may not exist */
+  }
 }
 
 async function pendingQueueSize(): Promise<number> {
   try {
     const content = await fs.readFile(PENDING_QUEUE_PATH, "utf8");
     return content.trim().split("\n").filter(Boolean).length;
-  } catch { return 0; }
+  } catch {
+    return 0;
+  }
 }
 
 export interface WatcherLogger {
@@ -164,7 +179,7 @@ export function createWatcher(opts: {
 
     const agentId = resolveAgentForPath(filePath);
     const source = sourceForPath(filePath);
-    const contentType = isReferencePath(filePath) ? "reference" as const : "knowledge" as const;
+    const contentType = isReferencePath(filePath) ? ("reference" as const) : ("knowledge" as const);
 
     const result = await ingestFile({
       filePath,
@@ -195,7 +210,7 @@ export function createWatcher(opts: {
       setTimeout(() => {
         debounceTimers.delete(filePath);
         handleFileChange(filePath).catch((err) =>
-          opts.logger.error(`memory-spark watcher: ${filePath}: ${err}`)
+          opts.logger.error(`memory-spark watcher: ${filePath}: ${err}`),
         );
       }, opts.watch.debounceMs),
     );
@@ -204,26 +219,42 @@ export function createWatcher(opts: {
   /** Trigger a boot-pass (can be called externally, e.g. after embed recovery) */
   function triggerBootPassNow(): void {
     if (bootPassRunning) {
-      opts.logger.info("memory-spark recovery: boot pass already running, skipping duplicate trigger");
+      opts.logger.info(
+        "memory-spark recovery: boot pass already running, skipping duplicate trigger",
+      );
       return;
     }
-    pendingQueueSize().then((n) => {
-      opts.logger.info(`memory-spark recovery: embed healthy again — triggering catch-up boot pass (${n} entries in pending queue)`);
-    }).catch(() => {
-      opts.logger.info("memory-spark recovery: embed healthy again — triggering catch-up boot pass");
-    });
-    discoverAllAgents().then((agents) => {
-      bootPassRunning = true;
-      runBootPass(agents, opts)
-        .then(() => {
-          // Clear the pending queue — boot-pass picked up everything via mtime comparison
-          clearPendingQueue().then(() => {
-            opts.logger.info("memory-spark recovery: pending-embed.jsonl cleared after successful boot pass");
-          }).catch(() => {});
-        })
-        .catch((err) => opts.logger.error(`memory-spark recovery boot pass failed: ${err}`))
-        .finally(() => { bootPassRunning = false; });
-    }).catch((err) => opts.logger.error(`memory-spark recovery: discoverAllAgents failed: ${err}`));
+    pendingQueueSize()
+      .then((n) => {
+        opts.logger.info(
+          `memory-spark recovery: embed healthy again — triggering catch-up boot pass (${n} entries in pending queue)`,
+        );
+      })
+      .catch(() => {
+        opts.logger.info(
+          "memory-spark recovery: embed healthy again — triggering catch-up boot pass",
+        );
+      });
+    discoverAllAgents()
+      .then((agents) => {
+        bootPassRunning = true;
+        runBootPass(agents, opts)
+          .then(() => {
+            // Clear the pending queue — boot-pass picked up everything via mtime comparison
+            clearPendingQueue()
+              .then(() => {
+                opts.logger.info(
+                  "memory-spark recovery: pending-embed.jsonl cleared after successful boot pass",
+                );
+              })
+              .catch(() => {});
+          })
+          .catch((err) => opts.logger.error(`memory-spark recovery boot pass failed: ${err}`))
+          .finally(() => {
+            bootPassRunning = false;
+          });
+      })
+      .catch((err) => opts.logger.error(`memory-spark recovery: discoverAllAgents failed: ${err}`));
   }
 
   return {
@@ -247,14 +278,18 @@ export function createWatcher(opts: {
           await fs.access(wsDir);
           watchPaths.push(wsDir);
           dirToAgent.set(wsDir, agentId);
-        } catch { /* skip */ }
+        } catch {
+          /* skip */
+        }
 
         // Watch memory/ dir
         try {
           await fs.access(memDir);
           watchPaths.push(memDir);
           dirToAgent.set(memDir, agentId);
-        } catch { /* skip */ }
+        } catch {
+          /* skip */
+        }
 
         // Watch mistakes/ dir
         const mistakesDir = path.join(wsDir, "mistakes");
@@ -262,14 +297,18 @@ export function createWatcher(opts: {
           await fs.access(mistakesDir);
           watchPaths.push(mistakesDir);
           dirToAgent.set(mistakesDir, agentId);
-        } catch { /* skip */ }
+        } catch {
+          /* skip */
+        }
 
         // Watch sessions dir
         try {
           await fs.access(sessDir);
           watchPaths.push(sessDir);
           dirToAgent.set(sessDir, agentId);
-        } catch { /* skip */ }
+        } catch {
+          /* skip */
+        }
       }
 
       // 2. Add user-configured watch paths
@@ -280,7 +319,9 @@ export function createWatcher(opts: {
           if (wp.agents?.[0]) {
             dirToAgent.set(wp.path, wp.agents[0]);
           }
-        } catch { /* skip */ }
+        } catch {
+          /* skip */
+        }
       }
 
       // 2b. Add reference library paths (indexed as content_type: "reference")
@@ -296,12 +337,17 @@ export function createWatcher(opts: {
             watchPaths.push(resolved);
             dirToAgent.set(resolved, "shared");
             opts.logger.info(`memory-spark watcher: added reference path ${resolved}`);
-          } catch { /* skip */ }
+          } catch {
+            /* skip */
+          }
         }
         // Compute common root for meaningful relative paths (e.g. "ReferenceLibrary/vllm/quickstart.md")
         if (resolvedRefPaths.length > 0) {
           let common = resolvedRefPaths[0]!;
-          while (common !== "/" && !resolvedRefPaths.every((p) => p.startsWith(common + "/") || p === common)) {
+          while (
+            common !== "/" &&
+            !resolvedRefPaths.every((p) => p.startsWith(common + "/") || p === common)
+          ) {
             common = path.dirname(common);
           }
           referenceRoot = common;
@@ -312,7 +358,7 @@ export function createWatcher(opts: {
       // 2c. MISTAKES.md enforcement — create missing ones across all agent workspaces
       const workspaceDirs = agents.map((a) => path.join(ocDir, `workspace-${a}`));
       enforceMistakesFiles(workspaceDirs, opts.logger).catch((err) =>
-        opts.logger.error(`memory-spark: MISTAKES.md enforcement failed: ${err}`)
+        opts.logger.error(`memory-spark: MISTAKES.md enforcement failed: ${err}`),
       );
 
       if (watchPaths.length === 0) {
@@ -320,14 +366,18 @@ export function createWatcher(opts: {
         return;
       }
 
-      opts.logger.info(`memory-spark watcher: watching ${watchPaths.length} paths across ${agents.length} agents`);
+      opts.logger.info(
+        `memory-spark watcher: watching ${watchPaths.length} paths across ${agents.length} agents`,
+      );
 
       // 3. Boot pass
       if (opts.watch.indexOnBoot) {
         bootPassRunning = true;
         runBootPass(agents, opts)
           .catch((err) => opts.logger.error(`memory-spark boot pass failed: ${err}`))
-          .finally(() => { bootPassRunning = false; });
+          .finally(() => {
+            bootPassRunning = false;
+          });
       }
 
       // 4. Start chokidar
@@ -409,7 +459,13 @@ async function runBootPass(
   let skipped = 0;
 
   // Build queue of all files to ingest
-  const queue: Array<{ absPath: string; agentId: string; wsDir: string; source: "memory" | "sessions"; contentType?: "knowledge" | "reference" }> = [];
+  const queue: Array<{
+    absPath: string;
+    agentId: string;
+    wsDir: string;
+    source: "memory" | "sessions";
+    contentType?: "knowledge" | "reference";
+  }> = [];
 
   for (const agentId of agents) {
     const wsFiles = await discoverWorkspaceFiles(agentId);
@@ -460,7 +516,10 @@ async function runBootPass(
     }
     // Compute common root (same logic as init, but boot pass runs standalone)
     let refRoot = resolvedRefPaths[0] ?? "/";
-    while (refRoot !== "/" && !resolvedRefPaths.every((p) => p.startsWith(refRoot + "/") || p === refRoot)) {
+    while (
+      refRoot !== "/" &&
+      !resolvedRefPaths.every((p) => p.startsWith(refRoot + "/") || p === refRoot)
+    ) {
       refRoot = path.dirname(refRoot);
     }
 
@@ -481,19 +540,29 @@ async function runBootPass(
               skipped++;
               continue;
             }
-            queue.push({ absPath, agentId: "shared", wsDir: refRoot, source: "memory", contentType: "reference" });
+            queue.push({
+              absPath,
+              agentId: "shared",
+              wsDir: refRoot,
+              source: "memory",
+              contentType: "reference",
+            });
           } catch {
             skipped++;
           }
         }
-        opts.logger.info(`memory-spark boot: added ${refFiles.length} reference files from ${resolved}`);
+        opts.logger.info(
+          `memory-spark boot: added ${refFiles.length} reference files from ${resolved}`,
+        );
       } catch {
         opts.logger.warn(`memory-spark boot: reference path not accessible: ${resolved}`);
       }
     }
   }
 
-  opts.logger.info(`memory-spark boot pass: ${queue.length} files to index (${skipped} up-to-date, ${total} total)`);
+  opts.logger.info(
+    `memory-spark boot pass: ${queue.length} files to index (${skipped} up-to-date, ${total} total)`,
+  );
 
   // Process files sequentially — the EmbedQueue handles backpressure/retry
   const CONCURRENCY = 1;
@@ -508,8 +577,14 @@ async function runBootPass(
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error(`Timeout after ${ms}ms: ${label}`)), ms);
       promise
-        .then((v) => { clearTimeout(timer); resolve(v); })
-        .catch((e) => { clearTimeout(timer); reject(e); });
+        .then((v) => {
+          clearTimeout(timer);
+          resolve(v);
+        })
+        .catch((e) => {
+          clearTimeout(timer);
+          reject(e);
+        });
     });
   }
 
@@ -517,7 +592,10 @@ async function runBootPass(
     try {
       const stat = await fs.stat(filePath);
       const sizeKb = stat.size / 1024;
-      const timeout = Math.min(BASE_TIMEOUT_MS + Math.ceil(sizeKb / 50) * TIMEOUT_PER_50KB, MAX_TIMEOUT_MS);
+      const timeout = Math.min(
+        BASE_TIMEOUT_MS + Math.ceil(sizeKb / 50) * TIMEOUT_PER_50KB,
+        MAX_TIMEOUT_MS,
+      );
       return timeout;
     } catch {
       return BASE_TIMEOUT_MS;
@@ -561,5 +639,7 @@ async function runBootPass(
     }
   }
 
-  opts.logger.info(`memory-spark boot pass complete: ${ingested}/${queue.length} indexed, ${errors} errors, ${skipped} skipped (${agents.length} agents)`);
+  opts.logger.info(
+    `memory-spark boot pass complete: ${ingested}/${queue.length} indexed, ${errors} errors, ${skipped} skipped (${agents.length} agents)`,
+  );
 }

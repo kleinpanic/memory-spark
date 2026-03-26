@@ -52,7 +52,9 @@ export function escapeMemoryText(text: string): string {
  * Wraps in XML tags with clear instructions to treat as untrusted data.
  * Includes age and confidence metadata to help agents assess reliability.
  */
-export function formatRecalledMemories(memories: Array<{ source: string; text: string; score?: number; updatedAt?: string }>): string {
+export function formatRecalledMemories(
+  memories: Array<{ source: string; text: string; score?: number; updatedAt?: string }>,
+): string {
   if (memories.length === 0) return "";
 
   const lines = memories.map((m, i) => {

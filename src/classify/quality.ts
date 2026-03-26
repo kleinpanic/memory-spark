@@ -4,8 +4,8 @@
  */
 
 export interface QualityResult {
-  score: number;       // 0.0-1.0
-  flags: string[];     // Machine-readable noise indicators
+  score: number; // 0.0-1.0
+  flags: string[]; // Machine-readable noise indicators
 }
 
 /**
@@ -34,7 +34,9 @@ const EXCLUDED_PATH_PATTERNS: RegExp[] = [
 export function nonLatinRatio(text: string): number {
   if (!text) return 0;
   // CJK Unified, CJK Extension A/B, Hiragana, Katakana, Hangul, Cyrillic, Arabic, Thai, Devanagari
-  const nonLatin = text.match(/[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af\u0400-\u04ff\u0600-\u06ff\u0e00-\u0e7f\u0900-\u097f]/g);
+  const nonLatin = text.match(
+    /[\u4e00-\u9fff\u3400-\u4dbf\u3040-\u309f\u30a0-\u30ff\uac00-\ud7af\u0400-\u04ff\u0600-\u06ff\u0e00-\u0e7f\u0900-\u097f]/g,
+  );
   const total = text.replace(/\s/g, "").length;
   if (total === 0) return 0;
   return (nonLatin?.length ?? 0) / total;
@@ -43,58 +45,54 @@ export function nonLatinRatio(text: string): number {
 /** Noise patterns with their penalty weights */
 const NOISE_PATTERNS: Array<{ pattern: RegExp; flag: string; penalty: number }> = [
   // Agent bootstrap spam (THE #1 polluter — 23K+ chunks in current index)
-  { pattern: /^## \d{4}-\d{2}-\d{2}T[\d:.]+Z — agent bootstrap/m,
-    flag: "agent-bootstrap", penalty: 1.0 },
+  {
+    pattern: /^## \d{4}-\d{2}-\d{2}T[\d:.]+Z — agent bootstrap/m,
+    flag: "agent-bootstrap",
+    penalty: 1.0,
+  },
 
   // Session new entries
-  { pattern: /^## \d{4}-\d{2}-\d{2}T[\d:.]+Z — session new/m,
-    flag: "session-new", penalty: 1.0 },
+  { pattern: /^## \d{4}-\d{2}-\d{2}T[\d:.]+Z — session new/m, flag: "session-new", penalty: 1.0 },
 
   // Discord conversation metadata blocks
-  { pattern: /Conversation info \(untrusted metadata\):/,
-    flag: "discord-metadata", penalty: 0.8 },
-  { pattern: /"message_id":\s*"\d+"/,
-    flag: "message-id", penalty: 0.6 },
-  { pattern: /Sender \(untrusted metadata\):/,
-    flag: "sender-metadata", penalty: 0.6 },
+  { pattern: /Conversation info \(untrusted metadata\):/, flag: "discord-metadata", penalty: 0.8 },
+  { pattern: /"message_id":\s*"\d+"/, flag: "message-id", penalty: 0.6 },
+  { pattern: /Sender \(untrusted metadata\):/, flag: "sender-metadata", penalty: 0.6 },
 
   // Raw exec output
-  { pattern: /Exec completed \([^)]+, code \d+\)/,
-    flag: "exec-output", penalty: 0.4 },
-  { pattern: /session=[a-f0-9-]{8,}/,
-    flag: "session-id", penalty: 0.3 },
+  { pattern: /Exec completed \([^)]+, code \d+\)/, flag: "exec-output", penalty: 0.4 },
+  { pattern: /session=[a-f0-9-]{8,}/, flag: "session-id", penalty: 0.3 },
 
   // Backfill stubs
-  { pattern: /Backfilled by \w+ for continuity/,
-    flag: "backfill-stub", penalty: 0.5 },
+  { pattern: /Backfilled by \w+ for continuity/, flag: "backfill-stub", penalty: 0.5 },
 
   // NO_REPLY markers
-  { pattern: /^(assistant|user):\s*NO_REPLY\s*$/m,
-    flag: "no-reply", penalty: 0.3 },
+  { pattern: /^(assistant|user):\s*NO_REPLY\s*$/m, flag: "no-reply", penalty: 0.3 },
 
   // Pure timestamp lines (no content after timestamp)
-  { pattern: /^\[\w{3} \d{4}-\d{2}-\d{2} \d{2}:\d{2} \w+\]\s*$/m,
-    flag: "timestamp-only", penalty: 0.3 },
+  {
+    pattern: /^\[\w{3} \d{4}-\d{2}-\d{2} \d{2}:\d{2} \w+\]\s*$/m,
+    flag: "timestamp-only",
+    penalty: 0.3,
+  },
 
   // Session dump headers (raw conversation logs, not knowledge)
-  { pattern: /^# Session: \d{4}-\d{2}-\d{2}/m,
-    flag: "session-dump-header", penalty: 0.7 },
-  { pattern: /^\*\*Session (?:Key|ID)\*\*:/m,
-    flag: "session-dump-metadata", penalty: 0.5 },
+  { pattern: /^# Session: \d{4}-\d{2}-\d{2}/m, flag: "session-dump-header", penalty: 0.7 },
+  { pattern: /^\*\*Session (?:Key|ID)\*\*:/m, flag: "session-dump-metadata", penalty: 0.5 },
 
   // Raw assistant/user turn prefixes (conversation logs, not knowledge)
-  { pattern: /^(assistant|user|system):\s/m,
-    flag: "raw-turn-prefix", penalty: 0.3 },
+  { pattern: /^(assistant|user|system):\s/m, flag: "raw-turn-prefix", penalty: 0.3 },
 
   // Casual chat markers (lol, lmao, lmfao, haha, etc.)
-  { pattern: /\b(lol|lmao|lmfao|haha|heh|rofl|bruh|nah|idk|tbh|imo|iirc)\b/i,
-    flag: "casual-chat", penalty: 0.3 },
+  {
+    pattern: /\b(lol|lmao|lmfao|haha|heh|rofl|bruh|nah|idk|tbh|imo|iirc)\b/i,
+    flag: "casual-chat",
+    penalty: 0.3,
+  },
 
   // External untrusted content wrappers (Klein's raw messages)
-  { pattern: /<<<EXTERNAL_UNTRUSTED_CONTENT/,
-    flag: "untrusted-content-wrapper", penalty: 0.6 },
-  { pattern: /UNTRUSTED Discord message body/,
-    flag: "discord-raw-body", penalty: 0.5 },
+  { pattern: /<<<EXTERNAL_UNTRUSTED_CONTENT/, flag: "untrusted-content-wrapper", penalty: 0.6 },
+  { pattern: /UNTRUSTED Discord message body/, flag: "discord-raw-body", penalty: 0.5 },
 ];
 
 export interface LanguageOpts {
@@ -104,7 +102,12 @@ export interface LanguageOpts {
   threshold?: number;
 }
 
-export function scoreChunkQuality(text: string, filePath: string, source: string, langOpts?: LanguageOpts): QualityResult {
+export function scoreChunkQuality(
+  text: string,
+  filePath: string,
+  source: string,
+  langOpts?: LanguageOpts,
+): QualityResult {
   const flags: string[] = [];
   let totalPenalty = 0;
   const lang = langOpts?.language ?? "en";
