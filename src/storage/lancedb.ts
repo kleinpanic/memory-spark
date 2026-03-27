@@ -12,6 +12,7 @@ import type {
   BackendStatus,
 } from "./backend.js";
 import type { MemorySparkConfig } from "../config.js";
+import { resolvePool } from "./pool.js";
 import fs from "node:fs/promises";
 
 const TABLE_NAME = "memory_chunks";
@@ -167,7 +168,8 @@ export class LanceDBBackend implements StorageBackend {
 
     // Create table with a seed record that includes ALL fields (schema-defining).
     // LanceDB locks schema on creation — missing fields cause append errors.
-    const seed = {
+    // Type the seed as Record<string, unknown> directly so no cast is needed.
+    const seed: Record<string, unknown> = {
       id: "__seed__",
       path: "__seed__",
       source: "memory",
@@ -175,7 +177,7 @@ export class LanceDBBackend implements StorageBackend {
       start_line: 0,
       end_line: 0,
       text: "",
-      vector: new Array(dims).fill(0),
+      vector: new Array(dims).fill(0) as number[],
       updated_at: new Date().toISOString(),
       category: "",
       entities: "[]",
@@ -184,14 +186,9 @@ export class LanceDBBackend implements StorageBackend {
       quality_score: 0.5,
       token_count: 0,
       parent_heading: "",
-      // Pool column: logical section within the single table.
-      // Values: "agent_memory", "agent_tools", "shared_knowledge",
-      //         "shared_mistakes", "shared_rules", "reference_library", "reference_code"
       pool: "agent_memory",
     };
-    this.table = await this.db.createTable(TABLE_NAME, [
-      seed as unknown as Record<string, unknown>,
-    ]);
+    this.table = await this.db.createTable(TABLE_NAME, [seed]);
     await this.table.delete("id = '__seed__'");
     // Fresh table has all columns from seed record — mark them as available
     this.schemaHasNewColumns = true;
@@ -246,7 +243,7 @@ export class LanceDBBackend implements StorageBackend {
           .mergeInsert("id")
           .whenMatchedUpdateAll()
           .whenNotMatchedInsertAll()
-          .execute(normalized as unknown as Record<string, unknown>[]);
+          .execute(normalized);
         return;
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err);
@@ -571,45 +568,4 @@ function rowToSearchResult(row: Record<string, unknown>): SearchResult {
   };
 }
 
-/**
- * Determine which logical pool a chunk belongs to based on content_type and path.
- *
- * Pool routing rules (in priority order):
- * 1. Explicit pool on chunk → use it
- * 2. content_type === "tool" or TOOLS.md path → "agent_tools"
- * 3. MISTAKES.md path or content_type === "mistake" → "shared_mistakes"
- * 4. content_type === "rule" or "preference" → "shared_rules"
- * 5. content_type === "reference" → "reference_library"
- * 6. content_type === "reference_code" → "reference_code"
- * 7. Everything else → "agent_memory"
- */
-function resolvePool(chunk: MemoryChunk): string {
-  // Explicit pool overrides auto-routing
-  if (chunk.pool) return chunk.pool;
-
-  const contentType = chunk.content_type ?? "knowledge";
-  const pathLower = (chunk.path ?? "").toLowerCase();
-  const basename = pathLower.split("/").pop() ?? "";
-
-  if (contentType === "tool" || basename === "tools.md" || basename.startsWith("tools-")) {
-    return "agent_tools";
-  }
-
-  if (basename === "mistakes.md" || pathLower.includes("mistakes/") || contentType === "mistake") {
-    return "shared_mistakes";
-  }
-
-  if (contentType === "rule" || contentType === "preference") {
-    return "shared_rules";
-  }
-
-  if (contentType === "reference") {
-    return "reference_library";
-  }
-
-  if (contentType === "reference_code") {
-    return "reference_code";
-  }
-
-  return "agent_memory";
-}
+// resolvePool is imported from ./pool.ts — single source of truth for pool routing

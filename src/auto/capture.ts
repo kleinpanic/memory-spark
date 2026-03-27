@@ -127,6 +127,8 @@ export function createAutoCaptureHandler(deps: AutoCaptureDeps) {
           category: result.label,
           entities: JSON.stringify(entities),
           confidence: importance,
+          content_type: "knowledge",
+          pool: "agent_memory", // Captures go to agent's own memory pool
         };
 
         await backend.upsert([chunk]);

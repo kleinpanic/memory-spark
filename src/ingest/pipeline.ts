@@ -8,6 +8,7 @@ import type { StorageBackend, MemoryChunk } from "../storage/backend.js";
 import type { EmbedProvider } from "../embed/provider.js";
 import type { EmbedQueue } from "../embed/queue.js";
 import { chunkDocument, cleanChunkText, estimateTokens } from "../embed/chunker.js";
+import { resolvePool } from "../storage/pool.js";
 import { extractText } from "./parsers.js";
 import { extractSessionText } from "./sessions.js";
 import { toRelativePath } from "./workspace.js";
@@ -178,22 +179,27 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
     } catch {
       fileTime = new Date().toISOString(); // fallback for virtual/missing files
     }
-    const chunks: MemoryChunk[] = cleanedChunks.map((raw, i) => ({
-      id: chunkId(relPath, raw.startLine, opts.agentId),
-      path: relPath,
-      source,
-      agent_id: opts.agentId,
-      start_line: raw.startLine,
-      end_line: raw.endLine,
-      text: raw.text,
-      vector: vectors[i]!,
-      updated_at: fileTime,
-      entities: JSON.stringify(entitiesPerChunk[i] ?? []),
-      content_type: contentType,
-      quality_score: qualityScores[i] ?? 0.5,
-      token_count: estimateTokens(raw.text),
-      parent_heading: raw.parentHeading ?? "",
-    }));
+    const chunks: MemoryChunk[] = cleanedChunks.map((raw, i) => {
+      const chunk: MemoryChunk = {
+        id: chunkId(relPath, raw.startLine, opts.agentId),
+        path: relPath,
+        source,
+        agent_id: opts.agentId,
+        start_line: raw.startLine,
+        end_line: raw.endLine,
+        text: raw.text,
+        vector: vectors[i]!,
+        updated_at: fileTime,
+        entities: JSON.stringify(entitiesPerChunk[i] ?? []),
+        content_type: contentType,
+        quality_score: qualityScores[i] ?? 0.5,
+        token_count: estimateTokens(raw.text),
+        parent_heading: raw.parentHeading ?? "",
+      };
+      // Assign pool based on content_type and path
+      chunk.pool = resolvePool(chunk);
+      return chunk;
+    });
 
     // 7. Remove old chunks for this path, then upsert new
     const removed = await opts.backend.deleteByPath(relPath, opts.agentId);

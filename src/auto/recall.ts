@@ -7,17 +7,11 @@
 import type { AutoRecallConfig, RecallWeights } from "../config.js";
 import { shouldProcessAgent } from "../config.js";
 import type { StorageBackend, SearchResult } from "../storage/backend.js";
-import type { MultiTableBackend } from "../storage/multi-table-backend.js";
 import type { EmbedProvider } from "../embed/provider.js";
 import type { EmbedQueue } from "../embed/queue.js";
 import type { EmbedLike } from "../embed/cached-provider.js";
 import type { Reranker } from "../rerank/reranker.js";
 import { looksLikePromptInjection, formatRecalledMemories } from "../security.js";
-
-/** Type guard: check if backend supports multi-table operations */
-function isMultiTableBackend(b: StorageBackend): b is MultiTableBackend {
-  return "sharedSearch" in b && "referenceSearch" in b && typeof (b as MultiTableBackend).sharedSearch === "function";
-}
 
 type BeforePromptBuildEvent = { prompt: string; messages: unknown[] };
 type BeforePromptBuildResult = { systemPrompt?: string; prependContext?: string };
@@ -53,85 +47,107 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
       return undefined;
     }
 
-    // Hybrid search: vector THEN FTS (sequential).
-    // LanceDB FTS has a known bug where .where() clauses cause Arrow panics.
-    // Running FTS concurrently with vector search via Promise.all can corrupt
-    // the shared native connection state, causing both to fail.
-    // Sequential execution ensures vector results are safe even if FTS fails.
+    // ── Pool-Aware Recall Pipeline ─────────────────────────────────────────
+    //
+    // The recall pipeline queries multiple pools in priority order and merges
+    // results. Each pool has different auto-injection behavior:
+    //
+    //   1. Agent memory + tools   → filtered by agent_id, primary recall
+    //   2. Agent mistakes         → filtered by agent_id, 1.6x boost
+    //   3. Shared mistakes        → cross-agent, 1.6x boost
+    //   4. Shared knowledge       → cross-agent, 0.8x weight
+    //   5. Shared rules           → cross-agent, ALWAYS injected (no relevance gate)
+    //   6. Reference pools        → NEVER auto-injected (tool-call only)
+    //
+    // Within each pool: hybrid search (Vector + FTS) → merge
+    // FTS+WHERE is supported in LanceDB 0.27+ (no workaround needed).
+
     const fetchN = cfg.maxResults * 4;
+    const lowThreshold = Math.max((cfg.minScore ?? 0.1) * 0.7, 0.05);
 
-    const vectorResults = await backend
-      .vectorSearch(queryVector, {
+    // Helper: hybrid search within specific pool(s)
+    const poolSearch = async (
+      pools: string[],
+      filterAgentId?: string,
+      limit = fetchN,
+      minScore = cfg.minScore,
+    ): Promise<SearchResult[]> => {
+      const searchOpts = {
         query: queryText,
-        maxResults: fetchN,
-        minScore: cfg.minScore,
-        agentId,
-      })
-      .catch(() => [] as SearchResult[]);
+        maxResults: limit,
+        minScore,
+        agentId: filterAgentId,
+        pools,
+      };
+      const vectorResults = await backend
+        .vectorSearch(queryVector, searchOpts)
+        .catch(() => [] as SearchResult[]);
+      const rawFtsResults = await backend
+        .ftsSearch(queryText, searchOpts)
+        .catch(() => [] as SearchResult[]);
+      // Filter FTS: exclude sessions source, apply minScore
+      const ftsResults = rawFtsResults.filter(
+        (r) => r.chunk.source !== "sessions" && r.score >= (minScore ?? 0.1),
+      );
+      return hybridMerge(vectorResults, ftsResults, limit);
+    };
 
-    const rawFtsResults = await backend
-      .ftsSearch(queryText, {
-        query: queryText,
-        maxResults: fetchN,
-        agentId,
-      })
-      .catch(() => [] as SearchResult[]);
-
-    // Filter FTS results: exclude sessions source (keyword matches on chat logs
-    // are almost always garbage) and apply a minimum score threshold
-    const ftsResults = rawFtsResults.filter(
-      (r) => r.chunk.source !== "sessions" && r.score >= (cfg.minScore ?? 0.1),
+    // 1. Agent's own memory + tools (primary recall)
+    const agentResults = await poolSearch(
+      ["agent_memory", "agent_tools"],
+      agentId,
+      fetchN,
     );
 
-    // Hybrid merge: preserve original vector scores + RRF rank boost.
-    // Unlike pure RRF (which destroys cosine similarity by replacing scores
-    // with 1/(k+rank)), this preserves the embedding quality signal.
-    const merged = hybridMerge(vectorResults, ftsResults, fetchN);
+    // 2. Agent's own mistakes (per-agent, higher priority than shared)
+    const agentMistakes = await poolSearch(
+      ["agent_mistakes"],
+      agentId,
+      5,
+      lowThreshold,
+    );
 
-    // ── Multi-table: merge shared knowledge + mistakes ─────────────────────
-    // When using MultiTableBackend, search shared tables for cross-agent
-    // knowledge and mistakes. When using legacy single-table, fall back to
-    // path-based filtering.
-    if (isMultiTableBackend(backend)) {
-      // Dedicated shared search: shared_knowledge + shared_mistakes tables
-      const sharedResults = await backend
-        .sharedSearch(queryVector, queryText, {
-          maxResults: 10,
-          minScore: Math.max((cfg.minScore ?? 0.1) * 0.7, 0.05),
-        })
-        .catch(() => [] as SearchResult[]);
+    // 3. Shared mistakes (cross-agent)
+    const sharedMistakes = await poolSearch(
+      ["shared_mistakes"],
+      undefined, // No agent filter — all agents' shared mistakes
+      5,
+      lowThreshold,
+    );
 
-      if (sharedResults.length > 0) {
-        const seenIds = new Set(merged.map((r) => r.chunk.id));
-        for (const r of sharedResults) {
-          if (!seenIds.has(r.chunk.id)) {
-            merged.push(r);
-            seenIds.add(r.chunk.id);
-          }
+    // 4. Shared knowledge (cross-agent)
+    const sharedKnowledge = await poolSearch(
+      ["shared_knowledge"],
+      undefined,
+      10,
+      lowThreshold,
+    );
+
+    // 5. Shared rules — ALWAYS injected, no relevance gating
+    const sharedRules = await poolSearch(
+      ["shared_rules"],
+      undefined,
+      5,
+      0, // No minimum score — rules are always relevant
+    );
+
+    // Merge all results, deduplicating by chunk ID
+    const merged: SearchResult[] = [...agentResults];
+    const seenIds = new Set(merged.map((r) => r.chunk.id));
+
+    const mergeIn = (results: SearchResult[]) => {
+      for (const r of results) {
+        if (!seenIds.has(r.chunk.id)) {
+          merged.push(r);
+          seenIds.add(r.chunk.id);
         }
       }
-    } else {
-      // Legacy single-table: use path-based mistakes injection
-      const mistakesResults = await backend
-        .vectorSearch(queryVector, {
-          query: queryText,
-          maxResults: 5,
-          minScore: Math.max((cfg.minScore ?? 0.1) * 0.7, 0.05),
-          agentId,
-          pathContains: "mistake",
-        })
-        .catch(() => [] as SearchResult[]);
+    };
 
-      if (mistakesResults.length > 0) {
-        const seenIds = new Set(merged.map((r) => r.chunk.id));
-        for (const r of mistakesResults) {
-          if (!seenIds.has(r.chunk.id)) {
-            merged.push(r);
-            seenIds.add(r.chunk.id);
-          }
-        }
-      }
-    }
+    mergeIn(agentMistakes);
+    mergeIn(sharedMistakes);
+    mergeIn(sharedKnowledge);
+    mergeIn(sharedRules);
 
     if (merged.length === 0) return undefined;
 

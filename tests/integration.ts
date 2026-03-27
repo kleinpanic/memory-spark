@@ -282,8 +282,8 @@ async function suiteConnectivity(cfg: MemorySparkConfig) {
       signal: AbortSignal.timeout(5000),
     });
     log("connectivity", `Embed (:18091)`, resp.ok, `status=${resp.status}`);
-  } catch (err: any) {
-    log("connectivity", `Embed (:18091)`, false, err.message);
+  } catch (err: unknown) {
+    log("connectivity", `Embed (:18091)`, false, err instanceof Error ? err.message : String(err));
   }
 
   // Rerank: POST /v1/rerank (no /v1/models route)
@@ -298,10 +298,10 @@ async function suiteConnectivity(cfg: MemorySparkConfig) {
       }),
       signal: AbortSignal.timeout(5000),
     });
-    const data = (await resp.json()) as any;
+    const data = (await resp.json()) as { results?: unknown[] };
     log("connectivity", `Rerank (:18096)`, resp.ok && !!data.results, `status=${resp.status}`);
-  } catch (err: any) {
-    log("connectivity", `Rerank (:18096)`, false, err.message);
+  } catch (err: unknown) {
+    log("connectivity", `Rerank (:18096)`, false, err instanceof Error ? err.message : String(err));
   }
 }
 
@@ -337,8 +337,8 @@ async function suiteIngestPipeline(cfg: MemorySparkConfig, embed: EmbedProvider)
       const count = result.chunksAdded;
       totalChunks += count;
       log("ingest", `Ingested ${doc.path}`, count > 0, `${count} chunks`);
-    } catch (err: any) {
-      log("ingest", `Ingested ${doc.path}`, false, err.message);
+    } catch (err: unknown) {
+      log("ingest", `Ingested ${doc.path}`, false, err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -401,8 +401,8 @@ async function suiteScoreDistribution(cfg: MemorySparkConfig, embed: EmbedProvid
           );
         }
       }
-    } catch (err: any) {
-      log("scores", q.label, false, err.message);
+    } catch (err: unknown) {
+      log("scores", q.label, false, err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -450,8 +450,8 @@ async function suiteRelevanceAccuracy(cfg: MemorySparkConfig, embed: EmbedProvid
         top1Match,
         `got=${results[0]?.chunk.path ?? "none"} expected=${q.expectPath}`,
       );
-    } catch (err: any) {
-      log("relevance", q.label, false, err.message);
+    } catch (err: unknown) {
+      log("relevance", q.label, false, err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -502,8 +502,8 @@ async function suiteManagerE2E(cfg: MemorySparkConfig) {
           );
         }
       }
-    } catch (err: any) {
-      log("manager", `search("${q.query.slice(0, 40)}...")`, false, err.message);
+    } catch (err: unknown) {
+      log("manager", `search("${q.query.slice(0, 40)}...")`, false, err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -531,9 +531,9 @@ async function suiteFTSFallback(cfg: MemorySparkConfig) {
         agentId: "test",
       });
       log("fts", q.label, results.length > 0, `${results.length} results`);
-    } catch (err: any) {
+    } catch (err: unknown) {
       // FTS may legitimately fail if index isn't ready
-      log("fts", q.label, false, err.message);
+      log("fts", q.label, false, err instanceof Error ? err.message : String(err));
     }
   }
 
@@ -585,11 +585,11 @@ async function suiteSchemaEvolution(cfg: MemorySparkConfig) {
     const results = await backend.vectorSearch(vec, { query: "schema", maxResults: 1 });
     const row = results[0]?.chunk;
     log("schema", "content_type stored", row?.content_type === "knowledge");
-    log("schema", "quality_score stored", (row as any)?.quality_score === 1);
-    log("schema", "token_count stored", (row as any)?.token_count === 5);
-    log("schema", "parent_heading stored", (row as any)?.parent_heading === "Test Section");
-  } catch (err: any) {
-    log("schema", "Schema columns", false, err.message);
+    log("schema", "quality_score stored", row?.quality_score === 1);
+    log("schema", "token_count stored", row?.token_count === 5);
+    log("schema", "parent_heading stored", row?.parent_heading === "Test Section");
+  } catch (err: unknown) {
+    log("schema", "Schema columns", false, err instanceof Error ? err.message : String(err));
   }
 
   await backend.close();
