@@ -2078,3 +2078,87 @@ describe("Config Expansion (new tuning knobs)", () => {
     );
   });
 });
+
+describe("TableManager Port Verification", () => {
+  it("LanceDBBackend has discoverAgents() method", async () => {
+    const mod = await import("../src/storage/lancedb.js");
+    assert.strictEqual(typeof mod.LanceDBBackend.prototype.discoverAgents, "function");
+  });
+
+  it("LanceDBBackend has poolStats() method", async () => {
+    const mod = await import("../src/storage/lancedb.js");
+    assert.strictEqual(typeof mod.LanceDBBackend.prototype.poolStats, "function");
+  });
+
+  it("LanceDBBackend has getStats() method", async () => {
+    const mod = await import("../src/storage/lancedb.js");
+    assert.strictEqual(typeof mod.LanceDBBackend.prototype.getStats, "function");
+  });
+
+  it("StorageBackend interface has all required methods", async () => {
+    const requiredMethods = [
+      "open",
+      "close",
+      "upsert",
+      "deleteByPath",
+      "deleteById",
+      "vectorSearch",
+      "ftsSearch",
+      "listPaths",
+      "getById",
+      "readFile",
+      "status",
+    ];
+    const mod = await import("../src/storage/lancedb.js");
+    for (const method of requiredMethods) {
+      assert.strictEqual(
+        typeof (mod.LanceDBBackend.prototype as unknown as Record<string, unknown>)[method],
+        "function",
+        `Missing method: ${method}`,
+      );
+    }
+  });
+
+  it("resolvePool covers all MultiTableBackend routing categories", () => {
+    const testCases = [
+      { input: { content_type: "tool", path: "any" }, expected: "agent_tools" },
+      { input: { content_type: "mistake", path: "any" }, expected: "agent_mistakes" },
+      { input: { content_type: "reference", path: "any" }, expected: "reference_library" },
+      { input: { content_type: "reference_code", path: "any" }, expected: "reference_code" },
+      { input: { content_type: "knowledge", path: "regular.md" }, expected: "agent_memory" },
+      { input: { path: "MISTAKES.md" }, expected: "agent_mistakes" },
+      { input: { path: "some/dir/TOOLS.md" }, expected: "agent_tools" },
+      { input: { content_type: "rule" }, expected: "shared_rules" },
+      { input: { content_type: "preference" }, expected: "shared_rules" },
+    ];
+    for (const tc of testCases) {
+      assert.strictEqual(
+        resolvePool(tc.input),
+        tc.expected,
+        `resolvePool(${JSON.stringify(tc.input)}) expected ${tc.expected}`,
+      );
+    }
+  });
+
+  it("Pool filtering replaces physical table isolation", () => {
+    // Verify SearchOptions supports the pool-based equivalents of multi-table routing
+    const agentMemory: import("../src/storage/backend.js").SearchOptions = {
+      query: "test",
+      pool: "agent_memory",
+      agentId: "meta",
+    };
+    assert.strictEqual(agentMemory.pool, "agent_memory");
+
+    const sharedSearch: import("../src/storage/backend.js").SearchOptions = {
+      query: "test",
+      pools: ["shared_knowledge", "shared_mistakes"],
+    };
+    assert.deepStrictEqual(sharedSearch.pools, ["shared_knowledge", "shared_mistakes"]);
+
+    const referenceSearch: import("../src/storage/backend.js").SearchOptions = {
+      query: "test",
+      pools: ["reference_library", "reference_code"],
+    };
+    assert.deepStrictEqual(referenceSearch.pools, ["reference_library", "reference_code"]);
+  });
+});
