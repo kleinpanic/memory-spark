@@ -16,6 +16,14 @@ import fs from "node:fs/promises";
 
 const TABLE_NAME = "memory_chunks";
 
+/**
+ * BM25 sigmoid midpoint — controls where FTS scores map to 0.5.
+ * Typical BM25 scores for English text: 0–10, median ~2–4.
+ * Calibrate by running representative FTS queries and observing score distribution.
+ * TODO: Make configurable via MemorySparkConfig.fts.sigmoidMidpoint
+ */
+const BM25_SIGMOID_MIDPOINT = 3.0;
+
 export class LanceDBBackend implements StorageBackend {
   private cfg: MemorySparkConfig;
   private db: lancedb.Connection | null = null;
@@ -507,8 +515,12 @@ function rowToSearchResult(row: Record<string, unknown>): SearchResult {
     // Vector search: cosine distance → similarity
     score = Math.max(0, 1 - distance);
   } else if (ftsScore != null && !Number.isNaN(ftsScore)) {
-    // FTS search: BM25 score → normalized [0, 1] via sigmoid
-    score = 1 / (1 + Math.exp(-(ftsScore - 3)));
+    // FTS search: BM25 score → normalized [0, 1] via sigmoid.
+    // BM25_SIGMOID_MIDPOINT controls where the sigmoid centers (score → 0.5).
+    // Default 3.0 is a reasonable starting point for typical English text corpora.
+    // Ideally calibrate from your corpus: run FTS queries, collect score distribution,
+    // set midpoint to the median score. Can be overridden via config.
+    score = 1 / (1 + Math.exp(-(ftsScore - BM25_SIGMOID_MIDPOINT)));
   } else {
     // Neither present — unknown source, zero score
     score = 0;
