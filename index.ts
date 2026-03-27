@@ -737,8 +737,14 @@ const memorySpark = {
           },
         };
 
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenClaw plugin SDK expects untyped tool arrays
-        return [searchTool, getTool, storeTool, forgetTool, referenceSearchTool, indexStatusTool, forgetByPathTool, inspectTool, reindexTool, mistakesSearchTool, mistakesStoreTool] as any;
+        // SDK boundary cast — OpenClaw's AnyAgentTool uses `any` internally
+        // and doesn't export the type. Our tools match structurally.
+        return [
+          searchTool, getTool, storeTool, forgetTool, referenceSearchTool,
+          indexStatusTool, forgetByPathTool, inspectTool, reindexTool,
+          mistakesSearchTool, mistakesStoreTool,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        ] as any;
       },
       { names: ["memory_search", "memory_get", "memory_store", "memory_forget", "memory_reference_search", "memory_index_status", "memory_forget_by_path", "memory_inspect", "memory_reindex", "memory_mistakes_search", "memory_mistakes_store"] },
     );

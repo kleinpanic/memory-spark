@@ -1442,6 +1442,86 @@ test("Temporal decay skips NaN timestamps instead of poisoning scores (bug fix)"
   assert.strictEqual(fakeResults[2]!.score, 0.8, "Empty date: score preserved");
 });
 
+// ═══════════════════════════════════════════
+// Pool routing tests
+// ═══════════════════════════════════════════
+import { resolvePool, POOL_VALUES, AUTO_INJECT_POOLS, REFERENCE_POOLS, isAutoInjectPool, isAlwaysInjectPool } from "../src/storage/pool.js";
+
+test("resolvePool routes TOOLS.md to agent_tools", () => {
+  assert.strictEqual(resolvePool({ path: "workspace/TOOLS.md" }), "agent_tools");
+  assert.strictEqual(resolvePool({ path: "some/dir/tools.md" }), "agent_tools");
+  assert.strictEqual(resolvePool({ content_type: "tool" }), "agent_tools");
+});
+
+test("resolvePool routes MISTAKES.md to agent_mistakes", () => {
+  assert.strictEqual(resolvePool({ path: "workspace/MISTAKES.md" }), "agent_mistakes");
+  assert.strictEqual(resolvePool({ path: "workspace/mistakes/2026-03-27-bug.md" }), "agent_mistakes");
+  assert.strictEqual(resolvePool({ content_type: "mistake" }), "agent_mistakes");
+});
+
+test("resolvePool routes reference content to reference_library", () => {
+  assert.strictEqual(resolvePool({ content_type: "reference" }), "reference_library");
+});
+
+test("resolvePool routes reference_code to reference_code", () => {
+  assert.strictEqual(resolvePool({ content_type: "reference_code" }), "reference_code");
+});
+
+test("resolvePool routes rules/preferences to shared_rules", () => {
+  assert.strictEqual(resolvePool({ content_type: "rule" }), "shared_rules");
+  assert.strictEqual(resolvePool({ content_type: "preference" }), "shared_rules");
+});
+
+test("resolvePool defaults to agent_memory for regular content", () => {
+  assert.strictEqual(resolvePool({ path: "workspace/MEMORY.md" }), "agent_memory");
+  assert.strictEqual(resolvePool({ content_type: "knowledge" }), "agent_memory");
+  assert.strictEqual(resolvePool({}), "agent_memory");
+});
+
+test("resolvePool respects explicit pool override", () => {
+  assert.strictEqual(resolvePool({ pool: "shared_mistakes", path: "anything" }), "shared_mistakes");
+  assert.strictEqual(resolvePool({ pool: "shared_knowledge" }), "shared_knowledge");
+});
+
+test("resolvePool ignores invalid pool values", () => {
+  assert.strictEqual(resolvePool({ pool: "invalid_pool" }), "agent_memory");
+});
+
+test("POOL_VALUES contains all expected pools", () => {
+  assert.ok(POOL_VALUES.includes("agent_memory"));
+  assert.ok(POOL_VALUES.includes("agent_tools"));
+  assert.ok(POOL_VALUES.includes("agent_mistakes"));
+  assert.ok(POOL_VALUES.includes("shared_knowledge"));
+  assert.ok(POOL_VALUES.includes("shared_mistakes"));
+  assert.ok(POOL_VALUES.includes("shared_rules"));
+  assert.ok(POOL_VALUES.includes("reference_library"));
+  assert.ok(POOL_VALUES.includes("reference_code"));
+  assert.strictEqual(POOL_VALUES.length, 8);
+});
+
+test("isAutoInjectPool returns true for auto-inject pools", () => {
+  assert.strictEqual(isAutoInjectPool("agent_memory"), true);
+  assert.strictEqual(isAutoInjectPool("shared_mistakes"), true);
+  assert.strictEqual(isAutoInjectPool("shared_rules"), true);
+});
+
+test("isAutoInjectPool returns false for reference pools", () => {
+  assert.strictEqual(isAutoInjectPool("reference_library"), false);
+  assert.strictEqual(isAutoInjectPool("reference_code"), false);
+});
+
+test("isAlwaysInjectPool returns true only for shared_rules", () => {
+  assert.strictEqual(isAlwaysInjectPool("shared_rules"), true);
+  assert.strictEqual(isAlwaysInjectPool("agent_memory"), false);
+  assert.strictEqual(isAlwaysInjectPool("shared_mistakes"), false);
+});
+
+test("AUTO_INJECT_POOLS and REFERENCE_POOLS are disjoint", () => {
+  for (const pool of REFERENCE_POOLS) {
+    assert.ok(!(AUTO_INJECT_POOLS as readonly string[]).includes(pool), `${pool} should not be in AUTO_INJECT_POOLS`);
+  }
+});
+
 // Summary
 console.log("\n=== Summary ===");
 const passed = results.filter((r) => r.status === "PASS").length;

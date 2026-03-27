@@ -14,7 +14,7 @@
  * @module storage/multi-table-backend
  */
 
-import * as lancedb from "@lancedb/lancedb";
+import * as _lancedb from "@lancedb/lancedb";
 import type { Table } from "@lancedb/lancedb";
 import type {
   StorageBackend,
@@ -330,7 +330,7 @@ export class MultiTableBackend implements StorageBackend {
         const managed = await this.mgr.getTable(name);
         if (!managed?.table) continue;
 
-        let q = managed.table
+        const q = managed.table
           .query()
           .where(`path = '${escapeSql(params.path)}'`)
           .select(["text", "start_line", "end_line", "path"]);

@@ -56,7 +56,8 @@ export const DEFAULT_TABLE_NAMING: TableNamingConfig = {
 
 /** Metadata tracked per open table */
 interface ManagedTable {
-  table: Table;
+  /** The LanceDB table handle. Null when table hasn't been created yet (lazy init). */
+  table: Table | null;
   category: TableCategory;
   agentId?: string;
   ftsCreated: boolean;
@@ -107,7 +108,7 @@ export class TableManager {
   /** Close all open tables and the database connection */
   async close(): Promise<void> {
     for (const [, managed] of this.tables) {
-      managed.table.close();
+      if (managed.table) managed.table.close();
     }
     this.tables.clear();
     this.writeLocks.clear();
@@ -170,37 +171,37 @@ export class TableManager {
   // ── Table access ──────────────────────────────────────────────────────────
 
   /** Get or create an agent's memory table */
-  async getAgentMemory(agentId: string): Promise<Table> {
+  async getAgentMemory(agentId: string): Promise<Table | null> {
     const name = this.agentMemoryName(agentId);
     return (await this.getOrOpenTable(name, "agent_memory", agentId)).table;
   }
 
   /** Get or create an agent's tools table */
-  async getAgentTools(agentId: string): Promise<Table> {
+  async getAgentTools(agentId: string): Promise<Table | null> {
     const name = this.agentToolsName(agentId);
     return (await this.getOrOpenTable(name, "agent_tools", agentId)).table;
   }
 
   /** Get or create the shared knowledge table */
-  async getSharedKnowledge(): Promise<Table> {
+  async getSharedKnowledge(): Promise<Table | null> {
     const name = this.sharedKnowledgeName();
     return (await this.getOrOpenTable(name, "shared_knowledge")).table;
   }
 
   /** Get or create the shared mistakes table */
-  async getSharedMistakes(): Promise<Table> {
+  async getSharedMistakes(): Promise<Table | null> {
     const name = this.sharedMistakesName();
     return (await this.getOrOpenTable(name, "shared_mistakes")).table;
   }
 
   /** Get or create the reference library table */
-  async getReferenceLibrary(): Promise<Table> {
+  async getReferenceLibrary(): Promise<Table | null> {
     const name = this.referenceLibraryName();
     return (await this.getOrOpenTable(name, "reference_library")).table;
   }
 
   /** Get or create the reference code table */
-  async getReferenceCode(): Promise<Table> {
+  async getReferenceCode(): Promise<Table | null> {
     const name = this.referenceCodeName();
     return (await this.getOrOpenTable(name, "reference_code")).table;
   }
@@ -248,6 +249,16 @@ export class TableManager {
     const result = [];
     for (const [name, managed] of this.tables) {
       try {
+        if (!managed.table) {
+          result.push({
+            name,
+            category: managed.category,
+            agentId: managed.agentId,
+            rowCount: 0,
+            ftsCreated: false,
+          });
+          continue;
+        }
         const count = await managed.table.countRows();
         result.push({
           name,
@@ -274,7 +285,7 @@ export class TableManager {
     if (!this.db) throw new Error("TableManager not open");
     const managed = this.tables.get(name);
     if (managed) {
-      managed.table.close();
+      if (managed.table) managed.table.close();
       this.tables.delete(name);
       this.writeLocks.delete(name);
     }
@@ -294,23 +305,11 @@ export class TableManager {
     if (!this.db) throw new Error("TableManager not open");
 
     const names = await this.db.tableNames();
-    let table: Table;
-    let hasNewSchema = false;
-
-    if (names.includes(name)) {
-      table = await this.db.openTable(name);
-      // Check schema for new columns
-      const schema = await table.schema();
-      hasNewSchema = schema.fields.some((f) => f.name === "content_type");
-    } else {
+    if (!names.includes(name)) {
       // Table doesn't exist yet — it will be created on first upsert.
-      // For now, return a "lazy" managed entry. The caller must handle
-      // createTable when they have data with vector dimensions.
-      // We can't create an empty table without knowing the schema.
-
       // Return a placeholder — the actual table will be set by createTableWithData
       const managed: ManagedTable = {
-        table: null as unknown as Table, // Placeholder until first write
+        table: null, // Placeholder until first write via createTableWithData
         category,
         agentId,
         ftsCreated: false,
@@ -321,12 +320,16 @@ export class TableManager {
       return managed;
     }
 
+    const table = await this.db.openTable(name);
+    // Check schema for new columns
+    const schema = await table.schema();
+
     const managed: ManagedTable = {
       table,
       category,
       agentId,
       ftsCreated: false,
-      hasNewSchema,
+      hasNewSchema: schema.fields.some((f) => f.name === "content_type"),
       rowCount: 0,
     };
 
@@ -357,20 +360,18 @@ export class TableManager {
 
     const table = await this.db.createTable(name, data, { mode: "overwrite" });
 
-    // Create FTS index
-    let ftsCreated = false;
+    // Create FTS index (best-effort — might already exist)
     try {
       await table.createIndex("text", { config: lancedb.Index.fts() });
-      ftsCreated = true;
     } catch {
-      ftsCreated = true; // Might already exist from overwrite
+      // Index already exists or FTS not supported — non-fatal
     }
 
     const managed: ManagedTable = {
       table,
       category,
       agentId,
-      ftsCreated,
+      ftsCreated: true, // Either created above or already existed
       hasNewSchema: true,
       rowCount: data.length,
     };

@@ -85,10 +85,12 @@ export class MemorySparkManager {
     }
 
     // Use the same pipeline as auto-recall (recall.ts) for consistent results.
-    // IMPORTANT: Sequential execution — LanceDB FTS has a known bug where
-    // concurrent FTS + vector search can corrupt shared native connection state.
-    // recall.ts already uses sequential; manager.ts must match.
+    // Pool-aware: search agent's own memory + shared knowledge (not references).
+    // LanceDB 0.27+ supports FTS+WHERE natively — no workaround needed.
     const fetchN = maxResults * 4;
+    const agentPools = ["agent_memory", "agent_tools", "agent_mistakes"];
+    const sharedPools = ["shared_knowledge", "shared_mistakes", "shared_rules"];
+
     const vectorResults = queryVector
       ? await this.backend
           .vectorSearch(queryVector, {
@@ -96,6 +98,7 @@ export class MemorySparkManager {
             maxResults: fetchN,
             minScore,
             agentId: this.agentId,
+            pools: [...agentPools, ...sharedPools],
           })
           .catch(() => [] as SearchResult[])
       : ([] as SearchResult[]);
@@ -105,6 +108,7 @@ export class MemorySparkManager {
         query,
         maxResults: fetchN,
         agentId: this.agentId,
+        pools: [...agentPools, ...sharedPools],
       })
       .catch(() => [] as SearchResult[]);
 
