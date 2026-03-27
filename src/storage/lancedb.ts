@@ -479,6 +479,47 @@ export class LanceDBBackend implements StorageBackend {
   }
 
   /**
+   * Discover which agents have data in the index.
+   * Ported from TableManager.discoverAgents() — scans DISTINCT agent_id values
+   * instead of enumerating table names.
+   */
+  async discoverAgents(): Promise<string[]> {
+    if (!this.table) return [];
+    try {
+      const rows = await this.table.query().select(["agent_id"]).toArray();
+      const agents = new Set<string>();
+      for (const row of rows) {
+        const id = row.agent_id as string;
+        if (id && id !== "__seed__") agents.add(id);
+      }
+      return [...agents].sort();
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Count chunks per pool — useful for index_status and debugging.
+   * Ported from TableManager.status() which showed per-table row counts.
+   */
+  async poolStats(): Promise<Array<{ pool: string; chunkCount: number }>> {
+    if (!this.table) return [];
+    try {
+      const rows = await this.table.query().select(["pool"]).toArray();
+      const counts = new Map<string, number>();
+      for (const row of rows) {
+        const pool = (row.pool as string) ?? "agent_memory";
+        counts.set(pool, (counts.get(pool) ?? 0) + 1);
+      }
+      return [...counts.entries()]
+        .map(([pool, chunkCount]) => ({ pool, chunkCount }))
+        .sort((a, b) => b.chunkCount - a.chunkCount);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
    * Aggregate statistics for the memory_index_status tool.
    * Not part of StorageBackend interface — access via cast.
    */
