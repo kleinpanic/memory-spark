@@ -19,7 +19,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   - `reference_code` — code examples (tool-call only)
 - **`resolvePool()`** — auto-routes chunks to correct pool based on content_type and path
 - **`memory_mistakes_search` tool** — search mistakes across all agents
-- **`memory_mistakes_store` tool** — log mistakes with severity, root cause, fix, lessons
+- **`memory_mistakes_store` tool** — log mistakes with severity, root cause, fix, lessons; `shared: boolean` to promote to cross-agent
+- **`memory_rules_store` tool** — store global rules/preferences with scope + category
+- **`memory_rules_search` tool** — search stored rules by query
 - **TableManager** (`src/storage/table-manager.ts`) — multi-table management foundation
 - **MultiTableBackend** (`src/storage/multi-table-backend.ts`) — routing backend (retained for future use)
 - **FTS+WHERE validation test** (`tests/fts-where-test.ts`) — proves LanceDB 0.27 fix
@@ -48,10 +50,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **tsconfig** — evaluation/, tests/, tools/ now type-checked
 - **MultiTableBackend** as primary backend in index.ts (with legacy fallback)
 
+#### Closed Investigations
+- **Embedding model vision/multimodal** — investigated, determined not viable. Sticking with text-only `llama-embed-nemotron-8b` (4096-dim).
+
 #### Removed
 - `src/storage/sqlite-vec.ts` — unused migration adapter (193 LOC)
 - `src/sync-rag.ts` — legacy sync code (97 LOC)
 - FTS 3x overfetch workaround — replaced with proper WHERE implementation
+- Stale `sqlite-vec` references in backend type + config schema
 
 ### Pre-Session State (v0.3.0)
 - 37k chunks in single `memory_chunks` table
