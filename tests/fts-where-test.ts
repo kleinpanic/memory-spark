@@ -17,7 +17,9 @@ const TEST_DIR = path.join(os.tmpdir(), `fts-where-test-${Date.now()}`);
 
 async function main() {
   const { readFileSync } = await import("node:fs");
-  const ver = JSON.parse(readFileSync("node_modules/@lancedb/lancedb/package.json", "utf8")).version;
+  const ver = JSON.parse(
+    readFileSync("node_modules/@lancedb/lancedb/package.json", "utf8"),
+  ).version;
   console.log(`LanceDB version: ${ver}`);
   console.log(`Test dir: ${TEST_DIR}\n`);
 
@@ -26,11 +28,41 @@ async function main() {
 
   // Create table with metadata columns
   const data = [
-    { id: "1", text: "The quick brown fox jumps over the lazy dog", vector: new Array(16).fill(0.1), agent_id: "meta", pool: "agent_memory" },
-    { id: "2", text: "OpenClaw is an AI agent framework for autonomous systems", vector: new Array(16).fill(0.2), agent_id: "dev", pool: "agent_memory" },
-    { id: "3", text: "Never use gemini flash for complex coding tasks", vector: new Array(16).fill(0.3), agent_id: "meta", pool: "shared_mistakes" },
-    { id: "4", text: "Klein prefers concise responses over verbose explanations", vector: new Array(16).fill(0.4), agent_id: "meta", pool: "shared_rules" },
-    { id: "5", text: "LanceDB supports BM25 full text search via FTS index", vector: new Array(16).fill(0.5), agent_id: "dev", pool: "reference_library" },
+    {
+      id: "1",
+      text: "The quick brown fox jumps over the lazy dog",
+      vector: new Array(16).fill(0.1),
+      agent_id: "meta",
+      pool: "agent_memory",
+    },
+    {
+      id: "2",
+      text: "OpenClaw is an AI agent framework for autonomous systems",
+      vector: new Array(16).fill(0.2),
+      agent_id: "dev",
+      pool: "agent_memory",
+    },
+    {
+      id: "3",
+      text: "Never use gemini flash for complex coding tasks",
+      vector: new Array(16).fill(0.3),
+      agent_id: "meta",
+      pool: "shared_mistakes",
+    },
+    {
+      id: "4",
+      text: "Klein prefers concise responses over verbose explanations",
+      vector: new Array(16).fill(0.4),
+      agent_id: "meta",
+      pool: "shared_rules",
+    },
+    {
+      id: "5",
+      text: "LanceDB supports BM25 full text search via FTS index",
+      vector: new Array(16).fill(0.5),
+      agent_id: "dev",
+      pool: "reference_library",
+    },
   ];
 
   const table = await db.createTable("memory_chunks", data, { mode: "overwrite" });

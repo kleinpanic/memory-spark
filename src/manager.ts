@@ -3,19 +3,15 @@
  * Implements the search + readFile interface matching OC's MemorySearchManager.
  */
 
+import fs from "node:fs/promises";
+
+import { hybridMerge, applySourceWeighting, applyTemporalDecay, mmrRerank } from "./auto/recall.js";
 import type { MemorySparkConfig } from "./config.js";
-import type { StorageBackend, SearchResult } from "./storage/backend.js";
 import type { EmbedProvider } from "./embed/provider.js";
-import type { Reranker } from "./rerank/reranker.js";
 import { EmbedQueue } from "./embed/queue.js";
 import { toAbsolutePath } from "./ingest/workspace.js";
-import {
-  hybridMerge,
-  applySourceWeighting,
-  applyTemporalDecay,
-  mmrRerank,
-} from "./auto/recall.js";
-import fs from "node:fs/promises";
+import type { Reranker } from "./rerank/reranker.js";
+import type { StorageBackend, SearchResult } from "./storage/backend.js";
 
 export interface MemorySearchResult {
   path: string;

@@ -85,7 +85,7 @@ function buildConfig(overrides?: Partial<MemorySparkConfig>): MemorySparkConfig 
       weights: {
         sources: { capture: 1.5, memory: 1.0, sessions: 0.5, reference: 1.0 },
         paths: {},
-        pathPatterns: { "mistakes": 1.6 },
+        pathPatterns: { mistakes: 1.6 },
       },
     },
     ...overrides,
@@ -338,7 +338,12 @@ async function suiteIngestPipeline(cfg: MemorySparkConfig, embed: EmbedProvider)
       totalChunks += count;
       log("ingest", `Ingested ${doc.path}`, count > 0, `${count} chunks`);
     } catch (err: unknown) {
-      log("ingest", `Ingested ${doc.path}`, false, err instanceof Error ? err.message : String(err));
+      log(
+        "ingest",
+        `Ingested ${doc.path}`,
+        false,
+        err instanceof Error ? err.message : String(err),
+      );
     }
   }
 
@@ -503,7 +508,12 @@ async function suiteManagerE2E(cfg: MemorySparkConfig) {
         }
       }
     } catch (err: unknown) {
-      log("manager", `search("${q.query.slice(0, 40)}...")`, false, err instanceof Error ? err.message : String(err));
+      log(
+        "manager",
+        `search("${q.query.slice(0, 40)}...")`,
+        false,
+        err instanceof Error ? err.message : String(err),
+      );
     }
   }
 

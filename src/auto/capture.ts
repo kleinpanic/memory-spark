@@ -7,18 +7,19 @@
  * Max 3 captures per turn. Includes importance scoring.
  */
 
-import type { AutoCaptureConfig, MemorySparkConfig } from "../config.js";
-import { shouldProcessAgent } from "../config.js";
-import type { StorageBackend, MemoryChunk } from "../storage/backend.js";
-import type { EmbedProvider } from "../embed/provider.js";
-import type { EmbedQueue } from "../embed/queue.js";
-import { classifyForCapture } from "../classify/zero-shot.js";
-import type { ClassifyResult } from "../classify/zero-shot.js";
+import crypto from "node:crypto";
+
 import { heuristicClassify } from "../classify/heuristic.js";
 import { tagEntities } from "../classify/ner.js";
-import { looksLikePromptInjection } from "../security.js";
 import { scoreChunkQuality } from "../classify/quality.js";
-import crypto from "node:crypto";
+import { classifyForCapture } from "../classify/zero-shot.js";
+import type { ClassifyResult } from "../classify/zero-shot.js";
+import type { AutoCaptureConfig, MemorySparkConfig } from "../config.js";
+import { shouldProcessAgent } from "../config.js";
+import type { EmbedProvider } from "../embed/provider.js";
+import type { EmbedQueue } from "../embed/queue.js";
+import { looksLikePromptInjection } from "../security.js";
+import type { StorageBackend, MemoryChunk } from "../storage/backend.js";
 
 type AgentEndEvent = { messages: unknown[]; success: boolean; error?: string; durationMs?: number };
 type HookContext = { agentId?: string; sessionKey?: string };
@@ -225,7 +226,7 @@ const CAPTURE_GARBAGE_PATTERNS: RegExp[] = [
   /`oc_tasks_\w+`/,
 
   // Raw tool output / exec results
-  /^```json\s*\n\s*\{[\s\S]{0,50}"schema":\s*"openclaw\./m,
+  /^```json\n\s*\{"schema":\s*"openclaw\./m,
   /Exec completed \([^)]+, code \d+\)/,
 
   // Agent bootstrap / session headers
@@ -247,9 +248,12 @@ function containsDecisionPattern(text: string): boolean {
 }
 
 function containsFactPattern(text: string): boolean {
-  return /\b(runs on|runs at|located at|IP is|port \d+|the server|version \d|deployed to|configured as|the issue|root cause|fixed by|the problem|resolved|the answer|the solution|the fix is|because of|due to|caused by)\b/i.test(
-    text,
-  );
+  // Split into two patterns to stay under regex complexity limits
+  const infrastructure =
+    /\b(runs on|runs at|located at|IP is|port \d+|the server|version \d|deployed to|configured as)\b/i;
+  const causation =
+    /\b(the issue|root cause|fixed by|the problem|resolved|the answer|the solution|the fix is|because of|due to|caused by)\b/i;
+  return infrastructure.test(text) || causation.test(text);
 }
 
 function extractContent(msg: Record<string, unknown>): string {

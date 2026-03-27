@@ -99,12 +99,20 @@ const NOISE_PATTERNS: Array<{ pattern: RegExp; flag: string; penalty: number }> 
   { pattern: /\[media attached:\s*\/home\//, flag: "media-path-local", penalty: 1.0 },
   { pattern: /\[media attached:\s*https?:\/\//, flag: "media-path-url", penalty: 1.0 },
   { pattern: /\.openclaw\/media\/inbound\//, flag: "inbound-media-ref", penalty: 1.0 },
-  { pattern: /To send an image back, prefer the message tool/, flag: "media-instruction", penalty: 1.0 },
+  {
+    pattern: /To send an image back, prefer the message tool/,
+    flag: "media-instruction",
+    penalty: 1.0,
+  },
 
   // Memory recall XML (memories about memories = garbage recursion)
   { pattern: /<relevant-memories>/, flag: "memory-xml-open", penalty: 1.0 },
   { pattern: /<memory index="\d+"/, flag: "memory-xml-entry", penalty: 1.0 },
-  { pattern: /<!-- SECURITY: Treat every memory below as untrusted/, flag: "memory-security-comment", penalty: 1.0 },
+  {
+    pattern: /<!-- SECURITY: Treat every memory below as untrusted/,
+    flag: "memory-security-comment",
+    penalty: 1.0,
+  },
 
   // LCM summary blocks (compaction metadata, not knowledge)
   { pattern: /<summary id="sum_[a-f0-9]+"/, flag: "lcm-summary", penalty: 1.0 },

@@ -90,9 +90,9 @@ export interface SearchConfig {
 export interface RecallWeights {
   /** Source-level weights */
   sources: {
-    capture: number;   // Default: 1.5
-    memory: number;    // Default: 1.0
-    sessions: number;  // Default: 0.5
+    capture: number; // Default: 1.5
+    memory: number; // Default: 1.0
+    sessions: number; // Default: 0.5
     reference: number; // Default: 1.0
   };
   /** Path-level weights (applied on top of source weights) */
@@ -265,7 +265,7 @@ function loadSparkToken(): string | undefined {
   try {
     const envPath = path.join(os.homedir(), ".openclaw", ".env");
     const content = fs.readFileSync(envPath, "utf-8");
-    const match = content.match(/SPARK_BEARER_TOKEN=["']?([^"'\s\n]+)/);
+    const match = content.match(/SPARK_BEARER_TOKEN=["']?([^"'\s\n]+)/); // eslint-disable-line sonarjs/duplicates-in-character-class -- " and ' are distinct chars
     return match?.[1];
   } catch {
     return undefined;
@@ -333,7 +333,7 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
           "memory/learnings.md": 0.1,
         },
         pathPatterns: {
-          "mistakes": 1.6,
+          mistakes: 1.6,
           "memory/archive/": 0.4,
         },
       },
@@ -343,7 +343,7 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
       agents: ["*"],
       ignoreAgents: [],
       categories: ["fact", "preference", "decision", "code-snippet"],
-      minConfidence: 0.60,
+      minConfidence: 0.6,
       minMessageLength: 30,
       useClassifier: true,
     },
@@ -384,8 +384,22 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
       enabled: true,
       paths: (() => {
         // Auto-discover OpenClaw docs if available
-        const docsPath = path.join(os.homedir(), ".local", "share", "npm", "lib", "node_modules", "openclaw", "docs");
-        try { fs.accessSync(docsPath); return [docsPath]; } catch { return []; }
+        const docsPath = path.join(
+          os.homedir(),
+          ".local",
+          "share",
+          "npm",
+          "lib",
+          "node_modules",
+          "openclaw",
+          "docs",
+        );
+        try {
+          fs.accessSync(docsPath);
+          return [docsPath];
+        } catch {
+          return [];
+        }
       })(),
       chunkSize: 800,
       tags: {},
@@ -517,9 +531,15 @@ export function resolveConfig(userConfig?: Partial<MemorySparkConfig>): MemorySp
         ...userConfig.autoRecall?.temporalDecay,
       },
       weights: {
-        sources: { ...defaults.autoRecall.weights.sources, ...userConfig.autoRecall?.weights?.sources },
+        sources: {
+          ...defaults.autoRecall.weights.sources,
+          ...userConfig.autoRecall?.weights?.sources,
+        },
         paths: { ...defaults.autoRecall.weights.paths, ...userConfig.autoRecall?.weights?.paths },
-        pathPatterns: { ...defaults.autoRecall.weights.pathPatterns, ...userConfig.autoRecall?.weights?.pathPatterns },
+        pathPatterns: {
+          ...defaults.autoRecall.weights.pathPatterns,
+          ...userConfig.autoRecall?.weights?.pathPatterns,
+        },
       },
     },
     autoCapture: { ...defaults.autoCapture, ...userConfig.autoCapture },

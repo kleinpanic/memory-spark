@@ -15,24 +15,25 @@
  *   - Migration from existing memory-core on first boot
  */
 
-import { Type } from "@sinclair/typebox";
-import type { OpenClawPluginApi, OpenClawPluginConfigSchema } from "openclaw/plugin-sdk";
+import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import { Type } from "@sinclair/typebox";
+import type { OpenClawPluginApi, OpenClawPluginConfigSchema } from "openclaw/plugin-sdk";
+
+import { createAutoCaptureHandler } from "./src/auto/capture.js";
+import { createAutoRecallHandler } from "./src/auto/recall.js";
 import { resolveConfig, type MemorySparkConfig } from "./src/config.js";
-import { LanceDBBackend } from "./src/storage/lancedb.js";
+import { withCache, type CachedEmbedProvider } from "./src/embed/cached-provider.js";
+import { validateDimsLock } from "./src/embed/dims-lock.js";
 import { createEmbedProvider, type EmbedProvider } from "./src/embed/provider.js";
 import { EmbedQueue } from "./src/embed/queue.js";
-import { validateDimsLock } from "./src/embed/dims-lock.js";
-import { withCache, type CachedEmbedProvider } from "./src/embed/cached-provider.js";
-import { createReranker, type Reranker } from "./src/rerank/reranker.js";
-import { MemorySparkManager } from "./src/manager.js";
 import { createWatcher, type Watcher } from "./src/ingest/watcher.js";
-import { createAutoRecallHandler } from "./src/auto/recall.js";
-import { createAutoCaptureHandler } from "./src/auto/capture.js";
+import { MemorySparkManager } from "./src/manager.js";
+import { createReranker, type Reranker } from "./src/rerank/reranker.js";
 import type { StorageBackend } from "./src/storage/backend.js";
-import fs from "node:fs/promises";
+import { LanceDBBackend } from "./src/storage/lancedb.js";
 
 // ---------------------------------------------------------------------------
 // Singleton plugin state
@@ -78,15 +79,19 @@ async function getState(
     }
 
     // Queue: serialized embed requests with retry/backoff
-    const queue = new EmbedQueue(embed, {
-      concurrency: 1,
-      maxRetries: 3,
-      baseDelayMs: 2000,
-      maxDelayMs: 30000,
-      timeoutMs: 30000,
-      unhealthyThreshold: 5,
-      unhealthyCooldownMs: 60000,
-    }, logger);
+    const queue = new EmbedQueue(
+      embed,
+      {
+        concurrency: 1,
+        maxRetries: 3,
+        baseDelayMs: 2000,
+        maxDelayMs: 30000,
+        timeoutMs: 30000,
+        unhealthyThreshold: 5,
+        unhealthyCooldownMs: 60000,
+      },
+      logger,
+    );
 
     const reranker = await createReranker(cfg.rerank);
 
@@ -95,7 +100,7 @@ async function getState(
     const cachedEmbed = withCache(queue, {
       enabled: cfg.embedCache?.enabled ?? true,
       maxSize: cfg.embedCache?.maxSize ?? 256,
-      ttlMs: cfg.embedCache?.ttlMs ?? (30 * 60 * 1000),
+      ttlMs: cfg.embedCache?.ttlMs ?? 30 * 60 * 1000,
     });
 
     state = { cfg, backend, embed, queue, cachedEmbed, reranker, watcher: null };
@@ -122,7 +127,9 @@ const GetParams = Type.Object({
 
 const StoreParams = Type.Object({
   text: Type.String({ description: "The information to remember" }),
-  category: Type.Optional(Type.String({ description: "Category: fact, preference, decision, code-snippet" })),
+  category: Type.Optional(
+    Type.String({ description: "Category: fact, preference, decision, code-snippet" }),
+  ),
 });
 
 const ForgetParams = Type.Object({
@@ -145,14 +152,29 @@ const MistakesStoreParams = Type.Object({
   rootCause: Type.Optional(Type.String({ description: "Root cause analysis" })),
   fix: Type.Optional(Type.String({ description: "How it was fixed" })),
   lessons: Type.Optional(Type.String({ description: "Key takeaways to avoid repeating this" })),
-  severity: Type.Optional(Type.String({ description: "Severity: critical, high, medium, low (default: medium)" })),
-  shared: Type.Optional(Type.Boolean({ description: "Share with all agents (default: false — per-agent only)" })),
+  severity: Type.Optional(
+    Type.String({ description: "Severity: critical, high, medium, low (default: medium)" }),
+  ),
+  shared: Type.Optional(
+    Type.Boolean({ description: "Share with all agents (default: false — per-agent only)" }),
+  ),
 });
 
 const RulesStoreParams = Type.Object({
-  rule: Type.String({ description: "The rule, preference, or guideline to store. E.g. 'Never use Gemini Flash for coding tasks'" }),
-  scope: Type.Optional(Type.String({ description: "Scope: 'global' (all agents, default) or an agent ID for agent-specific rules" })),
-  category: Type.Optional(Type.String({ description: "Category: preference, constraint, workflow, safety (default: preference)" })),
+  rule: Type.String({
+    description:
+      "The rule, preference, or guideline to store. E.g. 'Never use Gemini Flash for coding tasks'",
+  }),
+  scope: Type.Optional(
+    Type.String({
+      description: "Scope: 'global' (all agents, default) or an agent ID for agent-specific rules",
+    }),
+  ),
+  category: Type.Optional(
+    Type.String({
+      description: "Category: preference, constraint, workflow, safety (default: preference)",
+    }),
+  ),
 });
 
 const RulesSearchParams = Type.Object({
@@ -161,7 +183,9 @@ const RulesSearchParams = Type.Object({
 });
 
 const IndexStatusParams = Type.Object({
-  agentId: Type.Optional(Type.String({ description: "Agent ID to scope stats to (default: current agent)" })),
+  agentId: Type.Optional(
+    Type.String({ description: "Agent ID to scope stats to (default: current agent)" }),
+  ),
 });
 
 const ForgetByPathParams = Type.Object({
@@ -174,7 +198,9 @@ const InspectParams = Type.Object({
 });
 
 const ReindexParams = Type.Object({
-  path: Type.Optional(Type.String({ description: "Specific file path to re-index (omit for full re-scan)" })),
+  path: Type.Optional(
+    Type.String({ description: "Specific file path to re-index (omit for full re-scan)" }),
+  ),
 });
 
 // ---------------------------------------------------------------------------
@@ -184,13 +210,17 @@ const memorySpark = {
   id: "memory-spark",
   name: "Memory Spark",
   version: "0.1.0",
-  description: "Autonomous Spark-powered memory: LanceDB + local embed/rerank + auto-recall/capture.",
+  description:
+    "Autonomous Spark-powered memory: LanceDB + local embed/rerank + auto-recall/capture.",
   kind: "memory" as const,
   configSchema: {
     safeParse(value: unknown) {
       if (value === undefined || value === null) return { success: true, data: undefined };
       if (typeof value !== "object" || Array.isArray(value)) {
-        return { success: false, error: { issues: [{ path: [], message: "expected config object" }] } };
+        return {
+          success: false,
+          error: { issues: [{ path: [], message: "expected config object" }] },
+        };
       }
       // Passthrough — resolveConfig() handles deep merging and type coercion
       return { success: true, data: value };
@@ -199,24 +229,59 @@ const memorySpark = {
       type: "object",
       additionalProperties: true,
       properties: {
-        sparkHost: { type: "string", description: "Spark node IP/hostname (overrides SPARK_HOST env)" },
-        sparkBearerToken: { type: "string", description: "Spark bearer token (overrides SPARK_BEARER_TOKEN env)" },
+        sparkHost: {
+          type: "string",
+          description: "Spark node IP/hostname (overrides SPARK_HOST env)",
+        },
+        sparkBearerToken: {
+          type: "string",
+          description: "Spark bearer token (overrides SPARK_BEARER_TOKEN env)",
+        },
         backend: { type: "string", enum: ["lancedb"] },
         lancedbDir: { type: "string", description: "Path to LanceDB data directory" },
         autoRecall: {
           type: "object",
           properties: {
             enabled: { type: "boolean" },
-            agents: { type: "array", items: { type: "string" }, description: "Agent IDs or [\"*\"] for all" },
-            ignoreAgents: { type: "array", items: { type: "string" }, description: "Agent IDs to exclude from recall" },
-            maxResults: { type: "number", description: "Max memories to inject per turn (default: 5)" },
+            agents: {
+              type: "array",
+              items: { type: "string" },
+              description: 'Agent IDs or ["*"] for all',
+            },
+            ignoreAgents: {
+              type: "array",
+              items: { type: "string" },
+              description: "Agent IDs to exclude from recall",
+            },
+            maxResults: {
+              type: "number",
+              description: "Max memories to inject per turn (default: 5)",
+            },
             minScore: { type: "number", description: "Minimum similarity score (default: 0.75)" },
-            queryMessageCount: { type: "number", description: "Recent messages used as recall query (default: 2)" },
-            maxInjectionTokens: { type: "number", description: "Token budget for injected memories (default: 2000)" },
-            mmrLambda: { type: "number", description: "MMR diversity lambda 0-1 (default: 0.7, higher=more relevant)" },
-            dedupOverlapThreshold: { type: "number", description: "Context dedup overlap threshold 0-1 (default: 0.4)" },
-            overfetchMultiplier: { type: "number", description: "Overfetch multiplier for search (default: 4)" },
-            ftsEnabled: { type: "boolean", description: "Use FTS alongside vector search (default: true)" },
+            queryMessageCount: {
+              type: "number",
+              description: "Recent messages used as recall query (default: 2)",
+            },
+            maxInjectionTokens: {
+              type: "number",
+              description: "Token budget for injected memories (default: 2000)",
+            },
+            mmrLambda: {
+              type: "number",
+              description: "MMR diversity lambda 0-1 (default: 0.7, higher=more relevant)",
+            },
+            dedupOverlapThreshold: {
+              type: "number",
+              description: "Context dedup overlap threshold 0-1 (default: 0.4)",
+            },
+            overfetchMultiplier: {
+              type: "number",
+              description: "Overfetch multiplier for search (default: 4)",
+            },
+            ftsEnabled: {
+              type: "boolean",
+              description: "Use FTS alongside vector search (default: true)",
+            },
             temporalDecay: {
               type: "object",
               properties: {
@@ -230,12 +295,26 @@ const memorySpark = {
           type: "object",
           properties: {
             enabled: { type: "boolean" },
-            agents: { type: "array", items: { type: "string" }, description: "Agent IDs or [\"*\"] for all" },
-            ignoreAgents: { type: "array", items: { type: "string" }, description: "Agent IDs to exclude from capture" },
+            agents: {
+              type: "array",
+              items: { type: "string" },
+              description: 'Agent IDs or ["*"] for all',
+            },
+            ignoreAgents: {
+              type: "array",
+              items: { type: "string" },
+              description: "Agent IDs to exclude from capture",
+            },
             categories: { type: "array", items: { type: "string" } },
             minConfidence: { type: "number" },
-            minMessageLength: { type: "number", description: "Minimum chars to consider for capture (default: 30)" },
-            useClassifier: { type: "boolean", description: "Use Spark zero-shot classifier (default: true)" },
+            minMessageLength: {
+              type: "number",
+              description: "Minimum chars to consider for capture (default: 30)",
+            },
+            useClassifier: {
+              type: "boolean",
+              description: "Use Spark zero-shot classifier (default: true)",
+            },
           },
         },
         embed: {
@@ -255,8 +334,14 @@ const memorySpark = {
           type: "object",
           description: "Full-text search (BM25) tuning",
           properties: {
-            enabled: { type: "boolean", description: "Enable FTS alongside vector search (default: true)" },
-            sigmoidMidpoint: { type: "number", description: "BM25 sigmoid normalization center (default: 3.0)" },
+            enabled: {
+              type: "boolean",
+              description: "Enable FTS alongside vector search (default: true)",
+            },
+            sigmoidMidpoint: {
+              type: "number",
+              description: "BM25 sigmoid normalization center (default: 3.0)",
+            },
           },
         },
         chunk: {
@@ -264,8 +349,14 @@ const memorySpark = {
           description: "Document chunking configuration",
           properties: {
             maxTokens: { type: "number", description: "Max tokens per chunk (default: 400)" },
-            overlapTokens: { type: "number", description: "Token overlap between chunks (default: 50)" },
-            minTokens: { type: "number", description: "Min tokens for a chunk to be indexed (default: 20)" },
+            overlapTokens: {
+              type: "number",
+              description: "Token overlap between chunks (default: 50)",
+            },
+            minTokens: {
+              type: "number",
+              description: "Min tokens for a chunk to be indexed (default: 20)",
+            },
           },
         },
         embedCache: {
@@ -282,7 +373,10 @@ const memorySpark = {
           description: "Vector search and index tuning",
           properties: {
             refineFactor: { type: "number", description: "ANN refinement factor (default: 20)" },
-            maxWriteRetries: { type: "number", description: "Write conflict retry count (default: 3)" },
+            maxWriteRetries: {
+              type: "number",
+              description: "Write conflict retry count (default: 3)",
+            },
             ivfPartitions: { type: "number", description: "IVF_PQ partitions (default: 10)" },
             ivfSubVectors: { type: "number", description: "IVF_PQ sub-vectors (default: 64)" },
           },
@@ -292,23 +386,39 @@ const memorySpark = {
           properties: {
             enabled: { type: "boolean" },
             indexOnBoot: { type: "boolean" },
-            indexSessions: { type: "boolean", description: "Index session JSONL transcripts (default: false)" },
+            indexSessions: {
+              type: "boolean",
+              description: "Index session JSONL transcripts (default: false)",
+            },
           },
         },
         ingest: {
           type: "object",
           properties: {
             minQuality: { type: "number", description: "Minimum quality score 0-1 (default: 0.3)" },
-            language: { type: "string", description: "Primary language (default: 'en', use 'all' to disable filtering)" },
-            languageThreshold: { type: "number", description: "Non-Latin char ratio threshold (default: 0.3)" },
+            language: {
+              type: "string",
+              description: "Primary language (default: 'en', use 'all' to disable filtering)",
+            },
+            languageThreshold: {
+              type: "number",
+              description: "Non-Latin char ratio threshold (default: 0.3)",
+            },
           },
         },
         reference: {
           type: "object",
           properties: {
             enabled: { type: "boolean" },
-            paths: { type: "array", items: { type: "string" }, description: "Additional paths to index as reference" },
-            chunkSize: { type: "number", description: "Chunk size for reference docs (default: 800)" },
+            paths: {
+              type: "array",
+              items: { type: "string" },
+              description: "Additional paths to index as reference",
+            },
+            chunkSize: {
+              type: "number",
+              description: "Chunk size for reference docs (default: 800)",
+            },
           },
         },
       },
@@ -325,27 +435,43 @@ const memorySpark = {
     api.registerTool(
       (ctx) => {
         const agentId = ctx.agentId ?? "default";
-        const workspaceDir = ctx.workspaceDir ?? path.join(os.homedir(), ".openclaw", `workspace-${agentId}`);
+        const workspaceDir =
+          ctx.workspaceDir ?? path.join(os.homedir(), ".openclaw", `workspace-${agentId}`);
 
         const searchTool = {
           name: "memory_search",
-          description: "Search the knowledge base and memory for relevant information. Use when auto-recall didn't surface what you need, or when you need to search for something specific (a fact, config detail, past decision, or mistake). Searches across all agent workspaces, reference docs, and captured knowledge.",
+          description:
+            "Search the knowledge base and memory for relevant information. Use when auto-recall didn't surface what you need, or when you need to search for something specific (a fact, config detail, past decision, or mistake). Searches across all agent workspaces, reference docs, and captured knowledge.",
           label: "Memory Search",
           parameters: SearchParams,
           execute: async (_toolCallId: string, params: { query: string; maxResults?: number }) => {
             const s = await getState(cfg, api.logger);
             const manager = new MemorySparkManager({
-              cfg, agentId, workspaceDir,
-              backend: s.backend, embed: s.embed, reranker: s.reranker, queue: s.queue,
+              cfg,
+              agentId,
+              workspaceDir,
+              backend: s.backend,
+              embed: s.embed,
+              reranker: s.reranker,
+              queue: s.queue,
             });
             const results = await manager.search(params.query, { maxResults: params.maxResults });
             if (results.length === 0) {
-              return { content: [{ type: "text" as const, text: "No relevant memories found." }], details: {} };
+              return {
+                content: [{ type: "text" as const, text: "No relevant memories found." }],
+                details: {},
+              };
             }
-            const text = results.map((r, i) =>
-              `${i + 1}. [${r.citation ?? r.path}] (score: ${r.score.toFixed(2)}) ${r.snippet}`
-            ).join("\n\n");
-            return { content: [{ type: "text" as const, text }], details: { resultCount: results.length } };
+            const text = results
+              .map(
+                (r, i) =>
+                  `${i + 1}. [${r.citation ?? r.path}] (score: ${r.score.toFixed(2)}) ${r.snippet}`,
+              )
+              .join("\n\n");
+            return {
+              content: [{ type: "text" as const, text }],
+              details: { resultCount: results.length },
+            };
           },
         };
 
@@ -354,108 +480,191 @@ const memorySpark = {
           description: "Read a section of an indexed file by path and line range.",
           label: "Memory Get",
           parameters: GetParams,
-          execute: async (_toolCallId: string, params: { path: string; from?: number; lines?: number }) => {
+          execute: async (
+            _toolCallId: string,
+            params: { path: string; from?: number; lines?: number },
+          ) => {
             const s = await getState(cfg, api.logger);
             const manager = new MemorySparkManager({
-              cfg, agentId, workspaceDir,
-              backend: s.backend, embed: s.embed, reranker: s.reranker, queue: s.queue,
+              cfg,
+              agentId,
+              workspaceDir,
+              backend: s.backend,
+              embed: s.embed,
+              reranker: s.reranker,
+              queue: s.queue,
             });
-            const result = await manager.readFile({ relPath: params.path, from: params.from, lines: params.lines });
-            return { content: [{ type: "text" as const, text: result.text || "(empty)" }], details: {} };
+            const result = await manager.readFile({
+              relPath: params.path,
+              from: params.from,
+              lines: params.lines,
+            });
+            return {
+              content: [{ type: "text" as const, text: result.text || "(empty)" }],
+              details: {},
+            };
           },
         };
 
         const storeTool = {
           name: "memory_store",
-          description: "Explicitly store a piece of information in long-term memory. Use for facts, preferences, or decisions the user wants remembered.",
+          description:
+            "Explicitly store a piece of information in long-term memory. Use for facts, preferences, or decisions the user wants remembered.",
           label: "Memory Store",
           parameters: StoreParams,
           execute: async (_toolCallId: string, params: { text: string; category?: string }) => {
             const s = await getState(cfg, api.logger);
             const { looksLikePromptInjection } = await import("./src/security.js");
             if (looksLikePromptInjection(params.text)) {
-              return { content: [{ type: "text" as const, text: "Refused: text contains suspicious patterns." }], details: {} };
+              return {
+                content: [
+                  { type: "text" as const, text: "Refused: text contains suspicious patterns." },
+                ],
+                details: {},
+              };
             }
             const vector = await s.queue.embedQuery(params.text);
             // Duplicate check
-            const existing = await s.backend.vectorSearch(vector, {
-              query: params.text, maxResults: 1, minScore: 0.92, agentId, source: "capture",
-            }).catch(() => []);
+            const existing = await s.backend
+              .vectorSearch(vector, {
+                query: params.text,
+                maxResults: 1,
+                minScore: 0.92,
+                agentId,
+                source: "capture",
+              })
+              .catch(() => []);
             if (existing.length > 0 && existing[0]!.score >= 0.92) {
-              return { content: [{ type: "text" as const, text: "Already stored (similar memory exists)." }], details: {} };
+              return {
+                content: [
+                  { type: "text" as const, text: "Already stored (similar memory exists)." },
+                ],
+                details: {},
+              };
             }
             const { tagEntities } = await import("./src/classify/ner.js");
             const entities = await tagEntities(params.text, cfg).catch(() => [] as string[]);
             const crypto = await import("node:crypto");
             const now = new Date();
-            await s.backend.upsert([{
-              id: crypto.randomUUID().slice(0, 16),
-              path: `capture/${agentId}/${now.toISOString().slice(0, 10)}`,
-              source: "capture",
-              agent_id: agentId,
-              start_line: 0,
-              end_line: 0,
-              text: params.text,
-              vector,
-              updated_at: now.toISOString(),
-              category: params.category ?? "fact",
-              entities: JSON.stringify(entities),
-              confidence: 1.0,
-            }]);
-            return { content: [{ type: "text" as const, text: `Stored in memory: "${params.text.slice(0, 80)}..."` }], details: {} };
+            await s.backend.upsert([
+              {
+                id: crypto.randomUUID().slice(0, 16),
+                path: `capture/${agentId}/${now.toISOString().slice(0, 10)}`,
+                source: "capture",
+                agent_id: agentId,
+                start_line: 0,
+                end_line: 0,
+                text: params.text,
+                vector,
+                updated_at: now.toISOString(),
+                category: params.category ?? "fact",
+                entities: JSON.stringify(entities),
+                confidence: 1.0,
+              },
+            ]);
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `Stored in memory: "${params.text.slice(0, 80)}..."`,
+                },
+              ],
+              details: {},
+            };
           },
         };
 
         const forgetTool = {
           name: "memory_forget",
-          description: "Remove memories matching a query. Use when the user wants to correct or delete stored information.",
+          description:
+            "Remove memories matching a query. Use when the user wants to correct or delete stored information.",
           label: "Memory Forget",
           parameters: ForgetParams,
           execute: async (_toolCallId: string, params: { query: string }) => {
             const s = await getState(cfg, api.logger);
             const vector = await s.queue.embedQuery(params.query);
-            const matches = await s.backend.vectorSearch(vector, {
-              query: params.query, maxResults: 5, minScore: 0.7, agentId, source: "capture",
-            }).catch(() => []);
+            const matches = await s.backend
+              .vectorSearch(vector, {
+                query: params.query,
+                maxResults: 5,
+                minScore: 0.7,
+                agentId,
+                source: "capture",
+              })
+              .catch(() => []);
             if (matches.length === 0) {
-              return { content: [{ type: "text" as const, text: "No matching memories found to forget." }], details: {} };
+              return {
+                content: [{ type: "text" as const, text: "No matching memories found to forget." }],
+                details: {},
+              };
             }
             const ids = matches.map((m) => m.chunk.id);
             await s.backend.deleteById(ids);
             const previews = matches.map((m) => `• "${m.chunk.text.slice(0, 60)}..."`).join("\n");
-            return { content: [{ type: "text" as const, text: `Forgot ${ids.length} memories:\n${previews}` }], details: { deleted: ids.length } };
+            return {
+              content: [
+                { type: "text" as const, text: `Forgot ${ids.length} memories:\n${previews}` },
+              ],
+              details: { deleted: ids.length },
+            };
           },
         };
 
         const referenceSearchTool = {
           name: "memory_reference_search",
-          description: "Search reference documentation (textbooks, API docs, source code docs). Use instead of web search when relevant reference material has been indexed.",
+          description:
+            "Search reference documentation (textbooks, API docs, source code docs). Use instead of web search when relevant reference material has been indexed.",
           label: "Reference Search",
           parameters: ReferenceSearchParams,
-          execute: async (_toolCallId: string, params: { query: string; tag?: string; maxResults?: number }) => {
+          execute: async (
+            _toolCallId: string,
+            params: { query: string; tag?: string; maxResults?: number },
+          ) => {
             const s = await getState(cfg, api.logger);
             const limit = params.maxResults ?? 10;
             let queryVector: number[];
             try {
               queryVector = await s.queue.embedQuery(params.query);
             } catch {
-              return { content: [{ type: "text" as const, text: "Embedding unavailable — cannot search reference docs." }], details: {} };
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: "Embedding unavailable — cannot search reference docs.",
+                  },
+                ],
+                details: {},
+              };
             }
 
             const fetchN = limit * 3;
             const [vectorResults, ftsResults] = await Promise.all([
-              s.backend.vectorSearch(queryVector, {
-                query: params.query, maxResults: fetchN, agentId, contentType: "reference",
-              }).catch(() => []),
-              s.backend.ftsSearch(params.query, {
-                query: params.query, maxResults: fetchN, agentId, contentType: "reference",
-              }).catch(() => []),
+              s.backend
+                .vectorSearch(queryVector, {
+                  query: params.query,
+                  maxResults: fetchN,
+                  agentId,
+                  contentType: "reference",
+                })
+                .catch(() => []),
+              s.backend
+                .ftsSearch(params.query, {
+                  query: params.query,
+                  maxResults: fetchN,
+                  agentId,
+                  contentType: "reference",
+                })
+                .catch(() => []),
             ]);
 
             // Merge and deduplicate by id
             const seen = new Set<string>();
             const merged = [...vectorResults, ...ftsResults]
-              .filter((r) => { if (seen.has(r.chunk.id)) return false; seen.add(r.chunk.id); return true; })
+              .filter((r) => {
+                if (seen.has(r.chunk.id)) return false;
+                seen.add(r.chunk.id);
+                return true;
+              })
               .sort((a, b) => b.score - a.score);
 
             // Tag filter — match path prefix against cfg.reference.tags
@@ -467,25 +676,40 @@ const memorySpark = {
                 .map(([prefix]) => prefix);
               if (matchingPrefixes.length > 0) {
                 results = merged.filter((r) =>
-                  matchingPrefixes.some((prefix) => r.chunk.path.startsWith(prefix))
+                  matchingPrefixes.some((prefix) => r.chunk.path.startsWith(prefix)),
                 );
               }
             }
 
             const final = results.slice(0, limit);
             if (final.length === 0) {
-              return { content: [{ type: "text" as const, text: "No reference documentation found for that query." }], details: {} };
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: "No reference documentation found for that query.",
+                  },
+                ],
+                details: {},
+              };
             }
-            const text = final.map((r, i) =>
-              `${i + 1}. [${r.chunk.path}:${r.chunk.start_line}] (score: ${r.score.toFixed(2)})\n${r.chunk.text.slice(0, 400)}`
-            ).join("\n\n");
-            return { content: [{ type: "text" as const, text }], details: { resultCount: final.length } };
+            const text = final
+              .map(
+                (r, i) =>
+                  `${i + 1}. [${r.chunk.path}:${r.chunk.start_line}] (score: ${r.score.toFixed(2)})\n${r.chunk.text.slice(0, 400)}`,
+              )
+              .join("\n\n");
+            return {
+              content: [{ type: "text" as const, text }],
+              details: { resultCount: final.length },
+            };
           },
         };
 
         const indexStatusTool = {
           name: "memory_index_status",
-          description: "Show memory index statistics: chunk counts by type, index health, and top indexed paths.",
+          description:
+            "Show memory index statistics: chunk counts by type, index health, and top indexed paths.",
           label: "Index Status",
           parameters: IndexStatusParams,
           execute: async (_toolCallId: string, params: { agentId?: string }) => {
@@ -493,7 +717,9 @@ const memorySpark = {
             const targetAgentId = params.agentId ?? agentId;
 
             // Use LanceDBBackend.getStats() if available
-            const lanceStats = (s.backend as import("./src/storage/lancedb.js").LanceDBBackend).getStats?.(targetAgentId);
+            const lanceStats = (
+              s.backend as import("./src/storage/lancedb.js").LanceDBBackend
+            ).getStats?.(targetAgentId);
             const baseStatus = await s.backend.status();
 
             let statsText = `Memory Index Status\n`;
@@ -563,17 +789,25 @@ const memorySpark = {
 
         const forgetByPathTool = {
           name: "memory_forget_by_path",
-          description: "Remove all indexed chunks from a specific file path. Use when reference docs are outdated or a file has been deleted.",
+          description:
+            "Remove all indexed chunks from a specific file path. Use when reference docs are outdated or a file has been deleted.",
           label: "Forget by Path",
           parameters: ForgetByPathParams,
           execute: async (_toolCallId: string, params: { path: string }) => {
             const s = await getState(cfg, api.logger);
             const removed = await s.backend.deleteByPath(params.path, agentId);
             if (removed === 0) {
-              return { content: [{ type: "text" as const, text: `No chunks found for path: ${params.path}` }], details: { removed: 0 } };
+              return {
+                content: [
+                  { type: "text" as const, text: `No chunks found for path: ${params.path}` },
+                ],
+                details: { removed: 0 },
+              };
             }
             return {
-              content: [{ type: "text" as const, text: `Removed ${removed} chunks from: ${params.path}` }],
+              content: [
+                { type: "text" as const, text: `Removed ${removed} chunks from: ${params.path}` },
+              ],
               details: { removed },
             };
           },
@@ -581,7 +815,8 @@ const memorySpark = {
 
         const inspectTool = {
           name: "memory_inspect",
-          description: "Simulate auto-recall for a query. Shows exactly what would be injected into context, with scores, sources, and weights applied. Use to debug recall quality or verify that important memories (MISTAKES, TOOLS) are being retrieved.",
+          description:
+            "Simulate auto-recall for a query. Shows exactly what would be injected into context, with scores, sources, and weights applied. Use to debug recall quality or verify that important memories (MISTAKES, TOOLS) are being retrieved.",
           label: "Inspect Recall",
           parameters: InspectParams,
           execute: async (_toolCallId: string, params: { query: string; maxResults?: number }) => {
@@ -593,25 +828,33 @@ const memorySpark = {
             try {
               vector = await s.cachedEmbed.embedQuery(params.query);
             } catch {
-              return { content: [{ type: "text" as const, text: "Embedding failed — Spark may be down." }], details: {} };
+              return {
+                content: [{ type: "text" as const, text: "Embedding failed — Spark may be down." }],
+                details: {},
+              };
             }
 
             // Vector search
-            const vectorResults = await s.backend.vectorSearch(vector, {
-              query: params.query,
-              maxResults: maxR * 4,
-              minScore: cfg.autoRecall.minScore,
-              agentId,
-            }).catch(() => []);
+            const vectorResults = await s.backend
+              .vectorSearch(vector, {
+                query: params.query,
+                maxResults: maxR * 4,
+                minScore: cfg.autoRecall.minScore,
+                agentId,
+              })
+              .catch(() => []);
 
             // FTS search
-            const ftsResults = await s.backend.ftsSearch(params.query, {
-              query: params.query,
-              maxResults: maxR * 2,
-            }).catch(() => []);
+            const ftsResults = await s.backend
+              .ftsSearch(params.query, {
+                query: params.query,
+                maxResults: maxR * 2,
+              })
+              .catch(() => []);
 
             // Import pipeline functions
-            const { applySourceWeighting, applyTemporalDecay } = await import("./src/auto/recall.js");
+            const { applySourceWeighting, applyTemporalDecay } =
+              await import("./src/auto/recall.js");
 
             // Merge
             const merged = [...vectorResults];
@@ -651,7 +894,8 @@ const memorySpark = {
 
         const reindexTool = {
           name: "memory_reindex",
-          description: "Trigger a re-index of memory files. With a path, re-indexes just that file. Without a path, triggers a full boot-pass re-scan of all workspace files.",
+          description:
+            "Trigger a re-index of memory files. With a path, re-indexes just that file. Without a path, triggers a full boot-pass re-scan of all workspace files.",
           label: "Re-index",
           parameters: ReindexParams,
           execute: async (_toolCallId: string, params: { path?: string }) => {
@@ -672,12 +916,22 @@ const memorySpark = {
                   source: "memory",
                 });
                 return {
-                  content: [{ type: "text" as const, text: `Re-indexed: ${params.path} → ${result.chunksAdded} chunks` }],
+                  content: [
+                    {
+                      type: "text" as const,
+                      text: `Re-indexed: ${params.path} → ${result.chunksAdded} chunks`,
+                    },
+                  ],
                   details: { chunks: result.chunksAdded },
                 };
               } catch (err) {
                 return {
-                  content: [{ type: "text" as const, text: `Failed to re-index ${params.path}: ${err instanceof Error ? err.message : String(err)}` }],
+                  content: [
+                    {
+                      type: "text" as const,
+                      text: `Failed to re-index ${params.path}: ${err instanceof Error ? err.message : String(err)}`,
+                    },
+                  ],
                   details: {},
                 };
               }
@@ -686,12 +940,22 @@ const memorySpark = {
               if (s.watcher) {
                 s.watcher.triggerBootPass();
                 return {
-                  content: [{ type: "text" as const, text: "Full re-scan triggered. New and modified files will be indexed in the background." }],
+                  content: [
+                    {
+                      type: "text" as const,
+                      text: "Full re-scan triggered. New and modified files will be indexed in the background.",
+                    },
+                  ],
                   details: {},
                 };
               }
               return {
-                content: [{ type: "text" as const, text: "Watcher not active — cannot trigger re-scan. Try restarting the plugin." }],
+                content: [
+                  {
+                    type: "text" as const,
+                    text: "Watcher not active — cannot trigger re-scan. Try restarting the plugin.",
+                  },
+                ],
                 details: {},
               };
             }
@@ -702,7 +966,8 @@ const memorySpark = {
 
         const mistakesSearchTool = {
           name: "memory_mistakes_search",
-          description: "Search for relevant mistakes, errors, and lessons learned across all agents. Use when you need to check if a similar mistake has been made before, or to recall how a past error was fixed.",
+          description:
+            "Search for relevant mistakes, errors, and lessons learned across all agents. Use when you need to check if a similar mistake has been made before, or to recall how a past error was fixed.",
           label: "Search Mistakes",
           parameters: MistakesSearchParams,
           execute: async (_toolCallId: string, params: { query: string; maxResults?: number }) => {
@@ -712,24 +977,36 @@ const memorySpark = {
             try {
               vector = await s.cachedEmbed.embedQuery(params.query);
             } catch {
-              return { content: [{ type: "text" as const, text: "Embedding unavailable — cannot search mistakes." }], details: {} };
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: "Embedding unavailable — cannot search mistakes.",
+                  },
+                ],
+                details: {},
+              };
             }
 
             // Search both agent-specific and shared mistake pools
             const [agentMistakes, sharedMistakes] = await Promise.all([
-              s.backend.vectorSearch(vector, {
-                query: params.query,
-                maxResults: maxR,
-                minScore: 0.1,
-                agentId,
-                pools: ["agent_mistakes"],
-              }).catch(() => [] as import("./src/storage/backend.js").SearchResult[]),
-              s.backend.vectorSearch(vector, {
-                query: params.query,
-                maxResults: maxR,
-                minScore: 0.1,
-                pools: ["shared_mistakes"],
-              }).catch(() => [] as import("./src/storage/backend.js").SearchResult[]),
+              s.backend
+                .vectorSearch(vector, {
+                  query: params.query,
+                  maxResults: maxR,
+                  minScore: 0.1,
+                  agentId,
+                  pools: ["agent_mistakes"],
+                })
+                .catch(() => [] as import("./src/storage/backend.js").SearchResult[]),
+              s.backend
+                .vectorSearch(vector, {
+                  query: params.query,
+                  maxResults: maxR,
+                  minScore: 0.1,
+                  pools: ["shared_mistakes"],
+                })
+                .catch(() => [] as import("./src/storage/backend.js").SearchResult[]),
             ]);
 
             // Merge and deduplicate by ID, keep highest score
@@ -744,18 +1021,28 @@ const memorySpark = {
               .slice(0, maxR);
 
             if (results.length === 0) {
-              return { content: [{ type: "text" as const, text: "No relevant mistakes found." }], details: {} };
+              return {
+                content: [{ type: "text" as const, text: "No relevant mistakes found." }],
+                details: {},
+              };
             }
-            const text = results.map((r, i) =>
-              `${i + 1}. [${r.chunk.path}] (score: ${r.score.toFixed(2)})\n${r.chunk.text.slice(0, 400)}`
-            ).join("\n\n");
-            return { content: [{ type: "text" as const, text }], details: { resultCount: results.length } };
+            const text = results
+              .map(
+                (r, i) =>
+                  `${i + 1}. [${r.chunk.path}] (score: ${r.score.toFixed(2)})\n${r.chunk.text.slice(0, 400)}`,
+              )
+              .join("\n\n");
+            return {
+              content: [{ type: "text" as const, text }],
+              details: { resultCount: results.length },
+            };
           },
         };
 
         const mistakesStoreTool = {
           name: "memory_mistakes_store",
-          description: "Log a mistake, error, or incident for future reference. Stored in the shared mistakes pool visible to all agents. Use when something goes wrong and you want to ensure it's remembered and not repeated.",
+          description:
+            "Log a mistake, error, or incident for future reference. Stored in the shared mistakes pool visible to all agents. Use when something goes wrong and you want to ensure it's remembered and not repeated.",
           label: "Log Mistake",
           parameters: MistakesStoreParams,
           execute: async (
@@ -784,7 +1071,12 @@ const memorySpark = {
               .join("\n");
 
             if (looksLikePromptInjection(fullText)) {
-              return { content: [{ type: "text" as const, text: "Refused: text contains suspicious patterns." }], details: {} };
+              return {
+                content: [
+                  { type: "text" as const, text: "Refused: text contains suspicious patterns." },
+                ],
+                details: {},
+              };
             }
 
             const vector = await s.queue.embedQuery(fullText);
@@ -811,7 +1103,12 @@ const memorySpark = {
             await s.backend.upsert([chunk]);
             const shareLabel = params.shared ? "shared with all agents" : "per-agent";
             return {
-              content: [{ type: "text" as const, text: `Logged mistake (${shareLabel}, ${params.severity ?? "medium"}): "${params.description.slice(0, 80)}..."` }],
+              content: [
+                {
+                  type: "text" as const,
+                  text: `Logged mistake (${shareLabel}, ${params.severity ?? "medium"}): "${params.description.slice(0, 80)}..."`,
+                },
+              ],
               details: { severity: params.severity ?? "medium", pool },
             };
           },
@@ -821,10 +1118,14 @@ const memorySpark = {
 
         const rulesStoreTool = {
           name: "memory_rules_store",
-          description: "Store a global rule, preference, or guideline that should be recalled when relevant. Rules are shared across all agents by default. Use for persistent behavioral guidelines like 'Never use Flash for coding' or 'Klein prefers concise responses'.",
+          description:
+            "Store a global rule, preference, or guideline that should be recalled when relevant. Rules are shared across all agents by default. Use for persistent behavioral guidelines like 'Never use Flash for coding' or 'Klein prefers concise responses'.",
           label: "Store Rule",
           parameters: RulesStoreParams,
-          execute: async (_toolCallId: string, params: { rule: string; scope?: string; category?: string }) => {
+          execute: async (
+            _toolCallId: string,
+            params: { rule: string; scope?: string; category?: string },
+          ) => {
             const s = await getState(cfg, api.logger);
             const { looksLikePromptInjection } = await import("./src/security.js");
             const category = params.category ?? "preference";
@@ -832,7 +1133,12 @@ const memorySpark = {
 
             const fullText = `[${category.toUpperCase()}] ${params.rule}`;
             if (looksLikePromptInjection(fullText)) {
-              return { content: [{ type: "text" as const, text: "Refused: text contains suspicious patterns." }], details: {} };
+              return {
+                content: [
+                  { type: "text" as const, text: "Refused: text contains suspicious patterns." },
+                ],
+                details: {},
+              };
             }
 
             const vector = await s.queue.embedQuery(fullText);
@@ -857,7 +1163,12 @@ const memorySpark = {
 
             await s.backend.upsert([chunk]);
             return {
-              content: [{ type: "text" as const, text: `Stored rule (${category}, ${scope}): "${params.rule.slice(0, 80)}..."` }],
+              content: [
+                {
+                  type: "text" as const,
+                  text: `Stored rule (${category}, ${scope}): "${params.rule.slice(0, 80)}..."`,
+                },
+              ],
               details: { scope, category },
             };
           },
@@ -865,7 +1176,8 @@ const memorySpark = {
 
         const rulesSearchTool = {
           name: "memory_rules_search",
-          description: "Search for stored rules, preferences, and guidelines. Use to check existing rules before adding new ones, or to find relevant guidelines for a task.",
+          description:
+            "Search for stored rules, preferences, and guidelines. Use to check existing rules before adding new ones, or to find relevant guidelines for a task.",
           label: "Search Rules",
           parameters: RulesSearchParams,
           execute: async (_toolCallId: string, params: { query: string; maxResults?: number }) => {
@@ -875,7 +1187,10 @@ const memorySpark = {
             try {
               vector = await s.cachedEmbed.embedQuery(params.query);
             } catch {
-              return { content: [{ type: "text" as const, text: "Embedding unavailable." }], details: {} };
+              return {
+                content: [{ type: "text" as const, text: "Embedding unavailable." }],
+                details: {},
+              };
             }
             const results = await s.backend
               .vectorSearch(vector, {
@@ -886,24 +1201,56 @@ const memorySpark = {
               })
               .catch(() => [] as import("./src/storage/backend.js").SearchResult[]);
             if (results.length === 0) {
-              return { content: [{ type: "text" as const, text: "No matching rules found." }], details: {} };
+              return {
+                content: [{ type: "text" as const, text: "No matching rules found." }],
+                details: {},
+              };
             }
-            const text = results.map((r, i) =>
-              `${i + 1}. (score: ${r.score.toFixed(2)}) ${r.chunk.text}`
-            ).join("\n\n");
-            return { content: [{ type: "text" as const, text }], details: { resultCount: results.length } };
+            const text = results
+              .map((r, i) => `${i + 1}. (score: ${r.score.toFixed(2)}) ${r.chunk.text}`)
+              .join("\n\n");
+            return {
+              content: [{ type: "text" as const, text }],
+              details: { resultCount: results.length },
+            };
           },
         };
 
         // SDK boundary cast — OpenClaw's AnyAgentTool uses `any` internally
         return [
-          searchTool, getTool, storeTool, forgetTool, referenceSearchTool,
-          indexStatusTool, forgetByPathTool, inspectTool, reindexTool,
-          mistakesSearchTool, mistakesStoreTool, rulesStoreTool, rulesSearchTool,
+          searchTool,
+          getTool,
+          storeTool,
+          forgetTool,
+          referenceSearchTool,
+          indexStatusTool,
+          forgetByPathTool,
+          inspectTool,
+          reindexTool,
+          mistakesSearchTool,
+          mistakesStoreTool,
+          rulesStoreTool,
+          rulesSearchTool,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ] as any;
       },
-      { names: ["memory_search", "memory_get", "memory_store", "memory_forget", "memory_reference_search", "memory_index_status", "memory_forget_by_path", "memory_inspect", "memory_reindex", "memory_mistakes_search", "memory_mistakes_store", "memory_rules_store", "memory_rules_search"] },
+      {
+        names: [
+          "memory_search",
+          "memory_get",
+          "memory_store",
+          "memory_forget",
+          "memory_reference_search",
+          "memory_index_status",
+          "memory_forget_by_path",
+          "memory_inspect",
+          "memory_reindex",
+          "memory_mistakes_search",
+          "memory_mistakes_store",
+          "memory_rules_store",
+          "memory_rules_search",
+        ],
+      },
     );
 
     // -------------------------------------------------------------------
@@ -914,7 +1261,10 @@ const memorySpark = {
       try {
         const s = await getState(cfg, api.logger);
         const handler = createAutoRecallHandler({
-          cfg: cfg.autoRecall, backend: s.backend, embed: s.cachedEmbed, reranker: s.reranker,
+          cfg: cfg.autoRecall,
+          backend: s.backend,
+          embed: s.cachedEmbed,
+          reranker: s.reranker,
         });
         return await handler(event, ctx);
       } catch {
@@ -930,7 +1280,10 @@ const memorySpark = {
       try {
         const s = await getState(cfg, api.logger);
         const handler = createAutoCaptureHandler({
-          cfg: cfg.autoCapture, globalCfg: cfg, backend: s.backend, embed: s.queue,
+          cfg: cfg.autoCapture,
+          globalCfg: cfg,
+          backend: s.backend,
+          embed: s.queue,
         });
         await handler(event, ctx);
       } catch {
@@ -947,7 +1300,8 @@ const memorySpark = {
         if (!event.sessionFile) return;
         const s = await getState(cfg, api.logger);
         const agentId = ctx.agentId ?? "default";
-        const workspaceDir = ctx.workspaceDir ?? path.join(os.homedir(), ".openclaw", `workspace-${agentId}`);
+        const workspaceDir =
+          ctx.workspaceDir ?? path.join(os.homedir(), ".openclaw", `workspace-${agentId}`);
         const { ingestFile } = await import("./src/ingest/pipeline.js");
         await ingestFile({
           filePath: event.sessionFile,
@@ -1043,8 +1397,12 @@ const memorySpark = {
               console.log(`Ready:       ${st.ready}`);
               console.log(`Embed:       ${s.embed.id}/${s.embed.model} (${s.embed.dims}d)`);
               console.log(`Reranker:    ${cfg.rerank.enabled ? "spark" : "off"}`);
-              console.log(`AutoRecall:  ${cfg.autoRecall.enabled ? cfg.autoRecall.agents.join(",") : "off"}`);
-              console.log(`AutoCapture: ${cfg.autoCapture.enabled ? cfg.autoCapture.agents.join(",") : "off"}`);
+              console.log(
+                `AutoRecall:  ${cfg.autoRecall.enabled ? cfg.autoRecall.agents.join(",") : "off"}`,
+              );
+              console.log(
+                `AutoCapture: ${cfg.autoCapture.enabled ? cfg.autoCapture.agents.join(",") : "off"}`,
+              );
               console.log(`Watch:       ${cfg.watch.paths.length} external paths`);
               console.log(`LanceDB dir: ${cfg.lancedbDir}`);
             } catch (err) {
@@ -1090,7 +1448,9 @@ const memorySpark = {
       { commands: ["memory"] },
     );
 
-    api.logger.info("memory-spark: plugin registered (workspace auto-discovery + sessions + auto-recall/capture)");
+    api.logger.info(
+      "memory-spark: plugin registered (workspace auto-discovery + sessions + auto-recall/capture)",
+    );
   },
 };
 

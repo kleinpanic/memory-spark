@@ -2,10 +2,11 @@
  * File parsers — extract raw text from various formats.
  */
 
-import type { MemorySparkConfig } from "../config.js";
-import fs from "node:fs/promises";
 import { execFile } from "node:child_process";
+import fs from "node:fs/promises";
 import { promisify } from "node:util";
+
+import type { MemorySparkConfig } from "../config.js";
 
 const execFileAsync = promisify(execFile);
 

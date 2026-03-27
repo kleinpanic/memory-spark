@@ -6,12 +6,12 @@
 
 import type { AutoRecallConfig, RecallWeights } from "../config.js";
 import { shouldProcessAgent } from "../config.js";
-import type { StorageBackend, SearchResult } from "../storage/backend.js";
+import type { EmbedLike } from "../embed/cached-provider.js";
 import type { EmbedProvider } from "../embed/provider.js";
 import type { EmbedQueue } from "../embed/queue.js";
-import type { EmbedLike } from "../embed/cached-provider.js";
 import type { Reranker } from "../rerank/reranker.js";
 import { looksLikePromptInjection, formatRecalledMemories } from "../security.js";
+import type { StorageBackend, SearchResult } from "../storage/backend.js";
 
 type BeforePromptBuildEvent = { prompt: string; messages: unknown[] };
 type BeforePromptBuildResult = { systemPrompt?: string; prependContext?: string };
@@ -82,9 +82,10 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
       const vectorResults = await backend
         .vectorSearch(queryVector, searchOpts)
         .catch(() => [] as SearchResult[]);
-      const rawFtsResults = (cfg.ftsEnabled ?? true)
-        ? await backend.ftsSearch(queryText, searchOpts).catch(() => [] as SearchResult[])
-        : [];
+      const rawFtsResults =
+        (cfg.ftsEnabled ?? true)
+          ? await backend.ftsSearch(queryText, searchOpts).catch(() => [] as SearchResult[])
+          : [];
       // Filter FTS: exclude sessions source, apply minScore
       const ftsResults = rawFtsResults.filter(
         (r) => r.chunk.source !== "sessions" && r.score >= (minScore ?? 0.1),
@@ -93,19 +94,10 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     };
 
     // 1. Agent's own memory + tools (primary recall)
-    const agentResults = await poolSearch(
-      ["agent_memory", "agent_tools"],
-      agentId,
-      fetchN,
-    );
+    const agentResults = await poolSearch(["agent_memory", "agent_tools"], agentId, fetchN);
 
     // 2. Agent's own mistakes (per-agent, higher priority than shared)
-    const agentMistakes = await poolSearch(
-      ["agent_mistakes"],
-      agentId,
-      5,
-      lowThreshold,
-    );
+    const agentMistakes = await poolSearch(["agent_mistakes"], agentId, 5, lowThreshold);
 
     // 3. Shared mistakes (cross-agent)
     const sharedMistakes = await poolSearch(
@@ -116,20 +108,10 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     );
 
     // 4. Shared knowledge (cross-agent)
-    const sharedKnowledge = await poolSearch(
-      ["shared_knowledge"],
-      undefined,
-      10,
-      lowThreshold,
-    );
+    const sharedKnowledge = await poolSearch(["shared_knowledge"], undefined, 10, lowThreshold);
 
     // 5. Shared rules — relevance-gated like all other pools
-    const sharedRules = await poolSearch(
-      ["shared_rules"],
-      undefined,
-      5,
-      lowThreshold,
-    );
+    const sharedRules = await poolSearch(["shared_rules"], undefined, 5, lowThreshold);
 
     // Merge all results, deduplicating by chunk ID
     const merged: SearchResult[] = [...agentResults];
@@ -466,7 +448,7 @@ const DEFAULT_WEIGHTS: RecallWeights = {
     "memory/learnings.md": 0.1,
   },
   pathPatterns: {
-    "mistakes": 1.6,
+    mistakes: 1.6,
     "memory/archive/": 0.4,
   },
 };
@@ -482,7 +464,7 @@ export function applySourceWeighting(results: SearchResult[], weights?: RecallWe
     let weight = (w.sources as Record<string, number>)[source] ?? 1.0;
 
     // Exact path match
-    if (w.paths[chunkPath] != null) {
+    if (w.paths[chunkPath] !== undefined) {
       weight *= w.paths[chunkPath];
     } else {
       // Pattern match (substring)

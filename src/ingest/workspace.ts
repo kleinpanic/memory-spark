@@ -14,8 +14,9 @@
  */
 
 import fs from "node:fs/promises";
-import path from "node:path";
 import os from "node:os";
+import path from "node:path";
+
 import { SUPPORTED_EXTS } from "./parsers.js";
 
 /** Files in workspace root that should always be indexed */
@@ -159,13 +160,8 @@ export function toRelativePath(absPath: string, workspaceDir: string): string {
 export function toAbsolutePath(relPath: string, workspaceDir: string): string {
   if (path.isAbsolute(relPath)) return relPath;
 
-  // Try workspace-relative
-  const wsAbs = path.join(workspaceDir, relPath);
-  // Try openclaw-root-relative
-  const _ocAbs = path.join(os.homedir(), ".openclaw", relPath);
-
-  // Return whichever exists (check workspace first)
-  return wsAbs; // Caller should handle existence check
+  // Try workspace-relative (caller should handle existence check)
+  return path.join(workspaceDir, relPath);
 }
 
 export async function walkSupportedFiles(dir: string): Promise<string[]> {

@@ -81,10 +81,12 @@ async function main() {
     });
 
     // FTS search
-    const ftsResults = await backend.ftsSearch(tc.query, {
-      query: tc.query,
-      maxResults: 10,
-    }).catch(() => [] as SearchResult[]);
+    const ftsResults = await backend
+      .ftsSearch(tc.query, {
+        query: tc.query,
+        maxResults: 10,
+      })
+      .catch(() => [] as SearchResult[]);
 
     // Hybrid merge (simplified)
     const merged = new Map<string, SearchResult>();
@@ -111,7 +113,10 @@ async function main() {
     hybridResults = hybridResults.slice(0, 5);
 
     // Check vector-only top 5
-    const vectorTop5Text = vectorResults.slice(0, 5).map((r) => r.chunk.text).join(" ");
+    const vectorTop5Text = vectorResults
+      .slice(0, 5)
+      .map((r) => r.chunk.text)
+      .join(" ");
     const vMatch = tc.expectContent.test(vectorTop5Text);
     if (vMatch) vectorHits++;
 
@@ -120,12 +125,20 @@ async function main() {
     const hMatch = tc.expectContent.test(hybridTop5Text);
     if (hMatch) hybridHits++;
 
-    console.log(`${hMatch ? "✅" : "❌"} "${tc.query}" [vector:${vMatch ? "✓" : "✗"} hybrid:${hMatch ? "✓" : "✗"}]`);
-    console.log(`   Top: ${hybridResults[0]?.score.toFixed(3) ?? "N/A"} ${hybridResults[0]?.chunk.path.slice(0, 50) ?? ""}`);
+    console.log(
+      `${hMatch ? "✅" : "❌"} "${tc.query}" [vector:${vMatch ? "✓" : "✗"} hybrid:${hMatch ? "✓" : "✗"}]`,
+    );
+    console.log(
+      `   Top: ${hybridResults[0]?.score.toFixed(3) ?? "N/A"} ${hybridResults[0]?.chunk.path.slice(0, 50) ?? ""}`,
+    );
   }
 
-  console.log(`\n=== Vector-only: ${vectorHits}/${total} (${((vectorHits / total) * 100).toFixed(0)}%) ===`);
-  console.log(`=== Hybrid:      ${hybridHits}/${total} (${((hybridHits / total) * 100).toFixed(0)}%) ===`);
+  console.log(
+    `\n=== Vector-only: ${vectorHits}/${total} (${((vectorHits / total) * 100).toFixed(0)}%) ===`,
+  );
+  console.log(
+    `=== Hybrid:      ${hybridHits}/${total} (${((hybridHits / total) * 100).toFixed(0)}%) ===`,
+  );
 
   await backend.close();
 }

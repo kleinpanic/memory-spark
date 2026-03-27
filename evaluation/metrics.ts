@@ -34,7 +34,9 @@ export function ndcgAtK(qrels: Qrels, results: Results, k: number): Record<strin
       dcg += (Math.pow(2, rel) - 1) / Math.log2(i + 2);
     }
 
-    const idealRels = Object.values(queryQrels).sort((a, b) => b - a).slice(0, k);
+    const idealRels = Object.values(queryQrels)
+      .sort((a, b) => b - a)
+      .slice(0, k);
     let idcg = 0;
     for (let i = 0; i < idealRels.length; i++) {
       idcg += (Math.pow(2, idealRels[i]!) - 1) / Math.log2(i + 2);
@@ -82,7 +84,10 @@ export function recallAtK(qrels: Qrels, results: Results, k: number): Record<str
       .slice(0, k);
 
     const totalRelevant = Object.values(queryQrels).filter((r) => r > 0).length;
-    if (totalRelevant === 0) { scores[queryId] = 0; continue; }
+    if (totalRelevant === 0) {
+      scores[queryId] = 0;
+      continue;
+    }
 
     let retrieved = 0;
     for (const [docId] of ranked) {
@@ -106,7 +111,10 @@ export function mapAtK(qrels: Qrels, results: Results, k: number): Record<string
       .slice(0, k);
 
     const totalRelevant = Object.values(queryQrels).filter((r) => r > 0).length;
-    if (totalRelevant === 0) { scores[queryId] = 0; continue; }
+    if (totalRelevant === 0) {
+      scores[queryId] = 0;
+      continue;
+    }
 
     let ap = 0;
     let relevantSoFar = 0;
@@ -166,7 +174,11 @@ export function evaluateBEIR(
   precision: Record<string, number>;
 } {
   const out: Record<string, Record<string, number>> = {
-    ndcg: {}, mrr: {}, recall: {}, map: {}, precision: {},
+    ndcg: {},
+    mrr: {},
+    recall: {},
+    map: {},
+    precision: {},
   };
   for (const k of kValues) {
     out.ndcg![`@${k}`] = mean(ndcgAtK(qrels, results, k));
@@ -184,9 +196,7 @@ export function formatBEIRResults(results: ReturnType<typeof evaluateBEIR>): str
   lines.push("│ Metric   │   @1     │   @3     │   @5     │   @10    │");
   lines.push("├──────────┼──────────┼──────────┼──────────┼──────────┤");
   for (const [name, values] of Object.entries(results)) {
-    const cells = ["@1", "@3", "@5", "@10"].map(
-      (k) => (values[k] ?? 0).toFixed(4).padStart(8),
-    );
+    const cells = ["@1", "@3", "@5", "@10"].map((k) => (values[k] ?? 0).toFixed(4).padStart(8));
     lines.push(`│ ${name.padEnd(8)} │${cells.join(" │")} │`);
   }
   lines.push("└──────────┴──────────┴──────────┴──────────┴──────────┘");

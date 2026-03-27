@@ -101,7 +101,7 @@ const testConfig: MemorySparkConfig = resolveConfig({
     weights: {
       sources: { capture: 1.5, memory: 1.0, sessions: 0.5, reference: 1.0 },
       paths: {},
-      pathPatterns: { "mistakes": 1.6 },
+      pathPatterns: { mistakes: 1.6 },
     },
   },
   autoCapture: {

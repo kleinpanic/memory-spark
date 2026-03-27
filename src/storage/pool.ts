@@ -45,18 +45,13 @@ export const AUTO_INJECT_POOLS: PoolValue[] = [
 ];
 
 /** Pools that are NEVER auto-injected (tool-call only) */
-export const REFERENCE_POOLS: PoolValue[] = [
-  "reference_library",
-  "reference_code",
-];
+export const REFERENCE_POOLS: PoolValue[] = ["reference_library", "reference_code"];
 
 /**
  * Pools that are always injected regardless of relevance score.
  * @public — pool API constant for consumers
  */
-export const ALWAYS_INJECT_POOLS: PoolValue[] = [
-  "shared_rules",
-];
+export const ALWAYS_INJECT_POOLS: PoolValue[] = ["shared_rules"];
 
 /**
  * Determine which logical pool a chunk belongs to based on content_type, path, and category.

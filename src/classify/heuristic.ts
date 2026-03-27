@@ -8,8 +8,7 @@
  * resource pressure or the zero-shot container is down.
  */
 
-// eslint-disable-next-line @typescript-eslint/no-unused-vars -- CaptureCategory documents the label type in JSDoc below
-import type { ClassifyResult, CaptureCategory } from "./zero-shot.js";
+import type { ClassifyResult } from "./zero-shot.js";
 
 /**
  * Simple pattern-based classifier for user messages.
@@ -22,7 +21,7 @@ export function heuristicClassify(text: string): ClassifyResult {
 
   // ── Decision indicators ────────────────────────────────────────────────
   if (
-    /\b(decided|decision|chose|going with|switched to|let['']?s go with|approved|we['']?ll use|moving to|migrated? to)\b/.test(
+    /\b(decided|decision|chose|going with|switched to|let'?s go with|approved|we'?ll use|moving to|migrated? to)\b/.test(
       lower,
     )
   ) {
@@ -31,7 +30,7 @@ export function heuristicClassify(text: string): ClassifyResult {
 
   // ── Preference indicators ──────────────────────────────────────────────
   if (
-    /\b(prefer|like|want|always use|favorite|don['']?t like|hate|avoid|rather|better than|worse than)\b/.test(
+    /\b(prefer|like|want|always use|favorite|don'?t like|hate|avoid|rather|better than|worse than)\b/.test(
       lower,
     )
   ) {

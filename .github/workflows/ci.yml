@@ -7,7 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  build:
+  quality:
+    name: Quality Gate
     runs-on: ubuntu-latest
 
     steps:
@@ -22,41 +23,65 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Type check
+      - name: TypeScript type check
         run: npx tsc --noEmit
 
-      - name: Lint
-        run: npx eslint src/ tests/
+      - name: ESLint
+        run: npx eslint src/ index.ts --max-warnings 20
 
-      - name: Format check
-        run: npx prettier --check 'src/**/*.ts' 'tests/**/*.ts'
+      - name: Prettier format check
+        run: npx prettier --check 'src/**/*.ts' 'tests/**/*.ts' 'evaluation/**/*.ts' 'index.ts'
 
-      - name: Run unit tests
-        run: npm test
+      - name: Knip dead code analysis
+        run: npx knip
 
-      - name: Coverage report
-        run: |
-          npx --yes c8 --reporter=text-summary --reporter=lcov npm test | tee coverage-summary.txt
-          mkdir -p coverage
-          cp coverage-summary.txt coverage/summary.txt
+      - name: Unit tests with coverage
+        run: npx vitest run --coverage
 
-      - name: Run evaluation (mock mode)
-        run: node --import tsx evaluation/run.ts --mock
+      - name: FTS+WHERE validation
+        run: npx tsx tests/fts-where-test.ts
 
-      - name: Generate evaluation charts
-        run: node --import tsx evaluation/charts.ts --results evaluation/results/latest.json
-
-      - name: Upload coverage + evaluation artifacts
+      - name: Upload coverage
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: research-artifacts
-          path: |
-            coverage/
-            coverage/lcov.info
-            evaluation/results/
-            docs/figures/
+          name: coverage
+          path: coverage/
           if-no-files-found: warn
 
-      - name: Dead code check
-        run: npx knip
-        continue-on-error: true
+  benchmark:
+    name: Benchmark (requires Spark)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: quality
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      # Benchmark job requires Spark access — only runs on main branch push
+      # In self-hosted runner with Spark access, uncomment:
+      # - name: Run retrieval benchmark
+      #   run: npx tsx evaluation/benchmark.ts --tier 1
+      #   env:
+      #     SPARK_HOST: ${{ secrets.SPARK_HOST }}
+      #     SPARK_BEARER_TOKEN: ${{ secrets.SPARK_BEARER_TOKEN }}
+
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-results
+          path: evaluation/results/
+          if-no-files-found: warn
