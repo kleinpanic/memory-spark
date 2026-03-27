@@ -17,7 +17,7 @@ export interface SessionEntry {
 /**
  * List session JSONL files for an agent.
  */
-async function listSessionFiles(agentId: string): Promise<string[]> {
+async function _listSessionFiles(agentId: string): Promise<string[]> {
   const sessionsDir = path.join(os.homedir(), ".openclaw", "agents", agentId, "sessions");
   try {
     const files = await fs.readdir(sessionsDir);

@@ -14,6 +14,6 @@
     "sourceMap": true,
     "resolveJsonModule": true
   },
-  "include": ["index.ts", "src/**/*.ts", "scripts/**/*.ts", "test-unit.ts"],
+  "include": ["index.ts", "src/**/*.ts", "scripts/**/*.ts", "tests/**/*.ts", "evaluation/**/*.ts", "tools/**/*.ts"],
   "exclude": ["node_modules", "dist"]
 }

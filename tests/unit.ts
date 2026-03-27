@@ -13,7 +13,8 @@ import { chunkDocument, estimateTokens, cleanChunkText } from "../src/embed/chun
 import { resolveConfig } from "../src/config.js";
 import { scoreChunkQuality } from "../src/classify/quality.js";
 import { heuristicClassify } from "../src/classify/heuristic.js";
-import type { MemoryChunk } from "../src/storage/backend.js";
+import type { MemoryChunk, SearchResult } from "../src/storage/backend.js";
+import { applyTemporalDecay } from "../src/auto/recall.js";
 
 const results: Array<{ test: string; status: "PASS" | "FAIL"; error?: string }> = [];
 
@@ -260,7 +261,7 @@ test("Deep merge partial autoRecall preserves unset defaults", () => {
       minScore: 0.65,
       queryMessageCount: 4,
       maxInjectionTokens: 2000,
-    },
+    } as Partial<import("../src/config.js").AutoRecallConfig> as import("../src/config.js").AutoRecallConfig,
   });
   return (
     cfg.autoRecall.agents.length === 2 &&
@@ -346,7 +347,7 @@ test("ignoreAgents override merges into autoRecall", () => {
       minScore: 0.65,
       queryMessageCount: 4,
       maxInjectionTokens: 2000,
-    },
+    } as Partial<import("../src/config.js").AutoRecallConfig> as import("../src/config.js").AutoRecallConfig,
   });
   return (
     cfg.autoRecall.ignoreAgents.length === 2 &&
@@ -1006,7 +1007,7 @@ test("Default language config is 'en' with 0.3 threshold", () => {
 });
 
 test("Language config can be overridden to 'all'", () => {
-  const cfg = resolveConfig({ ingest: { language: "all", languageThreshold: 0.5 } });
+  const cfg = resolveConfig({ ingest: { language: "all", languageThreshold: 0.5 } as Partial<import("../src/config.js").IngestConfig> as import("../src/config.js").IngestConfig });
   assert.strictEqual(cfg.ingest.language, "all");
   assert.strictEqual(cfg.ingest.languageThreshold, 0.5);
 });
@@ -1065,10 +1066,9 @@ test("Actual knowledge content still scores high", () => {
 // ═══════════════════════════════════════════
 import {
   hybridMerge,
-  applyTemporalDecay,
   applySourceWeighting,
 } from "../src/auto/recall.js";
-import type { SearchResult } from "../src/storage/backend.js";
+// SearchResult and applyTemporalDecay already imported at top of file
 
 function makeSearchResult(id: string, score: number, source: string = "memory", path: string = "test.md"): SearchResult {
   return {
@@ -1399,6 +1399,47 @@ test("MRR@k with no relevant docs returns 0", () => {
   const results = { q1: { d1: 0.9 } };
   const scores = mrrAtK(qrels, results, 5);
   assert.strictEqual(scores.q1, 0, "No relevant docs = MRR 0");
+});
+
+// ── Bug fix regression tests (2026-03-27) ──────────────────────────────────
+
+test("Precision@k divides by k, not by ranked.length (bug fix)", () => {
+  // 3 results returned but k=10. 2 relevant.
+  // OLD (wrong): 2/3 = 0.667. NEW (correct): 2/10 = 0.2
+  const qrels = { q1: { d1: 1, d2: 1 } };
+  const results = { q1: { d1: 0.9, d2: 0.8, d3: 0.7 } }; // only 3 results for k=10
+  const scores = precisionAtK(qrels, results, 10);
+  assert.strictEqual(scores.q1, 0.2, "P@10 with 2 relevant out of 3 returned = 2/10 not 2/3");
+});
+
+test("MAP@k uses min(totalRelevant, k) denominator (bug fix)", () => {
+  // 20 relevant docs but k=5, retriever returns 5 results, only 2 of which are relevant
+  const qrels: Record<string, Record<string, number>> = {
+    q1: Object.fromEntries(Array.from({length: 20}, (_, i) => [`d${i}`, 1])),
+  };
+  // d0 (relevant), d99 (not relevant), d1 (relevant), d98 (not), d97 (not)
+  const results = { q1: { d0: 0.9, d99: 0.8, d1: 0.7, d98: 0.6, d97: 0.5 } };
+  // d0 at rank 1: precision=1/1=1.0, d1 at rank 3: precision=2/3=0.667
+  // AP = (1.0 + 0.667) / min(20, 5) = 1.667 / 5 = 0.333
+  const scores = mapAtK(qrels, results, 5);
+  const expected = (1.0 + 2/3) / 5;
+  assert(Math.abs(scores.q1! - expected) < 0.001, `MAP@5 should be ~${expected.toFixed(3)}, got ${scores.q1}`);
+});
+
+test("Temporal decay skips NaN timestamps instead of poisoning scores (bug fix)", () => {
+  // Fake results with invalid timestamps — cast to satisfy SearchResult shape
+  const fakeResults = [
+    { chunk: { id: "a", path: "a", source: "memory", agent_id: "t", start_line: 0, end_line: 0, text: "x", vector: [], updated_at: "invalid-date" }, score: 0.8, snippet: "" },
+    { chunk: { id: "b", path: "b", source: "memory", agent_id: "t", start_line: 0, end_line: 0, text: "x", vector: [], updated_at: new Date().toISOString() }, score: 0.8, snippet: "" },
+    { chunk: { id: "c", path: "c", source: "memory", agent_id: "t", start_line: 0, end_line: 0, text: "x", vector: [], updated_at: "" }, score: 0.8, snippet: "" },
+  ] as SearchResult[];
+  applyTemporalDecay(fakeResults);
+  // First: invalid date → score unchanged (NaN guard)
+  assert.strictEqual(fakeResults[0]!.score, 0.8, "Invalid date: score preserved");
+  // Second: valid date → score modified but not NaN
+  assert(!Number.isNaN(fakeResults[1]!.score), "Valid date: score not NaN");
+  // Third: empty string → NaN guard fires, score preserved
+  assert.strictEqual(fakeResults[2]!.score, 0.8, "Empty date: score preserved");
 });
 
 // Summary

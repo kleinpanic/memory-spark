@@ -1,6 +1,8 @@
 /**
  * Auto-Capture — agent_end hook.
- * Captures from USER messages only (no self-poisoning from assistant output).
+ * Captures from USER messages and assistant messages containing decision/fact patterns.
+ * Assistant capture is restricted to specific knowledge patterns (decisions, facts,
+ * root causes) to prevent self-poisoning from generic responses.
  * Deduplicates against existing memories (>0.92 similarity = skip).
  * Max 3 captures per turn. Includes importance scoring.
  */
@@ -232,7 +234,7 @@ const CAPTURE_GARBAGE_PATTERNS: RegExp[] = [
   /^(assistant|user|system):\s/m,
 ];
 
-function looksLikeCaptureGarbage(text: string): boolean {
+export function looksLikeCaptureGarbage(text: string): boolean {
   return CAPTURE_GARBAGE_PATTERNS.some((p) => p.test(text));
 }
 

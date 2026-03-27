@@ -84,13 +84,17 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
       contentType = "tool" as typeof contentType;
     }
 
-    // 3. Chunk
-    const rawChunks = chunkDocument({
-      text: rawText,
-      path: relPath,
-      source,
-      ext: isSession ? "txt" : ext,
-    });
+    // 3. Chunk — use reference.chunkSize for reference content, default 400 for others
+    const chunkSize = contentType === "reference" ? (opts.cfg.reference.chunkSize ?? 800) : undefined;
+    const rawChunks = chunkDocument(
+      {
+        text: rawText,
+        path: relPath,
+        source,
+        ext: isSession ? "txt" : ext,
+      },
+      chunkSize ? { maxTokens: chunkSize } : undefined,
+    );
 
     if (rawChunks.length === 0) {
       return {
@@ -155,13 +159,11 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
       }
     }
 
-    // 5. Contextual embeddings (Anthropic "Contextual Retrieval" technique):
-    //    Prepend source context to the text before embedding for better retrieval.
-    //    Embed the RAW cleaned text (not the contextual prefix).
-    //    Contextual prefixes (source/file/heading) are stored as metadata fields
-    //    (content_type, parent_heading) and used for reranking/display, NOT for
-    //    vector space alignment. Embedding prefixed text causes a query/document
-    //    space mismatch that makes vector search return near-zero similarity.
+    // 5. Embed raw chunk text.
+    //    TODO (Phase 2B): Implement Anthropic "Contextual Retrieval" — prepend
+    //    LLM-generated context prefix per chunk before embedding. Currently we
+    //    embed raw text only. Contextual metadata (content_type, parent_heading)
+    //    is stored as columns for post-retrieval use, not embedded.
     const vectors = await opts.embed.embedBatch(cleanedChunks.map((c) => c.text));
 
     // 6. Build MemoryChunk objects with RELATIVE paths
