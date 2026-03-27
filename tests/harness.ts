@@ -35,7 +35,7 @@ import { createReranker } from "../src/rerank/reranker.js";
 import { createAutoRecallHandler } from "../src/auto/recall.js";
 import { createAutoCaptureHandler } from "../src/auto/capture.js";
 import { MemorySparkManager } from "../src/manager.js";
-import { resolveConfig, DEFAULT_CONFIG } from "../src/config.js";
+import { resolveConfig } from "../src/config.js";
 import type { MemorySparkConfig } from "../src/config.js";
 import * as fs from "node:fs";
 import * as os from "node:os";
@@ -93,15 +93,25 @@ const testConfig: MemorySparkConfig = resolveConfig({
   autoRecall: {
     enabled: true,
     agents: ["*"],
+    ignoreAgents: [],
     maxResults: 5,
     minScore: 0.3,
     queryMessageCount: 3,
+    maxInjectionTokens: 2000,
+    weights: {
+      sources: { capture: 1.5, memory: 1.0, sessions: 0.5, reference: 1.0 },
+      paths: {},
+      pathPatterns: { "mistakes": 1.6 },
+    },
   },
   autoCapture: {
     enabled: true,
     agents: ["*"],
+    ignoreAgents: [],
     categories: ["fact", "preference", "decision", "code-snippet"],
     minConfidence: 0.5,
+    minMessageLength: 30,
+    useClassifier: true,
   },
 });
 
@@ -173,16 +183,16 @@ async function runTests() {
     // Bug fix 2026-03-21: short text below minTokens returns 0 chunks (by design)
     const shortText = "Short.";
     const chunks0 = chunkDocument(
-      { text: shortText, path: "test.md" },
-      { maxTokens: 512, overlap: 50 },
+      { text: shortText, path: "test.md", source: "memory" as const },
+      { maxTokens: 512, overlapTokens: 50 },
     );
     logTest("2.1 Text below minTokens returns 0 chunks (correct behavior)", chunks0.length === 0);
 
     // Medium text — single chunk
     const medText = Array(30).fill("This is a test sentence with multiple words.").join(" ");
     const chunks1 = chunkDocument(
-      { text: medText, path: "test.md" },
-      { maxTokens: 512, overlap: 50 },
+      { text: medText, path: "test.md", source: "memory" as const },
+      { maxTokens: 512, overlapTokens: 50 },
     );
     logTest("2.2 Medium text returns at least 1 chunk", chunks1.length >= 1);
 
@@ -191,8 +201,8 @@ async function runTests() {
       .fill("This is a test sentence with multiple words in it to fill tokens.")
       .join(" ");
     const chunks2 = chunkDocument(
-      { text: longText, path: "test.md" },
-      { maxTokens: 256, overlap: 50 },
+      { text: longText, path: "test.md", source: "memory" as const },
+      { maxTokens: 256, overlapTokens: 50 },
     );
     logTest("2.3 Long text splits into multiple chunks", chunks2.length > 1);
     logTest(
@@ -205,6 +215,7 @@ async function runTests() {
         chunkDocument({
           text: "# Header\n\nParagraph.\n\n## Sub\n\nMore text here for chunking.",
           path: "test.md",
+          source: "memory" as const,
         });
         return true;
       })(),
@@ -344,6 +355,7 @@ async function runTests() {
           confidence: 0,
         },
         score: 0.8,
+        snippet: "test",
       },
       {
         chunk: {
@@ -361,6 +373,7 @@ async function runTests() {
           confidence: 0,
         },
         score: 0.4,
+        snippet: "test",
       },
       {
         chunk: {
@@ -378,6 +391,7 @@ async function runTests() {
           confidence: 0,
         },
         score: 0.6,
+        snippet: "test",
       },
     ];
     const reranked = await reranker.rerank("TypeScript agent tools", fakeResults, 2);
@@ -561,8 +575,8 @@ async function runTests() {
   section("Suite 8: Manager Integration");
   try {
     const mgrCfg = resolveConfig({
-      lancedbDir: "/tmp/memory-spark-test/manager-db",
       ...testConfig,
+      lancedbDir: "/tmp/memory-spark-test/manager-db",
     });
     const mgrBackend = new LanceDBBackend(mgrCfg);
     await mgrBackend.open();

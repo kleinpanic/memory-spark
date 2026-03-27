@@ -18,9 +18,9 @@
  *   - Injection security (prompt injection detection)
  *   - LCM dedup effectiveness
  *
- * Tier 3: End-to-End Agent Quality (A/B)
- *   - Agent accuracy WITH memory-spark
- *   - Agent accuracy WITHOUT memory-spark
+ * Tier 3: End-to-End Agent Quality (A/B) — NOT YET IMPLEMENTED
+ *   - Requires Docker-based agent harness (see ~/codeWS/Docker/openclaw-plugin-test/)
+ *   - Agent accuracy WITH memory-spark vs WITHOUT
  *   - Statistical significance (paired t-test)
  *
  * Output: JSON results + console table + badge-compatible metrics
@@ -46,7 +46,8 @@ interface GoldenDataset {
   queries: Record<string, string>;
   corpus: Record<string, { title: string; text: string; path?: string }>;
   qrels: Qrels;
-  metadata?: {
+  /** Dataset metadata — key is `_meta` in the JSON file */
+  _meta?: {
     version: string;
     created: string;
     queryCount: number;
@@ -142,7 +143,7 @@ async function runRetrieval(
       process.stdout.write(`\r    [${queryIdx}/${queryEntries.length}]`);
     }
     const queryVector = await embed.embedQuery(queryText);
-    let candidates: Array<{ chunk: { id: string; path: string; text: string; source: string; updated_at: string }; score: number }> = [];
+    let candidates: import("../src/storage/backend.js").SearchResult[] = [];
 
     // Vector search
     if (opts.useVector !== false) {
@@ -203,10 +204,24 @@ async function runRetrieval(
         matched = corpusLookup.get(`*:${relPath}`) ?? [];
       }
 
-      // Fall back to basename match (least precise, handles edge cases)
+      // Bug fix (2026-03-27): Removed basename fallback matching.
+      // Basename fallback incorrectly credited retrieving ANY "USER.md"
+      // for a specific agent's USER.md, inflating Recall and NDCG.
+      // If agent:path doesn't match, it's a genuine miss.
+
+      // Count unmatched retrievals as non-relevant (don't drop them).
+      // Previously, unmatched docs were silently dropped, meaning
+      // retrieving garbage was "free" — no penalty. Now they contribute
+      // 0 relevance, which correctly penalizes false positives in
+      // Precision and NDCG.
       if (matched.length === 0) {
-        const basename = relPath.split("/").pop() ?? "";
-        matched = corpusLookup.get(`basename:${basename}`) ?? [];
+        // No match — still record this doc with score so metrics
+        // correctly count it as a non-relevant retrieval.
+        const unmatchedId = `__unmatched__${r.chunk.id}`;
+        if ((queryResults[unmatchedId] ?? 0) < r.score) {
+          queryResults[unmatchedId] = r.score;
+        }
+        continue;
       }
 
       for (const docId of matched) {

@@ -483,11 +483,36 @@ function escapeSql(s: string): string {
   return s.replace(/'/g, "''");
 }
 
+/**
+ * Convert a raw LanceDB row to a SearchResult.
+ *
+ * Score handling:
+ *   - Vector search rows have `_distance` (cosine distance, lower = closer).
+ *     Score = 1 - distance, clamped to [0, 1].
+ *   - FTS search rows have `_score` (BM25 relevance, higher = better, unbounded).
+ *     We normalize `_score` using 1/(1 + exp(-score + 3)) to map to ~[0, 1].
+ *     This gives BM25=0 → ~0.05, BM25=3 → ~0.50, BM25=6 → ~0.95.
+ *   - If neither is present, score defaults to 0 (unknown relevance).
+ *
+ * Bug fix (2026-03-27): Previously always used `_distance` conversion.
+ * FTS rows don't carry `_distance`, so they collapsed to score 1.0
+ * (because 1 - 0 = 1.0), corrupting hybrid merge ranking.
+ */
 function rowToSearchResult(row: Record<string, unknown>): SearchResult {
-  // LanceDB returns _distance for vector search (lower = closer)
-  // Convert cosine distance to similarity score (0-1)
-  const distance = (row._distance as number) ?? 0;
-  const score = Math.max(0, 1 - distance);
+  let score: number;
+  const distance = row._distance as number | undefined;
+  const ftsScore = row._score as number | undefined;
+
+  if (distance != null && !Number.isNaN(distance)) {
+    // Vector search: cosine distance → similarity
+    score = Math.max(0, 1 - distance);
+  } else if (ftsScore != null && !Number.isNaN(ftsScore)) {
+    // FTS search: BM25 score → normalized [0, 1] via sigmoid
+    score = 1 / (1 + Math.exp(-(ftsScore - 3)));
+  } else {
+    // Neither present — unknown source, zero score
+    score = 0;
+  }
 
   const chunk: MemoryChunk = {
     id: row.id as string,

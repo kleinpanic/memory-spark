@@ -77,9 +77,16 @@ function buildConfig(overrides?: Partial<MemorySparkConfig>): MemorySparkConfig 
     autoRecall: {
       enabled: true,
       agents: ["*"],
+      ignoreAgents: [],
       maxResults: 5,
       minScore: 0.3,
       queryMessageCount: 3,
+      maxInjectionTokens: 2000,
+      weights: {
+        sources: { capture: 1.5, memory: 1.0, sessions: 0.5, reference: 1.0 },
+        paths: {},
+        pathPatterns: { "mistakes": 1.6 },
+      },
     },
     ...overrides,
   });
@@ -304,7 +311,7 @@ async function suiteIngestPipeline(cfg: MemorySparkConfig, embed: EmbedProvider)
 
   const backend = new LanceDBBackend(cfg);
   await backend.open();
-  const queue = new EmbedQueue(embed, { batchSize: 50, maxRetries: 2 });
+  const queue = new EmbedQueue(embed, { concurrency: 1, maxRetries: 2 });
 
   // Write corpus to temp files (ingestFile reads from disk)
   const workspaceDir = path.join(TEST_DIR, "workspace");

@@ -21,7 +21,8 @@ import { createEmbedProvider } from "../src/embed/provider.js";
 import { EmbedQueue } from "../src/embed/queue.js";
 import { createReranker } from "../src/rerank/reranker.js";
 import { createAutoRecallHandler } from "../src/auto/recall.js";
-import { looksLikeCaptureGarbage, scoreChunkQuality } from "../src/classify/quality.js";
+import { scoreChunkQuality } from "../src/classify/quality.js";
+import { looksLikeCaptureGarbage } from "../src/auto/capture.js";
 
 interface TestCase {
   name: string;

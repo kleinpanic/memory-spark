@@ -85,28 +85,28 @@ export class MemorySparkManager {
     }
 
     // Use the same pipeline as auto-recall (recall.ts) for consistent results.
-    // Previously this used a naive dedup+sort merge — agents using memory_search
-    // got materially worse results than the silent before_prompt_build hook.
+    // IMPORTANT: Sequential execution — LanceDB FTS has a known bug where
+    // concurrent FTS + vector search can corrupt shared native connection state.
+    // recall.ts already uses sequential; manager.ts must match.
     const fetchN = maxResults * 4;
-    const [vectorResults, rawFtsResults] = await Promise.all([
-      queryVector
-        ? this.backend
-            .vectorSearch(queryVector, {
-              query,
-              maxResults: fetchN,
-              minScore,
-              agentId: this.agentId,
-            })
-            .catch(() => [] as SearchResult[])
-        : Promise.resolve([] as SearchResult[]),
-      this.backend
-        .ftsSearch(query, {
-          query,
-          maxResults: fetchN,
-          agentId: this.agentId,
-        })
-        .catch(() => [] as SearchResult[]),
-    ]);
+    const vectorResults = queryVector
+      ? await this.backend
+          .vectorSearch(queryVector, {
+            query,
+            maxResults: fetchN,
+            minScore,
+            agentId: this.agentId,
+          })
+          .catch(() => [] as SearchResult[])
+      : ([] as SearchResult[]);
+
+    const rawFtsResults = await this.backend
+      .ftsSearch(query, {
+        query,
+        maxResults: fetchN,
+        agentId: this.agentId,
+      })
+      .catch(() => [] as SearchResult[]);
 
     // Filter FTS: exclude sessions source, apply minScore (matches recall.ts)
     const ftsResults = rawFtsResults.filter(

@@ -116,7 +116,9 @@ export function mapAtK(qrels: Qrels, results: Results, k: number): Record<string
         ap += relevantSoFar / (i + 1);
       }
     }
-    scores[queryId] = ap / totalRelevant;
+    // Bug fix (2026-03-27): was `ap / totalRelevant`, should be
+    // min(totalRelevant, k) for cut-based AP semantics per BEIR standard.
+    scores[queryId] = ap / Math.min(totalRelevant, k);
   }
   return scores;
 }
@@ -137,7 +139,10 @@ export function precisionAtK(qrels: Qrels, results: Results, k: number): Record<
     for (const [docId] of ranked) {
       if ((queryQrels[docId] ?? 0) > 0) relevant++;
     }
-    scores[queryId] = ranked.length === 0 ? 0 : relevant / ranked.length;
+    // Bug fix (2026-03-27): was `relevant / ranked.length`, which inflates P@k
+    // when fewer than k results are returned. P@10 with 3 results, 2 relevant
+    // was giving 0.67 instead of correct 0.20.
+    scores[queryId] = relevant / k;
   }
   return scores;
 }

@@ -272,8 +272,10 @@ export function hybridMerge(
 export function applyTemporalDecay(results: SearchResult[]): void {
   const now = Date.now();
   for (const r of results) {
-    const updatedAt = r.chunk.updated_at ? new Date(r.chunk.updated_at).getTime() : now;
-    const ageDays = Math.max(0, (now - updatedAt) / (86400 * 1000));
+    const rawTime = r.chunk.updated_at ? new Date(r.chunk.updated_at).getTime() : NaN;
+    // Guard against NaN from invalid/missing timestamps — use score as-is (decay = 1.0)
+    if (Number.isNaN(rawTime)) continue;
+    const ageDays = Math.max(0, (now - rawTime) / (86400 * 1000));
     const decay = 0.8 + 0.2 * Math.exp(-0.03 * ageDays);
     r.score *= decay;
   }
