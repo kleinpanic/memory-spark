@@ -144,24 +144,6 @@ export interface ReferenceConfig {
   tags: Record<string, string>;
 }
 
-/** Table naming configuration for multi-table schema */
-export interface TableNamingConfig {
-  /** Prefix for per-agent tables (default: "agent_") */
-  agentPrefix: string;
-  /** Suffix for agent memory tables (default: "_memory") */
-  memorySuffix: string;
-  /** Suffix for agent tool tables (default: "_tools") */
-  toolsSuffix: string;
-  /** Name for shared knowledge table (default: "shared_knowledge") */
-  sharedKnowledge: string;
-  /** Name for shared mistakes table (default: "shared_mistakes") */
-  sharedMistakes: string;
-  /** Name for reference library table (default: "reference_library") */
-  referenceLibrary: string;
-  /** Name for reference code table (default: "reference_code") */
-  referenceCode: string;
-}
-
 export interface MemorySparkConfig {
   backend: StorageBackendId;
   lancedbDir: string;
@@ -176,8 +158,6 @@ export interface MemorySparkConfig {
   spark: SparkEndpoints;
   /** Reference library configuration — additional docs indexed as "reference" content_type */
   reference: ReferenceConfig;
-  /** Multi-table naming configuration */
-  tables: TableNamingConfig;
   /** Override SPARK_HOST env var. Used to point at a different Spark node. */
   sparkHost?: string;
   /** Override SPARK_BEARER_TOKEN env var. Loaded from env/.env if not set. */
@@ -319,15 +299,6 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
       chunkSize: 800,
       tags: {},
     },
-    tables: {
-      agentPrefix: "agent_",
-      memorySuffix: "_memory",
-      toolsSuffix: "_tools",
-      sharedKnowledge: "shared_knowledge",
-      sharedMistakes: "shared_mistakes",
-      referenceLibrary: "reference_library",
-      referenceCode: "reference_code",
-    },
     migrate: {
       autoMigrateOnFirstBoot: true,
       statusFile: path.join(
@@ -451,7 +422,6 @@ export function resolveConfig(userConfig?: Partial<MemorySparkConfig>): MemorySp
       ...userConfig.reference,
       paths: userConfig.reference?.paths?.map(expandHome) ?? defaults.reference.paths,
     },
-    tables: { ...defaults.tables, ...userConfig.tables },
     migrate: {
       ...defaults.migrate,
       ...userConfig.migrate,

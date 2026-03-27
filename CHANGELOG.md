@@ -22,8 +22,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **`memory_mistakes_store` tool** — log mistakes with severity, root cause, fix, lessons; `shared: boolean` to promote to cross-agent
 - **`memory_rules_store` tool** — store global rules/preferences with scope + category
 - **`memory_rules_search` tool** — search stored rules by query
-- **TableManager** (`src/storage/table-manager.ts`) — multi-table management foundation
-- **MultiTableBackend** (`src/storage/multi-table-backend.ts`) — routing backend (retained for future use)
+- ~~**TableManager** (`src/storage/table-manager.ts`)~~ — removed: pool column + native WHERE replaces multi-table
+- ~~**MultiTableBackend** (`src/storage/multi-table-backend.ts`)~~ — removed: pool column + native WHERE replaces multi-table
 - **FTS+WHERE validation test** (`tests/fts-where-test.ts`) — proves LanceDB 0.27 fix
 - **3 regression tests** for Precision@k, MAP@k, temporal decay NaN guard
 - **ARCHITECTURE.md** — comprehensive v1.0 design document
@@ -48,7 +48,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **FTS search** — replaced 3x overfetch workaround with proper WHERE clauses
 - **Pool-based filtering** — both vector search and FTS support pool/pools options
 - **tsconfig** — evaluation/, tests/, tools/ now type-checked
-- **MultiTableBackend** as primary backend in index.ts (with legacy fallback)
+- **LanceDBBackend** as sole backend in index.ts (MultiTableBackend removed)
+- **mistakes_search** — uses pool-based filtering instead of `instanceof MultiTableBackend`
+
+#### Removed
+- `src/storage/multi-table-backend.ts` — ~450 LOC, pool column replaces physical table routing
+- `src/storage/table-manager.ts` — ~350 LOC, table lifecycle management no longer needed
+- `tests/table-manager.test.ts` — 17 tests removed (tested deleted code)
+- `TableNamingConfig` — from config.ts (no longer applicable)
+- `cfg.tables` — from MemorySparkConfig (no longer applicable)
 
 #### Closed Investigations
 - **Embedding model vision/multimodal** — investigated, determined not viable. Sticking with text-only `llama-embed-nemotron-8b` (4096-dim).

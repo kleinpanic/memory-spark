@@ -85,7 +85,7 @@ The `pool` column provides logical data isolation within the single table. All f
 3. **FTS+WHERE works in LanceDB 0.27.1.** The Arrow panic that forced the 3x overfetch workaround is fixed. Validated with compound query tests.
 4. **Reference separation prevents context pollution.** `reference_library` and `reference_code` are NEVER auto-injected. Tool-call only.
 5. **Per-agent mistakes + shared mistakes.** Agents see their own mistakes first, shared mistakes second. Promotion is explicit via `shared: true` param.
-6. **TableManager + MultiTableBackend retained** in `src/storage/` as alternative backends for future use if scale requires it.
+6. **Single backend simplicity.** `LanceDBBackend` is the sole backend — no multi-table indirection, no routing mismatch risk.
 
 ---
 
@@ -200,7 +200,7 @@ memory-spark/
 │   ├── ingest/             # File ingestion pipeline, watcher, workspace scanner
 │   ├── rerank/             # Cross-encoder reranking
 │   ├── security/           # Prompt injection detection, memory escaping
-│   ├── storage/            # LanceDB backend, multi-table manager
+│   ├── storage/            # LanceDB backend, pool routing
 │   └── config.ts           # Centralized configuration
 ├── evaluation/             # Evaluation framework
 │   ├── metrics.ts          # BEIR metrics (NDCG, MRR, MAP, Recall, Precision)
@@ -361,21 +361,21 @@ interface MemorySparkConfig {
 - Codex audit passed
 - 159/159 unit tests passing
 
-### Phase 1: Multi-Table Schema (Current)
-- [ ] Refactor LanceDB backend for multi-table support
-- [ ] Implement table routing logic in ingest pipeline
-- [ ] Migrate `rowToSearchResult` to handle per-table queries
-- [ ] Remove FTS WHERE workaround (per-table eliminates need)
-- [ ] Add table management tools (create, migrate, stats)
-- [ ] Update config schema with table configuration
-- [ ] Tests for multi-table search, routing, isolation
+### Phase 1: Pool Architecture ✅ COMPLETE
+- [x] Pool column + `resolvePool()` routing
+- [x] LanceDB 0.27.1 upgrade (FTS+WHERE fixed natively)
+- [x] Pool filtering in vector search + FTS (native WHERE)
+- [x] Pool propagation through recall, capture, ingest, manager
+- [x] Backend consolidation: `LanceDBBackend` sole backend (MultiTableBackend deleted)
+- [x] Rules/mistakes tools with pool-based isolation
+- [x] 172+ unit tests covering pool routing + backend
 
 ### Phase 2: Reference Library
 - [ ] Implement reference ingestion (PDF, markdown, HTML, code)
 - [ ] `memory_reference_search` tool (not auto-injected)
 - [ ] PDF text extraction pipeline
 - [ ] Version tracking for reference documents
-- [ ] Separate FTS index per reference table
+- [ ] FTS coverage for reference pool content
 
 ### Phase 3: Classification Pipeline
 - [ ] Integrate zero-shot classifier (Nemotron) for content routing
@@ -391,7 +391,7 @@ interface MemorySparkConfig {
 - [ ] A/B framework for pipeline ablation studies
 
 ### Phase 5: Production Deployment
-- [ ] Full reindex with new multi-table schema
+- [ ] Full reindex with pool assignment on existing chunks
 - [ ] Config migration tool for existing installations
 - [ ] Performance profiling and optimization
 - [ ] Documentation complete
@@ -408,7 +408,7 @@ Every component must have:
 4. **Benchmark tests** — BEIR metrics with golden dataset
 
 Test coverage targets:
-- Storage layer: multi-table CRUD, search, filtering
+- Storage layer: pool-based CRUD, search, filtering
 - Retrieval pipeline: each stage in isolation + full pipeline
 - Classification: routing accuracy for each content type
 - Security: prompt injection detection, memory escaping

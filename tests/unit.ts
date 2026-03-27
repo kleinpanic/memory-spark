@@ -1522,6 +1522,157 @@ test("AUTO_INJECT_POOLS and REFERENCE_POOLS are disjoint", () => {
   }
 });
 
+// ── Backend Consolidation Tests ──────────────────────────────────────────────
+
+console.log("\n--- Backend Consolidation (multi-table → single-table) ---");
+
+test("Config no longer has 'tables' field", () => {
+  const cfg = resolveConfig();
+  // TypeScript would catch this at compile time, but runtime check too
+  assert.strictEqual("tables" in cfg, false, "tables field should not exist in MemorySparkConfig");
+});
+
+test("resolvePool covers all original multi-table categories", () => {
+  // These were the TableCategory values from the deleted MultiTableBackend.
+  // Verify resolvePool produces equivalent pool strings.
+  const categories = [
+    "agent_memory", "agent_tools", "agent_mistakes",
+    "shared_knowledge", "shared_mistakes", "shared_rules",
+    "reference_library", "reference_code",
+  ];
+  for (const cat of categories) {
+    assert.ok(POOL_VALUES.includes(cat as typeof POOL_VALUES[number]),
+      `Pool value '${cat}' should exist in POOL_VALUES`);
+  }
+});
+
+test("resolvePool: tool content routes to agent_tools (not agent_memory)", () => {
+  const chunk: Partial<MemoryChunk> = { content_type: "tool", path: "any/file.md" };
+  assert.strictEqual(resolvePool(chunk), "agent_tools");
+});
+
+test("resolvePool: mistake without explicit pool goes to agent_mistakes (per-agent)", () => {
+  const chunk: Partial<MemoryChunk> = { content_type: "mistake", path: "captures/err.md" };
+  assert.strictEqual(resolvePool(chunk), "agent_mistakes");
+});
+
+test("resolvePool: explicit shared_mistakes pool is respected", () => {
+  const chunk: Partial<MemoryChunk> = { content_type: "mistake", pool: "shared_mistakes" };
+  assert.strictEqual(resolvePool(chunk), "shared_mistakes");
+});
+
+test("resolvePool: rule content routes to shared_rules", () => {
+  const chunk: Partial<MemoryChunk> = { content_type: "rule", path: "rules/global/pref" };
+  assert.strictEqual(resolvePool(chunk), "shared_rules");
+});
+
+test("resolvePool: preference content routes to shared_rules", () => {
+  const chunk: Partial<MemoryChunk> = { content_type: "preference" };
+  assert.strictEqual(resolvePool(chunk), "shared_rules");
+});
+
+test("hybridMerge with pool-scoped results preserves pool metadata", () => {
+  const vectorResults: SearchResult[] = [
+    { chunk: { id: "v1", pool: "agent_memory", text: "config tip", path: "a", source: "memory", agent_id: "meta", start_line: 0, end_line: 0, vector: [], updated_at: "" }, score: 0.9, snippet: "" },
+    { chunk: { id: "v2", pool: "shared_mistakes", text: "never do X", path: "b", source: "memory", agent_id: "meta", start_line: 0, end_line: 0, vector: [], updated_at: "" }, score: 0.8, snippet: "" },
+  ];
+  const ftsResults: SearchResult[] = [
+    { chunk: { id: "f1", pool: "shared_rules", text: "prefer concise", path: "c", source: "capture", agent_id: "shared", start_line: 0, end_line: 0, vector: [], updated_at: "" }, score: 3.5, snippet: "" },
+  ];
+  const merged = hybridMerge(vectorResults, ftsResults, 5);
+  // All chunks should preserve their pool values
+  for (const r of merged) {
+    assert.ok(r.chunk.pool, `Chunk ${r.chunk.id} should have pool metadata`);
+  }
+  // v1 (agent_memory), v2 (shared_mistakes), f1 (shared_rules) should all be present
+  const ids = merged.map((r) => r.chunk.id);
+  assert.ok(ids.includes("v1"), "vector result v1 should be in merged");
+  assert.ok(ids.includes("v2"), "vector result v2 should be in merged");
+  assert.ok(ids.includes("f1"), "FTS result f1 should be in merged");
+});
+
+test("Mistakes dedup logic: parallel pool queries merged correctly", () => {
+  // Simulate the pattern used in mistakes_search tool
+  const agentMistakes: SearchResult[] = [
+    { chunk: { id: "m1", pool: "agent_mistakes", text: "my mistake", path: "a", source: "capture", agent_id: "meta", start_line: 0, end_line: 0, vector: [], updated_at: "" }, score: 0.85, snippet: "" },
+    { chunk: { id: "m2", pool: "agent_mistakes", text: "another one", path: "b", source: "capture", agent_id: "meta", start_line: 0, end_line: 0, vector: [], updated_at: "" }, score: 0.60, snippet: "" },
+  ];
+  const sharedMistakes: SearchResult[] = [
+    { chunk: { id: "m1", pool: "shared_mistakes", text: "my mistake (promoted)", path: "a", source: "capture", agent_id: "meta", start_line: 0, end_line: 0, vector: [], updated_at: "" }, score: 0.75, snippet: "" },
+    { chunk: { id: "m3", pool: "shared_mistakes", text: "shared error", path: "c", source: "capture", agent_id: "dev", start_line: 0, end_line: 0, vector: [], updated_at: "" }, score: 0.70, snippet: "" },
+  ];
+
+  // Merge and dedup (same logic as the tool)
+  const seen = new Set<string>();
+  const results = [...agentMistakes, ...sharedMistakes]
+    .sort((a, b) => b.score - a.score)
+    .filter((r) => {
+      if (seen.has(r.chunk.id)) return false;
+      seen.add(r.chunk.id);
+      return true;
+    })
+    .slice(0, 5);
+
+  // m1 should appear only once (agent version wins with score 0.85 > 0.75)
+  const ids = results.map((r) => r.chunk.id);
+  assert.strictEqual(ids.filter((id) => id === "m1").length, 1, "m1 should appear exactly once");
+  assert.ok(ids.includes("m2"), "m2 should be present");
+  assert.ok(ids.includes("m3"), "m3 should be present");
+  assert.strictEqual(results.length, 3, "Should have 3 unique results");
+  // First result should be the highest-scoring one
+  assert.strictEqual(results[0]!.score, 0.85, "Highest score should be first");
+});
+
+test("SearchOptions supports pool and pools fields", () => {
+  // Verify the SearchOptions interface supports pool-based filtering
+  const singlePool: import("../src/storage/backend.js").SearchOptions = {
+    query: "test", pool: "shared_rules",
+  };
+  const multiPool: import("../src/storage/backend.js").SearchOptions = {
+    query: "test", pools: ["agent_memory", "agent_tools"],
+  };
+  assert.strictEqual(singlePool.pool, "shared_rules");
+  assert.deepStrictEqual(multiPool.pools, ["agent_memory", "agent_tools"]);
+});
+
+test("MemoryChunk supports pool field", () => {
+  const chunk: MemoryChunk = {
+    id: "test", path: "test", source: "memory", agent_id: "meta",
+    start_line: 0, end_line: 0, text: "test", vector: [], updated_at: "",
+    pool: "shared_rules",
+  };
+  assert.strictEqual(chunk.pool, "shared_rules");
+});
+
+test("All 8 pool values are accounted for in POOL_VALUES", () => {
+  assert.strictEqual(POOL_VALUES.length, 8);
+  const expected = [
+    "agent_memory", "agent_tools", "agent_mistakes",
+    "shared_knowledge", "shared_mistakes", "shared_rules",
+    "reference_library", "reference_code",
+  ];
+  for (const p of expected) {
+    assert.ok(POOL_VALUES.includes(p as typeof POOL_VALUES[number]),
+      `Missing pool value: ${p}`);
+  }
+});
+
+test("Auto-inject pools include all non-reference pools", () => {
+  // All pools except reference_library and reference_code should be auto-injected
+  const nonRef = POOL_VALUES.filter(
+    (p) => p !== "reference_library" && p !== "reference_code"
+  );
+  for (const p of nonRef) {
+    assert.ok(isAutoInjectPool(p), `${p} should be auto-inject`);
+  }
+});
+
+test("Reference pools are exactly 2", () => {
+  assert.strictEqual(REFERENCE_POOLS.length, 2);
+  assert.ok(REFERENCE_POOLS.includes("reference_library"));
+  assert.ok(REFERENCE_POOLS.includes("reference_code"));
+});
+
 // Summary
 console.log("\n=== Summary ===");
 const passed = results.filter((r) => r.status === "PASS").length;
