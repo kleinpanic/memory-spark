@@ -155,6 +155,18 @@ const MistakesStoreParams = Type.Object({
   fix: Type.Optional(Type.String({ description: "How it was fixed" })),
   lessons: Type.Optional(Type.String({ description: "Key takeaways to avoid repeating this" })),
   severity: Type.Optional(Type.String({ description: "Severity: critical, high, medium, low (default: medium)" })),
+  shared: Type.Optional(Type.Boolean({ description: "Share with all agents (default: false — per-agent only)" })),
+});
+
+const RulesStoreParams = Type.Object({
+  rule: Type.String({ description: "The rule, preference, or guideline to store. E.g. 'Never use Gemini Flash for coding tasks'" }),
+  scope: Type.Optional(Type.String({ description: "Scope: 'global' (all agents, default) or an agent ID for agent-specific rules" })),
+  category: Type.Optional(Type.String({ description: "Category: preference, constraint, workflow, safety (default: preference)" })),
+});
+
+const RulesSearchParams = Type.Object({
+  query: Type.String({ description: "Search for rules, preferences, or guidelines" }),
+  maxResults: Type.Optional(Type.Number({ description: "Max results (default 5)" })),
 });
 
 const IndexStatusParams = Type.Object({
@@ -690,6 +702,7 @@ const memorySpark = {
               fix?: string;
               lessons?: string;
               severity?: string;
+              shared?: boolean;
             },
           ) => {
             const s = await getState(cfg, api.logger);
@@ -713,6 +726,7 @@ const memorySpark = {
             const vector = await s.queue.embedQuery(fullText);
             const crypto = await import("node:crypto");
             const now = new Date();
+            const pool = params.shared ? "shared_mistakes" : "agent_mistakes";
             const chunk: import("./src/storage/backend.js").MemoryChunk = {
               id: crypto.randomUUID().slice(0, 16),
               path: `mistakes/${agentId}/${now.toISOString().slice(0, 10)}`,
@@ -727,26 +741,105 @@ const memorySpark = {
               content_type: "mistake",
               entities: "[]",
               confidence: 1.0,
+              pool,
             };
 
             await s.backend.upsert([chunk]);
+            const shareLabel = params.shared ? "shared with all agents" : "per-agent";
             return {
-              content: [{ type: "text" as const, text: `Logged mistake: "${params.description.slice(0, 80)}..." (severity: ${params.severity ?? "medium"})` }],
-              details: { severity: params.severity ?? "medium" },
+              content: [{ type: "text" as const, text: `Logged mistake (${shareLabel}, ${params.severity ?? "medium"}): "${params.description.slice(0, 80)}..."` }],
+              details: { severity: params.severity ?? "medium", pool },
             };
           },
         };
 
+        // ── Rules tools ────────────────────────────────────────────────────
+
+        const rulesStoreTool = {
+          name: "memory_rules_store",
+          description: "Store a global rule, preference, or guideline that should be recalled when relevant. Rules are shared across all agents by default. Use for persistent behavioral guidelines like 'Never use Flash for coding' or 'Klein prefers concise responses'.",
+          label: "Store Rule",
+          parameters: RulesStoreParams,
+          execute: async (_toolCallId: string, params: { rule: string; scope?: string; category?: string }) => {
+            const s = await getState(cfg, api.logger);
+            const { looksLikePromptInjection } = await import("./src/security.js");
+            const category = params.category ?? "preference";
+            const scope = params.scope ?? "global";
+
+            const fullText = `[${category.toUpperCase()}] ${params.rule}`;
+            if (looksLikePromptInjection(fullText)) {
+              return { content: [{ type: "text" as const, text: "Refused: text contains suspicious patterns." }], details: {} };
+            }
+
+            const vector = await s.queue.embedQuery(fullText);
+            const crypto = await import("node:crypto");
+            const now = new Date();
+            const chunk: import("./src/storage/backend.js").MemoryChunk = {
+              id: crypto.randomUUID().slice(0, 16),
+              path: `rules/${scope}/${category}`,
+              source: "capture",
+              agent_id: scope === "global" ? "shared" : scope,
+              start_line: 0,
+              end_line: 0,
+              text: fullText,
+              vector,
+              updated_at: now.toISOString(),
+              category,
+              content_type: "rule",
+              entities: "[]",
+              confidence: 1.0,
+              pool: "shared_rules",
+            };
+
+            await s.backend.upsert([chunk]);
+            return {
+              content: [{ type: "text" as const, text: `Stored rule (${category}, ${scope}): "${params.rule.slice(0, 80)}..."` }],
+              details: { scope, category },
+            };
+          },
+        };
+
+        const rulesSearchTool = {
+          name: "memory_rules_search",
+          description: "Search for stored rules, preferences, and guidelines. Use to check existing rules before adding new ones, or to find relevant guidelines for a task.",
+          label: "Search Rules",
+          parameters: RulesSearchParams,
+          execute: async (_toolCallId: string, params: { query: string; maxResults?: number }) => {
+            const s = await getState(cfg, api.logger);
+            const maxR = params.maxResults ?? 5;
+            let vector: number[];
+            try {
+              vector = await s.cachedEmbed.embedQuery(params.query);
+            } catch {
+              return { content: [{ type: "text" as const, text: "Embedding unavailable." }], details: {} };
+            }
+            const results = await s.backend
+              .vectorSearch(vector, {
+                query: params.query,
+                maxResults: maxR,
+                minScore: 0.1,
+                pool: "shared_rules",
+              })
+              .catch(() => [] as import("./src/storage/backend.js").SearchResult[]);
+            if (results.length === 0) {
+              return { content: [{ type: "text" as const, text: "No matching rules found." }], details: {} };
+            }
+            const text = results.map((r, i) =>
+              `${i + 1}. (score: ${r.score.toFixed(2)}) ${r.chunk.text}`
+            ).join("\n\n");
+            return { content: [{ type: "text" as const, text }], details: { resultCount: results.length } };
+          },
+        };
+
         // SDK boundary cast — OpenClaw's AnyAgentTool uses `any` internally
-        // and doesn't export the type. Our tools match structurally.
         return [
           searchTool, getTool, storeTool, forgetTool, referenceSearchTool,
           indexStatusTool, forgetByPathTool, inspectTool, reindexTool,
-          mistakesSearchTool, mistakesStoreTool,
+          mistakesSearchTool, mistakesStoreTool, rulesStoreTool, rulesSearchTool,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ] as any;
       },
-      { names: ["memory_search", "memory_get", "memory_store", "memory_forget", "memory_reference_search", "memory_index_status", "memory_forget_by_path", "memory_inspect", "memory_reindex", "memory_mistakes_search", "memory_mistakes_store"] },
+      { names: ["memory_search", "memory_get", "memory_store", "memory_forget", "memory_reference_search", "memory_index_status", "memory_forget_by_path", "memory_inspect", "memory_reindex", "memory_mistakes_search", "memory_mistakes_store", "memory_rules_store", "memory_rules_search"] },
     );
 
     // -------------------------------------------------------------------

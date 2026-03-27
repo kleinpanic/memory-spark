@@ -123,12 +123,12 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
       lowThreshold,
     );
 
-    // 5. Shared rules — ALWAYS injected, no relevance gating
+    // 5. Shared rules — relevance-gated like all other pools
     const sharedRules = await poolSearch(
       ["shared_rules"],
       undefined,
       5,
-      0, // No minimum score — rules are always relevant
+      lowThreshold,
     );
 
     // Merge all results, deduplicating by chunk ID
