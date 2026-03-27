@@ -41,6 +41,51 @@ export interface RerankConfig {
   topN: number;
 }
 
+/** Full-text search configuration. All fields optional — defaults applied at use site. */
+export interface FtsConfig {
+  /** Whether FTS is enabled alongside vector search. Default: true */
+  enabled?: boolean;
+  /**
+   * BM25 sigmoid midpoint — controls where FTS scores map to 0.5.
+   * Typical BM25 scores for English text: 0–10, median ~2–4.
+   * Calibrate by running representative FTS queries and observing score distribution.
+   * Default: 3.0
+   */
+  sigmoidMidpoint?: number;
+}
+
+/** Chunking configuration for document ingestion. All fields optional — defaults applied at use site. */
+export interface ChunkConfig {
+  /** Maximum tokens per chunk. Default: 400 */
+  maxTokens?: number;
+  /** Token overlap between consecutive chunks. Default: 50 */
+  overlapTokens?: number;
+  /** Minimum tokens for a chunk to be indexed. Default: 20 */
+  minTokens?: number;
+}
+
+/** Embed cache configuration. All fields optional — defaults applied at use site. */
+export interface EmbedCacheConfig {
+  /** Whether the query embed cache is enabled. Default: true */
+  enabled?: boolean;
+  /** Max cached query embeddings (LRU eviction). Default: 256 */
+  maxSize?: number;
+  /** Cache TTL in milliseconds. Default: 1800000 (30 min) */
+  ttlMs?: number;
+}
+
+/** Search tuning configuration. All fields optional — defaults applied at use site. */
+export interface SearchConfig {
+  /** Refinement factor for ANN vector search. Higher = more precise, slower. Default: 20 */
+  refineFactor?: number;
+  /** Max write retries on commit conflict. Default: 3 */
+  maxWriteRetries?: number;
+  /** IVF_PQ partition count for vector index. Default: 10 */
+  ivfPartitions?: number;
+  /** IVF_PQ sub-vectors for vector index. Default: 64 */
+  ivfSubVectors?: number;
+}
+
 /** Source and path weighting for recall scoring. All values are multipliers (1.0 = no change). */
 export interface RecallWeights {
   /** Source-level weights */
@@ -68,6 +113,39 @@ export interface AutoRecallConfig {
   maxInjectionTokens: number;
   /** Source and path weighting for recall scoring. Fully configurable. */
   weights: RecallWeights;
+  /**
+   * MMR diversity lambda (0-1). Higher = more relevant, lower = more diverse.
+   * 0.0 = max diversity, 1.0 = pure relevance ranking.
+   * Default: 0.7
+   */
+  mmrLambda?: number;
+  /**
+   * Temporal decay configuration.
+   * Formula: floor + (1 - floor) * exp(-rate * ageDays)
+   */
+  temporalDecay?: {
+    /** Minimum score multiplier for old content. Default: 0.8 (old content keeps ≥80% of score) */
+    floor?: number;
+    /** Decay rate per day. Higher = faster decay. Default: 0.03 */
+    rate?: number;
+  };
+  /**
+   * Context dedup overlap threshold (0-1).
+   * Chunks with >threshold token overlap with recent messages/LCM summaries are dropped.
+   * Lower = more aggressive dedup. Default: 0.4
+   */
+  dedupOverlapThreshold?: number;
+  /**
+   * Overfetch multiplier for initial search before filtering/reranking.
+   * Higher = better recall at cost of more compute. Default: 4
+   */
+  overfetchMultiplier?: number;
+  /**
+   * Whether to use FTS (full-text search) alongside vector search.
+   * When false, only vector search is used (simpler, faster, less precise for keyword queries).
+   * Default: true
+   */
+  ftsEnabled?: boolean;
 }
 
 export interface AutoCaptureConfig {
@@ -158,6 +236,14 @@ export interface MemorySparkConfig {
   spark: SparkEndpoints;
   /** Reference library configuration — additional docs indexed as "reference" content_type */
   reference: ReferenceConfig;
+  /** Full-text search (BM25) tuning. Default: enabled with midpoint 3.0 */
+  fts?: FtsConfig;
+  /** Document chunking configuration. Default: 400 max tokens, 50 overlap, 20 min */
+  chunk?: ChunkConfig;
+  /** Embed query cache configuration. Default: enabled, 256 entries, 30m TTL */
+  embedCache?: EmbedCacheConfig;
+  /** Vector search and index tuning. Default: refineFactor 20, 3 retries, IVF_PQ(10, 64) */
+  search?: SearchConfig;
   /** Override SPARK_HOST env var. Used to point at a different Spark node. */
   sparkHost?: string;
   /** Override SPARK_BEARER_TOKEN env var. Loaded from env/.env if not set. */
@@ -226,6 +312,11 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
       minScore: 0.75,
       queryMessageCount: 2,
       maxInjectionTokens: 2000,
+      mmrLambda: 0.7,
+      temporalDecay: { floor: 0.8, rate: 0.03 },
+      dedupOverlapThreshold: 0.4,
+      overfetchMultiplier: 4,
+      ftsEnabled: true,
       weights: {
         sources: {
           capture: 1.5,
@@ -299,6 +390,26 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
       chunkSize: 800,
       tags: {},
     },
+    fts: {
+      enabled: true,
+      sigmoidMidpoint: 3.0,
+    },
+    chunk: {
+      maxTokens: 400,
+      overlapTokens: 50,
+      minTokens: 20,
+    },
+    embedCache: {
+      enabled: true,
+      maxSize: 256,
+      ttlMs: 30 * 60 * 1000, // 30 minutes
+    },
+    search: {
+      refineFactor: 20,
+      maxWriteRetries: 3,
+      ivfPartitions: 10,
+      ivfSubVectors: 64,
+    },
     migrate: {
       autoMigrateOnFirstBoot: true,
       statusFile: path.join(
@@ -325,6 +436,7 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
 /**
  * Exported for backward compat — snapshot using env-only resolution.
  * Prefer resolveConfig() for runtime use (it accepts user overrides).
+ * @public — used by test harnesses and external scripts
  */
 export const DEFAULT_CONFIG: MemorySparkConfig = buildDefaults(
   process.env["SPARK_HOST"] ?? FALLBACK_SPARK_HOST,
@@ -400,6 +512,10 @@ export function resolveConfig(userConfig?: Partial<MemorySparkConfig>): MemorySp
     autoRecall: {
       ...defaults.autoRecall,
       ...userConfig.autoRecall,
+      temporalDecay: {
+        ...defaults.autoRecall.temporalDecay,
+        ...userConfig.autoRecall?.temporalDecay,
+      },
       weights: {
         sources: { ...defaults.autoRecall.weights.sources, ...userConfig.autoRecall?.weights?.sources },
         paths: { ...defaults.autoRecall.weights.paths, ...userConfig.autoRecall?.weights?.paths },
@@ -427,6 +543,10 @@ export function resolveConfig(userConfig?: Partial<MemorySparkConfig>): MemorySp
       ...userConfig.migrate,
       statusFile: expandHome(userConfig.migrate?.statusFile ?? defaults.migrate.statusFile),
     },
+    fts: { ...defaults.fts, ...userConfig.fts },
+    chunk: { ...defaults.chunk, ...userConfig.chunk },
+    embedCache: { ...defaults.embedCache, ...userConfig.embedCache },
+    search: { ...defaults.search, ...userConfig.search },
     spark: { ...defaults.spark, ...userConfig.spark },
     // Carry through the resolved overrides so downstream can inspect them
     sparkHost: userConfig.sparkHost,

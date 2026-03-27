@@ -62,7 +62,7 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     // Within each pool: hybrid search (Vector + FTS) → merge
     // FTS+WHERE is supported in LanceDB 0.27+ (no workaround needed).
 
-    const fetchN = cfg.maxResults * 4;
+    const fetchN = cfg.maxResults * (cfg.overfetchMultiplier ?? 4);
     const lowThreshold = Math.max((cfg.minScore ?? 0.1) * 0.7, 0.05);
 
     // Helper: hybrid search within specific pool(s)
@@ -82,9 +82,9 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
       const vectorResults = await backend
         .vectorSearch(queryVector, searchOpts)
         .catch(() => [] as SearchResult[]);
-      const rawFtsResults = await backend
-        .ftsSearch(queryText, searchOpts)
-        .catch(() => [] as SearchResult[]);
+      const rawFtsResults = (cfg.ftsEnabled ?? true)
+        ? await backend.ftsSearch(queryText, searchOpts).catch(() => [] as SearchResult[])
+        : [];
       // Filter FTS: exclude sessions source, apply minScore
       const ftsResults = rawFtsResults.filter(
         (r) => r.chunk.source !== "sessions" && r.score >= (minScore ?? 0.1),
@@ -155,11 +155,11 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     // so session chunks and archive content don't waste reranker slots.
     applySourceWeighting(merged, cfg.weights);
 
-    // Temporal decay: boost recent memories
-    applyTemporalDecay(merged);
+    // Temporal decay: boost recent memories (configurable floor + rate)
+    applyTemporalDecay(merged, cfg.temporalDecay);
 
     // MMR diversity re-ranking
-    const diverse = mmrRerank(merged, cfg.maxResults * 2, 0.7);
+    const diverse = mmrRerank(merged, cfg.maxResults * 2, cfg.mmrLambda ?? 0.7);
 
     // Cross-encoder rerank
     const reranked = await reranker.rerank(queryText, diverse, cfg.maxResults);
@@ -192,6 +192,7 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
       }
     }
 
+    const dedupThreshold = cfg.dedupOverlapThreshold ?? 0.4;
     const deduplicated = reranked.filter((r) => {
       const chunkTokens = new Set(
         (r.chunk.text.match(/\b\w{4,}\b/g) ?? []).map((w) => w.toLowerCase()),
@@ -203,7 +204,7 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
         for (const t of chunkTokens) {
           if (ctxTokens.has(t)) overlap++;
         }
-        if (overlap / chunkTokens.size > 0.4) return false; // >40% overlap = redundant
+        if (overlap / chunkTokens.size > dedupThreshold) return false;
       }
       return true;
     });
@@ -307,20 +308,28 @@ export function hybridMerge(
 
 /**
  * Temporal decay: boost recent memories, apply gentle decay for old ones.
- * Uses exponential decay with a floor at 0.8 — old-but-gold knowledge
- * never drops below 80% weight (previously at 0.25x for 60-day-old chunks).
+ * Uses exponential decay with a configurable floor.
  *
- * Formula: 0.8 + 0.2 * exp(-0.03 * ageDays)
- * 0 days=1.0, 7 days=0.96, 30 days=0.89, 90 days=0.81, 365 days=0.80
+ * Formula: floor + (1 - floor) * exp(-rate * ageDays)
+ * Default: floor=0.8, rate=0.03
+ *   0 days=1.0, 7 days=0.96, 30 days=0.89, 90 days=0.81, 365 days=0.80
+ *
+ * @param results — search results to apply decay to (mutated in place)
+ * @param opts — optional floor (default 0.8) and rate (default 0.03)
  */
-export function applyTemporalDecay(results: SearchResult[]): void {
+export function applyTemporalDecay(
+  results: SearchResult[],
+  opts?: { floor?: number; rate?: number },
+): void {
+  const floor = opts?.floor ?? 0.8;
+  const rate = opts?.rate ?? 0.03;
   const now = Date.now();
   for (const r of results) {
     const rawTime = r.chunk.updated_at ? new Date(r.chunk.updated_at).getTime() : NaN;
     // Guard against NaN from invalid/missing timestamps — use score as-is (decay = 1.0)
     if (Number.isNaN(rawTime)) continue;
     const ageDays = Math.max(0, (now - rawTime) / (86400 * 1000));
-    const decay = 0.8 + 0.2 * Math.exp(-0.03 * ageDays);
+    const decay = floor + (1 - floor) * Math.exp(-rate * ageDays);
     r.score *= decay;
   }
 }
@@ -396,6 +405,7 @@ function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
 /**
  * Clean query text — strip Discord metadata, timestamps, and injected blocks
  * so the embedding vector represents the actual conversational content.
+ * @public — exported for external test/debug tooling
  */
 export function cleanQueryText(text: string): string {
   // Strip Discord conversation metadata blocks

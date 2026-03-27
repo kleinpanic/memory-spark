@@ -21,9 +21,9 @@ const TABLE_NAME = "memory_chunks";
  * BM25 sigmoid midpoint — controls where FTS scores map to 0.5.
  * Typical BM25 scores for English text: 0–10, median ~2–4.
  * Calibrate by running representative FTS queries and observing score distribution.
- * TODO: Make configurable via MemorySparkConfig.fts.sigmoidMidpoint
+ * Configurable via MemorySparkConfig.fts.sigmoidMidpoint (default: 3.0)
  */
-const BM25_SIGMOID_MIDPOINT = 3.0;
+let BM25_SIGMOID_MIDPOINT = 3.0;
 
 export class LanceDBBackend implements StorageBackend {
   private cfg: MemorySparkConfig;
@@ -46,6 +46,10 @@ export class LanceDBBackend implements StorageBackend {
 
   constructor(cfg: MemorySparkConfig) {
     this.cfg = cfg;
+    // Apply configurable FTS sigmoid midpoint
+    if (cfg.fts?.sigmoidMidpoint != null) {
+      BM25_SIGMOID_MIDPOINT = cfg.fts.sigmoidMidpoint;
+    }
   }
 
   async open(): Promise<void> {
@@ -112,11 +116,12 @@ export class LanceDBBackend implements StorageBackend {
 
       if (!hasVectorIndex) {
         try {
-          // numSubVectors: 64 → 4096/64 = 64 dims per subvector (SIMD-friendly multiple of 8)
+          const partitions = this.cfg.search?.ivfPartitions ?? 10;
+          const subVectors = this.cfg.search?.ivfSubVectors ?? 64;
           await this.table.createIndex("vector", {
             config: lancedb.Index.ivfPq({
-              numPartitions: 10,
-              numSubVectors: 64,
+              numPartitions: partitions,
+              numSubVectors: subVectors,
               distanceType: "cosine",
             }),
           });
@@ -236,7 +241,7 @@ export class LanceDBBackend implements StorageBackend {
     });
 
     // Retry on commit conflict (concurrent writes from boot pass + watcher)
-    const MAX_RETRIES = 3;
+    const MAX_RETRIES = this.cfg.search?.maxWriteRetries ?? 3;
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
         await table
@@ -280,10 +285,11 @@ export class LanceDBBackend implements StorageBackend {
     if (!this.table) return [];
     const limit = opts.maxResults ?? 20;
 
+    const refineFactor = this.cfg.search?.refineFactor ?? 20;
     let q = this.table
       .vectorSearch(queryVector)
       .distanceType("cosine")
-      .refineFactor(20)
+      .refineFactor(refineFactor)
       .limit(limit);
 
     const filters: string[] = [];

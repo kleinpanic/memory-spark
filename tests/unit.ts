@@ -1673,6 +1673,126 @@ test("Reference pools are exactly 2", () => {
   assert.ok(REFERENCE_POOLS.includes("reference_code"));
 });
 
+// ── Config Expansion Tests ──────────────────────────────────────────────────
+
+console.log("\n--- Config Expansion (new tuning knobs) ---");
+
+test("Default mmrLambda is 0.7", () => {
+  const cfg = resolveConfig();
+  assert.strictEqual(cfg.autoRecall.mmrLambda, 0.7);
+});
+
+test("Default temporalDecay floor is 0.8, rate is 0.03", () => {
+  const cfg = resolveConfig();
+  assert.deepStrictEqual(cfg.autoRecall.temporalDecay, { floor: 0.8, rate: 0.03 });
+});
+
+test("Default dedupOverlapThreshold is 0.4", () => {
+  const cfg = resolveConfig();
+  assert.strictEqual(cfg.autoRecall.dedupOverlapThreshold, 0.4);
+});
+
+test("Default overfetchMultiplier is 4", () => {
+  const cfg = resolveConfig();
+  assert.strictEqual(cfg.autoRecall.overfetchMultiplier, 4);
+});
+
+test("Default ftsEnabled is true", () => {
+  const cfg = resolveConfig();
+  assert.strictEqual(cfg.autoRecall.ftsEnabled, true);
+});
+
+test("Default fts config: enabled true, sigmoid midpoint 3.0", () => {
+  const cfg = resolveConfig();
+  assert.strictEqual(cfg.fts?.enabled, true);
+  assert.strictEqual(cfg.fts?.sigmoidMidpoint, 3.0);
+});
+
+test("Default chunk config: 400 max, 50 overlap, 20 min", () => {
+  const cfg = resolveConfig();
+  assert.strictEqual(cfg.chunk?.maxTokens, 400);
+  assert.strictEqual(cfg.chunk?.overlapTokens, 50);
+  assert.strictEqual(cfg.chunk?.minTokens, 20);
+});
+
+test("Default embedCache config: enabled, 256 max, 30m TTL", () => {
+  const cfg = resolveConfig();
+  assert.strictEqual(cfg.embedCache?.enabled, true);
+  assert.strictEqual(cfg.embedCache?.maxSize, 256);
+  assert.strictEqual(cfg.embedCache?.ttlMs, 30 * 60 * 1000);
+});
+
+test("Default search config: refineFactor 20, retries 3, IVF(10, 64)", () => {
+  const cfg = resolveConfig();
+  assert.strictEqual(cfg.search?.refineFactor, 20);
+  assert.strictEqual(cfg.search?.maxWriteRetries, 3);
+  assert.strictEqual(cfg.search?.ivfPartitions, 10);
+  assert.strictEqual(cfg.search?.ivfSubVectors, 64);
+});
+
+test("mmrLambda override works", () => {
+  const cfg = resolveConfig({ autoRecall: { mmrLambda: 0.5 } } as Partial<import("../src/config.js").MemorySparkConfig>);
+  assert.strictEqual(cfg.autoRecall.mmrLambda, 0.5);
+});
+
+test("temporalDecay partial override merges correctly", () => {
+  const cfg = resolveConfig({ autoRecall: { temporalDecay: { floor: 0.6 } } } as Partial<import("../src/config.js").MemorySparkConfig>);
+  assert.strictEqual(cfg.autoRecall.temporalDecay?.floor, 0.6);
+  assert.strictEqual(cfg.autoRecall.temporalDecay?.rate, 0.03); // default preserved
+});
+
+test("fts sigmoid midpoint override works", () => {
+  const cfg = resolveConfig({ fts: { sigmoidMidpoint: 4.5 } } as Partial<import("../src/config.js").MemorySparkConfig>);
+  assert.strictEqual(cfg.fts?.sigmoidMidpoint, 4.5);
+  assert.strictEqual(cfg.fts?.enabled, true); // default preserved
+});
+
+test("chunk config override works", () => {
+  const cfg = resolveConfig({ chunk: { maxTokens: 800 } } as Partial<import("../src/config.js").MemorySparkConfig>);
+  assert.strictEqual(cfg.chunk?.maxTokens, 800);
+  assert.strictEqual(cfg.chunk?.overlapTokens, 50); // default preserved
+});
+
+test("search config override works", () => {
+  const cfg = resolveConfig({ search: { refineFactor: 50 } } as Partial<import("../src/config.js").MemorySparkConfig>);
+  assert.strictEqual(cfg.search?.refineFactor, 50);
+  assert.strictEqual(cfg.search?.maxWriteRetries, 3); // default preserved
+});
+
+test("ftsEnabled=false disables FTS in autoRecall", () => {
+  const cfg = resolveConfig({ autoRecall: { ftsEnabled: false } } as Partial<import("../src/config.js").MemorySparkConfig>);
+  assert.strictEqual(cfg.autoRecall.ftsEnabled, false);
+});
+
+test("applyTemporalDecay uses custom floor and rate", () => {
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400 * 1000);
+  const results: SearchResult[] = [{
+    chunk: { id: "t1", path: "a", source: "memory", agent_id: "meta", start_line: 0, end_line: 0, text: "old", vector: [], updated_at: thirtyDaysAgo.toISOString() },
+    score: 1.0, snippet: "",
+  }];
+
+  // Custom: floor=0.5, rate=0.1 (much more aggressive decay)
+  applyTemporalDecay(results, { floor: 0.5, rate: 0.1 });
+  // floor + (1 - floor) * exp(-rate * 30) = 0.5 + 0.5 * exp(-3.0) ≈ 0.5 + 0.025 = 0.525
+  assert.ok(results[0]!.score > 0.5 && results[0]!.score < 0.6,
+    `Expected ~0.525, got ${results[0]!.score}`);
+});
+
+test("applyTemporalDecay with default opts matches original formula", () => {
+  const now = new Date();
+  const sevenDaysAgo = new Date(now.getTime() - 7 * 86400 * 1000);
+  const results: SearchResult[] = [{
+    chunk: { id: "t2", path: "b", source: "memory", agent_id: "meta", start_line: 0, end_line: 0, text: "recent", vector: [], updated_at: sevenDaysAgo.toISOString() },
+    score: 1.0, snippet: "",
+  }];
+
+  applyTemporalDecay(results); // no opts = use defaults
+  // 0.8 + 0.2 * exp(-0.03 * 7) ≈ 0.8 + 0.2 * 0.811 ≈ 0.962
+  assert.ok(results[0]!.score > 0.95 && results[0]!.score < 0.97,
+    `Expected ~0.962, got ${results[0]!.score}`);
+});
+
 // Summary
 console.log("\n=== Summary ===");
 const passed = results.filter((r) => r.status === "PASS").length;

@@ -1,4 +1,10 @@
 {
+  "$schema": "https://unpkg.com/knip@latest/schema.json",
   "entry": ["index.ts", "tests/*.ts", "evaluation/*.ts"],
-  "project": ["src/**/*.ts"]
+  "project": ["src/**/*.ts"],
+  "ignoreExportsUsedInFile": {
+    "interface": true,
+    "type": true
+  },
+  "tags": ["-public"]
 }

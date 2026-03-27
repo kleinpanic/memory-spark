@@ -85,8 +85,11 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
       contentType = "tool" as typeof contentType;
     }
 
-    // 3. Chunk — use reference.chunkSize for reference content, default 400 for others
-    const chunkSize = contentType === "reference" ? (opts.cfg.reference.chunkSize ?? 800) : undefined;
+    // 3. Chunk — use reference.chunkSize for reference content, cfg.chunk for others
+    const chunkCfg = opts.cfg.chunk;
+    const chunkSize = contentType === "reference"
+      ? (opts.cfg.reference.chunkSize ?? 800)
+      : (chunkCfg?.maxTokens ?? 400);
     const rawChunks = chunkDocument(
       {
         text: rawText,
@@ -94,7 +97,11 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
         source,
         ext: isSession ? "txt" : ext,
       },
-      chunkSize ? { maxTokens: chunkSize } : undefined,
+      {
+        maxTokens: chunkSize,
+        overlapTokens: chunkCfg?.overlapTokens,
+        minTokens: chunkCfg?.minTokens,
+      },
     );
 
     if (rawChunks.length === 0) {
