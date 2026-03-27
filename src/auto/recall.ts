@@ -7,11 +7,17 @@
 import type { AutoRecallConfig, RecallWeights } from "../config.js";
 import { shouldProcessAgent } from "../config.js";
 import type { StorageBackend, SearchResult } from "../storage/backend.js";
+import type { MultiTableBackend } from "../storage/multi-table-backend.js";
 import type { EmbedProvider } from "../embed/provider.js";
 import type { EmbedQueue } from "../embed/queue.js";
 import type { EmbedLike } from "../embed/cached-provider.js";
 import type { Reranker } from "../rerank/reranker.js";
 import { looksLikePromptInjection, formatRecalledMemories } from "../security.js";
+
+/** Type guard: check if backend supports multi-table operations */
+function isMultiTableBackend(b: StorageBackend): b is MultiTableBackend {
+  return "sharedSearch" in b && "referenceSearch" in b && typeof (b as MultiTableBackend).sharedSearch === "function";
+}
 
 type BeforePromptBuildEvent = { prompt: string; messages: unknown[] };
 type BeforePromptBuildResult = { systemPrompt?: string; prependContext?: string };
@@ -82,25 +88,47 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     // with 1/(k+rank)), this preserves the embedding quality signal.
     const merged = hybridMerge(vectorResults, ftsResults, fetchN);
 
-    // Dynamic mistakes injection — always give mistakes a fair shot at reranking.
-    // This does a separate vector search filtered to mistakes paths and merges
-    // relevant results into the candidate pool. The reranker decides final ordering.
-    const mistakesResults = await backend
-      .vectorSearch(queryVector, {
-        query: queryText,
-        maxResults: 5,
-        minScore: Math.max((cfg.minScore ?? 0.1) * 0.7, 0.05), // lower threshold for mistakes
-        agentId,
-        pathContains: "mistake",
-      })
-      .catch(() => [] as SearchResult[]);
+    // ── Multi-table: merge shared knowledge + mistakes ─────────────────────
+    // When using MultiTableBackend, search shared tables for cross-agent
+    // knowledge and mistakes. When using legacy single-table, fall back to
+    // path-based filtering.
+    if (isMultiTableBackend(backend)) {
+      // Dedicated shared search: shared_knowledge + shared_mistakes tables
+      const sharedResults = await backend
+        .sharedSearch(queryVector, queryText, {
+          maxResults: 10,
+          minScore: Math.max((cfg.minScore ?? 0.1) * 0.7, 0.05),
+        })
+        .catch(() => [] as SearchResult[]);
 
-    if (mistakesResults.length > 0) {
-      const seenIds = new Set(merged.map((r) => r.chunk.id));
-      for (const r of mistakesResults) {
-        if (!seenIds.has(r.chunk.id)) {
-          merged.push(r);
-          seenIds.add(r.chunk.id);
+      if (sharedResults.length > 0) {
+        const seenIds = new Set(merged.map((r) => r.chunk.id));
+        for (const r of sharedResults) {
+          if (!seenIds.has(r.chunk.id)) {
+            merged.push(r);
+            seenIds.add(r.chunk.id);
+          }
+        }
+      }
+    } else {
+      // Legacy single-table: use path-based mistakes injection
+      const mistakesResults = await backend
+        .vectorSearch(queryVector, {
+          query: queryText,
+          maxResults: 5,
+          minScore: Math.max((cfg.minScore ?? 0.1) * 0.7, 0.05),
+          agentId,
+          pathContains: "mistake",
+        })
+        .catch(() => [] as SearchResult[]);
+
+      if (mistakesResults.length > 0) {
+        const seenIds = new Set(merged.map((r) => r.chunk.id));
+        for (const r of mistakesResults) {
+          if (!seenIds.has(r.chunk.id)) {
+            merged.push(r);
+            seenIds.add(r.chunk.id);
+          }
         }
       }
     }
