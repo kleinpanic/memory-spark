@@ -30,3 +30,4 @@ dims-lock.json
 coverage/
 .nyc_output/
 test-data/
+evaluation/beir-datasets/
