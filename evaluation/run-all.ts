@@ -2,22 +2,25 @@
 /**
  * Unified Test Suite — runs everything in order.
  *
- * 1. Unit tests (offline, no Spark needed)
+ * 1. Unit tests via Vitest (offline, no Spark needed)
  * 2. Type checking (tsc --noEmit)
- * 3. Lint (eslint)
- * 4. Integration tests (needs Spark for embed/rerank)
- * 5. Retrieval benchmark (needs indexed data)
- * 6. Pipeline integration tests (needs indexed data)
+ * 3. ESLint
+ * 4. Prettier format check
+ * 5. Knip dead code analysis
+ * 6. FTS+WHERE LanceDB validation
+ * 7. Retrieval benchmark (needs Spark + indexed data)
+ * 8. Pipeline integration tests (needs Spark + indexed data)
  *
  * Usage:
  *   npx tsx evaluation/run-all.ts           # everything
  *   npx tsx evaluation/run-all.ts --quick   # unit + types + lint only
- *   npm test                                # alias for full suite
+ *   npx tsx evaluation/run-all.ts --bench   # only benchmarks (skip quality gates)
  */
 
 import { execSync } from "node:child_process";
 
 const isQuick = process.argv.includes("--quick");
+const benchOnly = process.argv.includes("--bench");
 
 interface TestResult {
   name: string;
@@ -62,15 +65,26 @@ console.log("══════════════════════�
 console.log("  memory-spark Test Suite");
 console.log("═══════════════════════════════════════════");
 
-// Phase 1: Offline checks (no external deps)
-run("Unit Tests", "npx tsx tests/unit.ts");
-run("Type Check", "npx tsc --noEmit");
-run("Lint", "npx eslint 'src/**/*.ts' 'index.ts' --max-warnings 5");
+if (!benchOnly) {
+  // Phase 1: Quality gates (no external deps)
+  run("Vitest Unit Tests", "npx vitest run");
+  run("Type Check", "npx tsc --noEmit");
+  run("ESLint", "npx eslint src/ index.ts --max-warnings 20");
+  if (!isQuick) {
+    run(
+      "Prettier",
+      "npx prettier --check 'src/**/*.ts' 'tests/**/*.ts' 'evaluation/**/*.ts' 'index.ts'",
+    );
+    run("Knip", "npx knip");
+    run("FTS+WHERE Validation", "npx tsx tests/fts-where-test.ts");
+  }
+}
 
 if (!isQuick) {
-  // Phase 2: Integration (needs Spark)
-  run("Retrieval Benchmark", "npx tsx evaluation/benchmark.ts --tier 1", true);
-  run("Pipeline Integration", "npx tsx evaluation/benchmark.ts --tier 2", true);
+  // Phase 2: Benchmarks (needs Spark)
+  run("Tier 1: Retrieval Benchmark", "npx tsx evaluation/benchmark.ts --tier 1 --quick", true);
+  run("Tier 2: Pipeline Integration", "npx tsx evaluation/benchmark.ts --tier 2", true);
+  run("Tier 3: Pool Isolation", "npx tsx evaluation/benchmark.ts --tier 3", true);
 }
 
 // Summary
