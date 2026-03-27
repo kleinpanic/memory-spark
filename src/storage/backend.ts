@@ -25,6 +25,20 @@ export interface MemoryChunk {
   token_count?: number;
   /** Most recent markdown heading (## or ###) above this chunk */
   parent_heading?: string;
+  /**
+   * Logical pool within the single LanceDB table.
+   * Determines auto-injection behavior and access patterns.
+   *
+   * Values:
+   * - "agent_memory" — per-agent workspace files, captures (auto-injected)
+   * - "agent_tools" — per-agent tool definitions (auto-injected for tool context)
+   * - "shared_knowledge" — cross-agent facts (auto-injected, 0.8x weight)
+   * - "shared_mistakes" — cross-agent mistakes (auto-injected, 1.6x boost)
+   * - "shared_rules" — global rules & preferences (always injected)
+   * - "reference_library" — PDFs, documentation (tool-call only, NOT auto-injected)
+   * - "reference_code" — code examples (tool-call only, NOT auto-injected)
+   */
+  pool?: string;
 }
 
 export interface SearchOptions {
@@ -39,6 +53,10 @@ export interface SearchOptions {
   contentType?: string;
   /** Filter results where path contains this substring (case-insensitive) */
   pathContains?: string;
+  /** Filter by pool (logical section). Multiple pools: comma-separated */
+  pool?: string;
+  /** Filter by multiple pools (OR logic) */
+  pools?: string[];
 }
 
 export interface SearchResult {

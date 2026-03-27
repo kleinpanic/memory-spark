@@ -91,7 +91,7 @@ export class LanceDBBackend implements StorageBackend {
     try {
       const schema = await this.table.schema();
       const existingFields = new Set(schema.fields.map((f) => f.name));
-      const needed = ["content_type", "quality_score", "token_count", "parent_heading"];
+      const needed = ["content_type", "quality_score", "token_count", "parent_heading", "pool"];
       this.schemaHasNewColumns = needed.every((n) => existingFields.has(n));
     } catch {
       this.schemaHasNewColumns = false;
@@ -184,6 +184,10 @@ export class LanceDBBackend implements StorageBackend {
       quality_score: 0.5,
       token_count: 0,
       parent_heading: "",
+      // Pool column: logical section within the single table.
+      // Values: "agent_memory", "agent_tools", "shared_knowledge",
+      //         "shared_mistakes", "shared_rules", "reference_library", "reference_code"
+      pool: "agent_memory",
     };
     this.table = await this.db.createTable(TABLE_NAME, [
       seed as unknown as Record<string, unknown>,
@@ -227,6 +231,8 @@ export class LanceDBBackend implements StorageBackend {
         base.content_type = c.content_type ?? "knowledge";
         base.quality_score = c.quality_score ?? 0.5;
         base.token_count = c.token_count ?? 0;
+        // Pool: route based on content_type and path
+        base.pool = resolvePool(c);
         base.parent_heading = c.parent_heading ?? "";
       }
       return base;
@@ -287,9 +293,15 @@ export class LanceDBBackend implements StorageBackend {
     if (opts.agentId) filters.push(`agent_id = '${escapeSql(opts.agentId)}'`);
     if (opts.source) filters.push(`source = '${escapeSql(opts.source)}'`);
     if (opts.contentType) filters.push(`content_type = '${escapeSql(opts.contentType)}'`);
-    // pathContains: LanceDB supports LIKE in WHERE on vector search (unlike FTS)
     if (opts.pathContains) {
       filters.push(`path LIKE '%${escapeSql(opts.pathContains)}%'`);
+    }
+    // Pool filtering — logical section within the single table
+    if (opts.pool) {
+      filters.push(`pool = '${escapeSql(opts.pool)}'`);
+    } else if (opts.pools && opts.pools.length > 0) {
+      const poolList = opts.pools.map((p) => `'${escapeSql(p)}'`).join(",");
+      filters.push(`pool IN (${poolList})`);
     }
     if (filters.length > 0) {
       q = q.where(filters.join(" AND "));
@@ -318,31 +330,37 @@ export class LanceDBBackend implements StorageBackend {
 
     const limit = opts.maxResults ?? 20;
     try {
-      // LanceDB bug: FTS + .where() causes Arrow cast panic (ExecNode(Take)).
-      // Workaround: fetch more results without .where(), then post-filter in JS.
-      // This is safe because FTS is a secondary ranking signal, not a primary filter.
-      const overFetch = limit * 3; // Fetch extra to compensate for post-filtering
-      const q = this.table.search(query, "fts", "text").limit(overFetch);
-      let rows = await q.toArray();
+      // FTS + WHERE is now supported (LanceDB 0.27+, previously caused Arrow panic).
+      // Proper implementation: build WHERE clause from search options, apply natively.
+      const q = this.table.search(query, "fts", "text").limit(limit);
 
-      // Post-filter (avoids LanceDB WHERE bug on FTS queries)
+      const filters: string[] = [];
       if (opts.agentId) {
-        rows = rows.filter((r: Record<string, unknown>) => r["agent_id"] === opts.agentId);
+        filters.push(`agent_id = '${escapeSql(opts.agentId)}'`);
       }
       if (opts.source) {
-        rows = rows.filter((r: Record<string, unknown>) => r["source"] === opts.source);
+        filters.push(`source = '${escapeSql(opts.source)}'`);
       }
       if (opts.contentType) {
-        rows = rows.filter((r: Record<string, unknown>) => r["content_type"] === opts.contentType);
+        filters.push(`content_type = '${escapeSql(opts.contentType)}'`);
       }
       if (opts.pathContains) {
-        const needle = opts.pathContains.toLowerCase();
-        rows = rows.filter((r: Record<string, unknown>) =>
-          typeof r["path"] === "string" && (r["path"] as string).toLowerCase().includes(needle),
-        );
+        filters.push(`path LIKE '%${escapeSql(opts.pathContains.toLowerCase())}%'`);
+      }
+      // Pool filtering on FTS — now supported in LanceDB 0.27+
+      if (opts.pool) {
+        filters.push(`pool = '${escapeSql(opts.pool)}'`);
+      } else if (opts.pools && opts.pools.length > 0) {
+        const poolList = opts.pools.map((p) => `'${escapeSql(p)}'`).join(",");
+        filters.push(`pool IN (${poolList})`);
       }
 
-      return rows.slice(0, limit).map(rowToSearchResult);
+      if (filters.length > 0) {
+        q.where(filters.join(" AND "));
+      }
+
+      const rows = await q.toArray();
+      return rows.map(rowToSearchResult);
     } catch {
       // FTS search failed — return empty (non-fatal)
       return [];
@@ -543,6 +561,7 @@ function rowToSearchResult(row: Record<string, unknown>): SearchResult {
     quality_score: row.quality_score as number | undefined,
     token_count: row.token_count as number | undefined,
     parent_heading: row.parent_heading as string | undefined,
+    pool: (row.pool as string | undefined) ?? "agent_memory",
   };
 
   return {
@@ -550,4 +569,47 @@ function rowToSearchResult(row: Record<string, unknown>): SearchResult {
     score,
     snippet: chunk.text.slice(0, 500),
   };
+}
+
+/**
+ * Determine which logical pool a chunk belongs to based on content_type and path.
+ *
+ * Pool routing rules (in priority order):
+ * 1. Explicit pool on chunk → use it
+ * 2. content_type === "tool" or TOOLS.md path → "agent_tools"
+ * 3. MISTAKES.md path or content_type === "mistake" → "shared_mistakes"
+ * 4. content_type === "rule" or "preference" → "shared_rules"
+ * 5. content_type === "reference" → "reference_library"
+ * 6. content_type === "reference_code" → "reference_code"
+ * 7. Everything else → "agent_memory"
+ */
+function resolvePool(chunk: MemoryChunk): string {
+  // Explicit pool overrides auto-routing
+  if (chunk.pool) return chunk.pool;
+
+  const contentType = chunk.content_type ?? "knowledge";
+  const pathLower = (chunk.path ?? "").toLowerCase();
+  const basename = pathLower.split("/").pop() ?? "";
+
+  if (contentType === "tool" || basename === "tools.md" || basename.startsWith("tools-")) {
+    return "agent_tools";
+  }
+
+  if (basename === "mistakes.md" || pathLower.includes("mistakes/") || contentType === "mistake") {
+    return "shared_mistakes";
+  }
+
+  if (contentType === "rule" || contentType === "preference") {
+    return "shared_rules";
+  }
+
+  if (contentType === "reference") {
+    return "reference_library";
+  }
+
+  if (contentType === "reference_code") {
+    return "reference_code";
+  }
+
+  return "agent_memory";
 }

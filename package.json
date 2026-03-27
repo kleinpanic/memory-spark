@@ -20,7 +20,7 @@
     "format:check": "prettier --check 'src/**/*.ts' 'tests/**/*.ts' 'evaluation/**/*.ts'"
   },
   "dependencies": {
-    "@lancedb/lancedb": "^0.14.0",
+    "@lancedb/lancedb": "^0.27.1",
     "@sinclair/typebox": "^0.34.0",
     "apache-arrow": "^18.0.0",
     "chokidar": "^4.0.0",
