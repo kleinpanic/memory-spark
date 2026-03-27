@@ -638,21 +638,21 @@ const memorySpark = {
             }
 
             const fetchN = limit * 3;
+            // Use pool filtering (canonical) — searches both reference_library and reference_code
+            const referencePools = ["reference_library", "reference_code"];
             const [vectorResults, ftsResults] = await Promise.all([
               s.backend
                 .vectorSearch(queryVector, {
                   query: params.query,
                   maxResults: fetchN,
-                  agentId,
-                  contentType: "reference",
+                  pools: referencePools,
                 })
                 .catch(() => []),
               s.backend
                 .ftsSearch(params.query, {
                   query: params.query,
                   maxResults: fetchN,
-                  agentId,
-                  contentType: "reference",
+                  pools: referencePools,
                 })
                 .catch(() => []),
             ]);
