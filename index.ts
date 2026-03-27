@@ -22,6 +22,7 @@ import path from "node:path";
 
 import { resolveConfig, type MemorySparkConfig } from "./src/config.js";
 import { LanceDBBackend } from "./src/storage/lancedb.js";
+import { MultiTableBackend } from "./src/storage/multi-table-backend.js";
 import { createEmbedProvider, type EmbedProvider } from "./src/embed/provider.js";
 import { EmbedQueue } from "./src/embed/queue.js";
 import { validateDimsLock } from "./src/embed/dims-lock.js";
@@ -60,8 +61,20 @@ async function getState(
   initPromise = (async () => {
     logger.info("memory-spark: initializing...");
 
-    const backend = new LanceDBBackend(cfg);
-    await backend.open();
+    // Multi-table backend: per-agent isolation + shared pools + reference separation.
+    // Falls back to legacy single-table LanceDBBackend if multi-table init fails.
+    let backend: StorageBackend;
+    try {
+      const mtb = new MultiTableBackend(cfg);
+      await mtb.open();
+      backend = mtb;
+      logger.info("memory-spark: multi-table backend initialized");
+    } catch (err) {
+      logger.warn(`memory-spark: multi-table init failed, falling back to single-table: ${err}`);
+      const legacyBackend = new LanceDBBackend(cfg);
+      await legacyBackend.open();
+      backend = legacyBackend;
+    }
 
     const embed = await createEmbedProvider(cfg.embed);
     logger.info(`memory-spark: embed → ${embed.id}/${embed.model} (${embed.dims}d)`);
@@ -129,6 +142,19 @@ const ReferenceSearchParams = Type.Object({
   query: Type.String({ description: "What to search for in reference documentation" }),
   tag: Type.Optional(Type.String({ description: "Filter by tag (e.g. 'internal', 'openclaw')" })),
   maxResults: Type.Optional(Type.Number({ description: "Max results (default 10)" })),
+});
+
+const MistakesSearchParams = Type.Object({
+  query: Type.String({ description: "Search for relevant mistakes, errors, and lessons learned" }),
+  maxResults: Type.Optional(Type.Number({ description: "Max results (default 5)" })),
+});
+
+const MistakesStoreParams = Type.Object({
+  description: Type.String({ description: "What went wrong — the mistake or error" }),
+  rootCause: Type.Optional(Type.String({ description: "Root cause analysis" })),
+  fix: Type.Optional(Type.String({ description: "How it was fixed" })),
+  lessons: Type.Optional(Type.String({ description: "Key takeaways to avoid repeating this" })),
+  severity: Type.Optional(Type.String({ description: "Severity: critical, high, medium, low (default: medium)" })),
 });
 
 const IndexStatusParams = Type.Object({
@@ -600,10 +626,121 @@ const memorySpark = {
           },
         };
 
+        // ── Mistakes tools ──────────────────────────────────────────────────
+
+        const mistakesSearchTool = {
+          name: "memory_mistakes_search",
+          description: "Search for relevant mistakes, errors, and lessons learned across all agents. Use when you need to check if a similar mistake has been made before, or to recall how a past error was fixed.",
+          label: "Search Mistakes",
+          parameters: MistakesSearchParams,
+          execute: async (_toolCallId: string, params: { query: string; maxResults?: number }) => {
+            const s = await getState(cfg, api.logger);
+            const maxR = params.maxResults ?? 5;
+            const { MultiTableBackend } = await import("./src/storage/multi-table-backend.js");
+            let results: import("./src/storage/backend.js").SearchResult[];
+            if (s.backend instanceof MultiTableBackend) {
+              // Multi-table: search dedicated shared_mistakes table
+              let vector: number[];
+              try {
+                vector = await s.cachedEmbed.embedQuery(params.query);
+              } catch {
+                return { content: [{ type: "text" as const, text: "Embedding unavailable — cannot search mistakes." }], details: {} };
+              }
+              results = await s.backend.sharedSearch(vector, params.query, { maxResults: maxR, minScore: 0.1 });
+              // Filter to only mistakes-sourced results
+              results = results.filter((r) =>
+                r.chunk.path?.toLowerCase().includes("mistake") || r.chunk.content_type === "mistake"
+              );
+            } else {
+              // Legacy: path-based search
+              let vector: number[];
+              try {
+                vector = await s.cachedEmbed.embedQuery(params.query);
+              } catch {
+                return { content: [{ type: "text" as const, text: "Embedding unavailable." }], details: {} };
+              }
+              results = await s.backend.vectorSearch(vector, {
+                query: params.query,
+                maxResults: maxR,
+                minScore: 0.1,
+                agentId,
+                pathContains: "mistake",
+              }).catch(() => []);
+            }
+            if (results.length === 0) {
+              return { content: [{ type: "text" as const, text: "No relevant mistakes found." }], details: {} };
+            }
+            const text = results.map((r, i) =>
+              `${i + 1}. [${r.chunk.path}] (score: ${r.score.toFixed(2)})\n${r.chunk.text.slice(0, 400)}`
+            ).join("\n\n");
+            return { content: [{ type: "text" as const, text }], details: { resultCount: results.length } };
+          },
+        };
+
+        const mistakesStoreTool = {
+          name: "memory_mistakes_store",
+          description: "Log a mistake, error, or incident for future reference. Stored in the shared mistakes pool visible to all agents. Use when something goes wrong and you want to ensure it's remembered and not repeated.",
+          label: "Log Mistake",
+          parameters: MistakesStoreParams,
+          execute: async (
+            _toolCallId: string,
+            params: {
+              description: string;
+              rootCause?: string;
+              fix?: string;
+              lessons?: string;
+              severity?: string;
+            },
+          ) => {
+            const s = await getState(cfg, api.logger);
+            const { looksLikePromptInjection } = await import("./src/security.js");
+            const fullText = [
+              `Mistake: ${params.description}`,
+              params.rootCause ? `Root Cause: ${params.rootCause}` : "",
+              params.fix ? `Fix: ${params.fix}` : "",
+              params.lessons ? `Lessons: ${params.lessons}` : "",
+              `Severity: ${params.severity ?? "medium"}`,
+              `Agent: ${agentId}`,
+              `Date: ${new Date().toISOString().slice(0, 10)}`,
+            ]
+              .filter(Boolean)
+              .join("\n");
+
+            if (looksLikePromptInjection(fullText)) {
+              return { content: [{ type: "text" as const, text: "Refused: text contains suspicious patterns." }], details: {} };
+            }
+
+            const vector = await s.queue.embedQuery(fullText);
+            const crypto = await import("node:crypto");
+            const now = new Date();
+            const chunk: import("./src/storage/backend.js").MemoryChunk = {
+              id: crypto.randomUUID().slice(0, 16),
+              path: `mistakes/${agentId}/${now.toISOString().slice(0, 10)}`,
+              source: "capture",
+              agent_id: agentId,
+              start_line: 0,
+              end_line: 0,
+              text: fullText,
+              vector,
+              updated_at: now.toISOString(),
+              category: "mistake",
+              content_type: "mistake",
+              entities: "[]",
+              confidence: 1.0,
+            };
+
+            await s.backend.upsert([chunk]);
+            return {
+              content: [{ type: "text" as const, text: `Logged mistake: "${params.description.slice(0, 80)}..." (severity: ${params.severity ?? "medium"})` }],
+              details: { severity: params.severity ?? "medium" },
+            };
+          },
+        };
+
         // eslint-disable-next-line @typescript-eslint/no-explicit-any -- OpenClaw plugin SDK expects untyped tool arrays
-        return [searchTool, getTool, storeTool, forgetTool, referenceSearchTool, indexStatusTool, forgetByPathTool, inspectTool, reindexTool] as any;
+        return [searchTool, getTool, storeTool, forgetTool, referenceSearchTool, indexStatusTool, forgetByPathTool, inspectTool, reindexTool, mistakesSearchTool, mistakesStoreTool] as any;
       },
-      { names: ["memory_search", "memory_get", "memory_store", "memory_forget", "memory_reference_search", "memory_index_status", "memory_forget_by_path", "memory_inspect", "memory_reindex"] },
+      { names: ["memory_search", "memory_get", "memory_store", "memory_forget", "memory_reference_search", "memory_index_status", "memory_forget_by_path", "memory_inspect", "memory_reindex", "memory_mistakes_search", "memory_mistakes_store"] },
     );
 
     // -------------------------------------------------------------------
