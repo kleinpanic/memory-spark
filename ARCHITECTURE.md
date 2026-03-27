@@ -16,115 +16,76 @@
 
 ---
 
-## 1. LanceDB Multi-Table Schema
+## 1. Single-Table + Pool Column Architecture
 
-### Tables
+### Design Decision
 
-| Table | Purpose | Scope | Auto-Inject? | Access Method |
-|-------|---------|-------|-------------|--------------|
-| `agent_{id}_memory` | Agent-specific captures, workspace files, daily notes | Per-agent isolated | ✅ Yes (before_prompt_build) | Auto-recall + `memory_search` tool |
-| `agent_{id}_tools` | TOOLS.md, tool schemas, tool policies | Per-agent isolated | ✅ Yes (tool-context injection) | Auto-inject relevant tools per query |
-| `shared_knowledge` | Cross-agent facts, infrastructure docs, system config | All agents (read), meta (write) | ✅ Yes (limited budget) | Auto-recall with lower priority |
-| `shared_mistakes` | MISTAKES.md entries from all agents | All agents (read/write) | ✅ Yes (1.6x boost, always in context) | Auto-inject top-N mistakes |
-| `reference_library` | PDFs, documentation, SDK docs, OpenClaw docs | All agents (read) | ❌ No | `memory_reference_search` tool only |
-| `reference_code` | Code snippets, examples, patterns | All agents (read) | ❌ No | `memory_reference_search` tool only |
+LanceDB [officially recommends](https://lancedb.com/lp/vector-db-guide/) single-table with metadata columns over multiple tables. Benefits: zero-copy schema evolution, better partition distribution, less infrastructure overhead. Our dataset (~37k chunks) is well below the 10M+ threshold where multi-table IVF_PQ would help.
 
-### Per-Agent Table: `agent_{id}_memory`
+The FTS+WHERE bug that originally motivated multi-table was **fixed in LanceDB 0.27.1** (upgraded from 0.14.1). Validated with a 5-test suite confirming all compound queries work.
+
+### Single Table: `memory_chunks`
 
 ```
 Columns:
-  id:            VARCHAR (UUID)
-  text:          VARCHAR (chunk text)
-  vector:        VECTOR(4096)  -- Nvidia Llama-Embed-Nemotron-8B
-  path:          VARCHAR (relative to agent workspace)
-  source:        VARCHAR ("capture" | "workspace" | "session")
-  content_type:  VARCHAR ("knowledge" | "decision" | "preference" | "fact" | "code")
-  category:      VARCHAR (LLM-classified: fact, preference, decision, code-snippet, etc.)
-  confidence:    FLOAT (classification confidence)
-  entities:      VARCHAR (JSON array of extracted entities)
-  parent_heading: VARCHAR (markdown heading context)
-  start_line:    INT
-  end_line:      INT
-  updated_at:    TIMESTAMP
-  created_at:    TIMESTAMP
-  quality_score: FLOAT (chunk quality at ingest time)
-  
+  id:             VARCHAR (UUID, 16-char)
+  text:           VARCHAR (chunk text, max ~2000 tokens)
+  vector:         VECTOR(4096)  -- Nvidia Llama-Embed-Nemotron-8B via Spark
+  path:           VARCHAR (relative to agent workspace or capture path)
+  source:         VARCHAR ("capture" | "workspace" | "session" | "memory")
+  agent_id:       VARCHAR (owning agent or "shared")
+  pool:           VARCHAR (logical section — see Pool Types below)
+  content_type:   VARCHAR ("knowledge" | "decision" | "preference" | "fact" | "code" | "tool" | "mistake" | "rule" | "reference" | "reference_code")
+  category:       VARCHAR (classifier label: fact, preference, decision, code-snippet, etc.)
+  confidence:     FLOAT (classification confidence, 0.0–1.0)
+  entities:       VARCHAR (JSON array of extracted entities)
+  parent_heading: VARCHAR (markdown heading context above this chunk)
+  quality_score:  FLOAT (chunk quality at ingest time, 0.0–1.0)
+  token_count:    INT (estimated token count)
+  start_line:     INT
+  end_line:       INT
+  updated_at:     TIMESTAMP (file mtime for workspace, capture time for captures)
+
 Indexes:
-  - IVF_PQ vector index (nprobes=20, npartitions=auto)
-  - FTS index on `text` column (BM25, English stemming)
+  - IVF_PQ vector index (numPartitions=10, numSubVectors=64, cosine)
+  - FTS index on `text` column (BM25)
 ```
 
-### Shared Knowledge Table: `shared_knowledge`
+### Pool Types
 
-```
-Columns:
-  (same as agent memory, plus:)
-  contributed_by: VARCHAR (agent_id that created it)
-  visibility:     VARCHAR ("all" | "agents:dev,meta" | custom ACL)
-  
-Access Pattern:
-  - Auto-recalled with 0.8x weight relative to agent's own memory
-  - Useful for: infrastructure facts, system config, shared decisions
-```
+The `pool` column provides logical data isolation within the single table. All filtering uses native LanceDB WHERE clauses (no workarounds).
 
-### Shared Mistakes Table: `shared_mistakes`
+| Pool | Purpose | Scope | Auto-Inject? | Access |
+|------|---------|-------|-------------|--------|
+| `agent_memory` | Workspace files, captures, daily notes | Per-agent (`agent_id` filter) | ✅ Relevance-gated | Auto-recall + `memory_search` |
+| `agent_tools` | TOOLS.md, tool schemas | Per-agent (`agent_id` filter) | ✅ Relevance-gated | Auto-recall |
+| `agent_mistakes` | Per-agent mistake entries | Per-agent (`agent_id` filter) | ✅ Relevance-gated (1.6x boost) | Auto-recall + `memory_mistakes_search` |
+| `shared_knowledge` | Cross-agent facts, infra docs | All agents | ✅ Relevance-gated | Auto-recall + `memory_search` |
+| `shared_mistakes` | Cross-agent shared mistakes | All agents | ✅ Relevance-gated (1.6x boost) | Auto-recall + `memory_mistakes_search` |
+| `shared_rules` | Global rules & preferences | All agents | ✅ Relevance-gated | Auto-recall + `memory_rules_search` |
+| `reference_library` | PDFs, documentation | All agents | ❌ **Never** | `memory_reference_search` only |
+| `reference_code` | Code examples, patterns | All agents | ❌ **Never** | `memory_reference_search` only |
 
-```
-Columns:
-  id:            VARCHAR (UUID)
-  text:          VARCHAR (mistake description + root cause + fix)
-  vector:        VECTOR(4096)
-  agent_id:      VARCHAR (who made the mistake)
-  severity:      VARCHAR ("critical" | "high" | "medium" | "low")
-  date:          TIMESTAMP
-  category:      VARCHAR ("config" | "deployment" | "data" | "logic" | "security")
-  lessons:       VARCHAR (key takeaways)
-  
-Indexes:
-  - IVF_PQ vector index
-  - FTS index on `text`
-  
-Recall:
-  - Always 1.6x weight boost
-  - Top-3 most relevant mistakes injected per turn
-  - Pinned mistakes always present regardless of query relevance
-```
+### Pool Routing
 
-### Reference Library Table: `reference_library`
+`src/storage/pool.ts` — single source of truth. `resolvePool()` determines pool from `content_type` + `path`:
 
-```
-Columns:
-  id:            VARCHAR (UUID)
-  text:          VARCHAR (chunk text)
-  vector:        VECTOR(4096)
-  path:          VARCHAR (original file path)
-  source:        VARCHAR ("pdf" | "markdown" | "html" | "code")
-  title:         VARCHAR (document title)
-  section:       VARCHAR (section/chapter heading)
-  page_number:   INT (for PDFs)
-  doc_version:   VARCHAR (version string if applicable)
-  content_type:  VARCHAR ("documentation" | "api-reference" | "tutorial" | "spec")
-  updated_at:    TIMESTAMP
-  
-Indexes:
-  - IVF_PQ vector index
-  - FTS index on `text`
+1. Explicit `pool` on chunk → use it
+2. `content_type === "tool"` or `TOOLS.md` path → `agent_tools`
+3. `MISTAKES.md` path or `content_type === "mistake"` → `agent_mistakes`
+4. `content_type === "rule"` or `"preference"` → `shared_rules`
+5. `content_type === "reference"` → `reference_library`
+6. `content_type === "reference_code"` → `reference_code`
+7. Default → `agent_memory`
 
-Access:
-  - NEVER auto-injected
-  - Retrieved ONLY via `memory_reference_search` tool call
-  - Agent must explicitly decide to search references
-```
+### Why This Architecture
 
-### Why This Schema
-
-1. **Per-agent isolation eliminates the FTS WHERE workaround.** Currently, FTS + WHERE panics in LanceDB. With per-agent tables, the WHERE clause for `agent_id` filtering is unnecessary — you're already querying the right table.
-
-2. **Reference separation prevents context pollution.** PDFs and docs are large. Auto-injecting them wastes token budget on potentially irrelevant content. Tool-call-only access means agents retrieve exactly what they need.
-
-3. **Mistakes get priority treatment.** A dedicated table means mistakes can have their own recall logic (always boost, pin critical ones) without competing with general knowledge.
-
-4. **Shared knowledge enables cross-agent learning** without mixing everyone's workspace files together.
+1. **Single table follows LanceDB best practices.** Zero-copy schema evolution, no per-table index overhead, simpler operations.
+2. **Pool column enables efficient WHERE filtering.** `WHERE pool = 'shared_rules' AND agent_id = 'meta'` — native, no workaround.
+3. **FTS+WHERE works in LanceDB 0.27.1.** The Arrow panic that forced the 3x overfetch workaround is fixed. Validated with compound query tests.
+4. **Reference separation prevents context pollution.** `reference_library` and `reference_code` are NEVER auto-injected. Tool-call only.
+5. **Per-agent mistakes + shared mistakes.** Agents see their own mistakes first, shared mistakes second. Promotion is explicit via `shared: true` param.
+6. **TableManager + MultiTableBackend retained** in `src/storage/` as alternative backends for future use if scale requires it.
 
 ---
 
