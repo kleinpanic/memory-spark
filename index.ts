@@ -22,7 +22,6 @@ import path from "node:path";
 
 import { resolveConfig, type MemorySparkConfig } from "./src/config.js";
 import { LanceDBBackend } from "./src/storage/lancedb.js";
-import { MultiTableBackend } from "./src/storage/multi-table-backend.js";
 import { createEmbedProvider, type EmbedProvider } from "./src/embed/provider.js";
 import { EmbedQueue } from "./src/embed/queue.js";
 import { validateDimsLock } from "./src/embed/dims-lock.js";
@@ -61,20 +60,12 @@ async function getState(
   initPromise = (async () => {
     logger.info("memory-spark: initializing...");
 
-    // Multi-table backend: per-agent isolation + shared pools + reference separation.
-    // Falls back to legacy single-table LanceDBBackend if multi-table init fails.
-    let backend: StorageBackend;
-    try {
-      const mtb = new MultiTableBackend(cfg);
-      await mtb.open();
-      backend = mtb;
-      logger.info("memory-spark: multi-table backend initialized");
-    } catch (err) {
-      logger.warn(`memory-spark: multi-table init failed, falling back to single-table: ${err}`);
-      const legacyBackend = new LanceDBBackend(cfg);
-      await legacyBackend.open();
-      backend = legacyBackend;
-    }
+    // Single-table backend with pool-based logical isolation.
+    // LanceDB 0.27+ supports FTS+WHERE natively, so no multi-table workaround needed.
+    // Pool column provides logical separation: agent_memory, shared_mistakes, shared_rules, etc.
+    const backend: StorageBackend = new LanceDBBackend(cfg);
+    await backend.open();
+    logger.info("memory-spark: LanceDB backend initialized (single-table + pool architecture)");
 
     const embed = await createEmbedProvider(cfg.embed);
     logger.info(`memory-spark: embed → ${embed.id}/${embed.model} (${embed.dims}d)`);
@@ -648,37 +639,41 @@ const memorySpark = {
           execute: async (_toolCallId: string, params: { query: string; maxResults?: number }) => {
             const s = await getState(cfg, api.logger);
             const maxR = params.maxResults ?? 5;
-            const { MultiTableBackend } = await import("./src/storage/multi-table-backend.js");
-            let results: import("./src/storage/backend.js").SearchResult[];
-            if (s.backend instanceof MultiTableBackend) {
-              // Multi-table: search dedicated shared_mistakes table
-              let vector: number[];
-              try {
-                vector = await s.cachedEmbed.embedQuery(params.query);
-              } catch {
-                return { content: [{ type: "text" as const, text: "Embedding unavailable — cannot search mistakes." }], details: {} };
-              }
-              results = await s.backend.sharedSearch(vector, params.query, { maxResults: maxR, minScore: 0.1 });
-              // Filter to only mistakes-sourced results
-              results = results.filter((r) =>
-                r.chunk.path?.toLowerCase().includes("mistake") || r.chunk.content_type === "mistake"
-              );
-            } else {
-              // Legacy: path-based search
-              let vector: number[];
-              try {
-                vector = await s.cachedEmbed.embedQuery(params.query);
-              } catch {
-                return { content: [{ type: "text" as const, text: "Embedding unavailable." }], details: {} };
-              }
-              results = await s.backend.vectorSearch(vector, {
+            let vector: number[];
+            try {
+              vector = await s.cachedEmbed.embedQuery(params.query);
+            } catch {
+              return { content: [{ type: "text" as const, text: "Embedding unavailable — cannot search mistakes." }], details: {} };
+            }
+
+            // Search both agent-specific and shared mistake pools
+            const [agentMistakes, sharedMistakes] = await Promise.all([
+              s.backend.vectorSearch(vector, {
                 query: params.query,
                 maxResults: maxR,
                 minScore: 0.1,
                 agentId,
-                pathContains: "mistake",
-              }).catch(() => []);
-            }
+                pools: ["agent_mistakes"],
+              }).catch(() => [] as import("./src/storage/backend.js").SearchResult[]),
+              s.backend.vectorSearch(vector, {
+                query: params.query,
+                maxResults: maxR,
+                minScore: 0.1,
+                pools: ["shared_mistakes"],
+              }).catch(() => [] as import("./src/storage/backend.js").SearchResult[]),
+            ]);
+
+            // Merge and deduplicate by ID, keep highest score
+            const seen = new Set<string>();
+            const results = [...agentMistakes, ...sharedMistakes]
+              .sort((a, b) => b.score - a.score)
+              .filter((r) => {
+                if (seen.has(r.chunk.id)) return false;
+                seen.add(r.chunk.id);
+                return true;
+              })
+              .slice(0, maxR);
+
             if (results.length === 0) {
               return { content: [{ type: "text" as const, text: "No relevant mistakes found." }], details: {} };
             }
