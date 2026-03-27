@@ -66,7 +66,7 @@ export interface SearchResult {
 }
 
 export interface BackendStatus {
-  backend: "lancedb" | "sqlite-vec";
+  backend: "lancedb";
   chunkCount: number;
   tableExists: boolean;
   vectorDims?: number;

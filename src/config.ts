@@ -6,7 +6,7 @@ import os from "node:os";
 import path from "node:path";
 
 export type EmbedProviderId = "spark" | "openai" | "gemini";
-// sqlite-vec backend was removed (implementation deleted) — LanceDB is the only backend.
+// LanceDB is the only storage backend (sqlite-vec was removed in v0.3.0).
 // Keeping the type alias for forward compatibility if we add new backends.
 export type StorageBackendId = "lancedb";
 

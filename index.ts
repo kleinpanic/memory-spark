@@ -210,7 +210,7 @@ const memorySpark = {
       properties: {
         sparkHost: { type: "string", description: "Spark node IP/hostname (overrides SPARK_HOST env)" },
         sparkBearerToken: { type: "string", description: "Spark bearer token (overrides SPARK_BEARER_TOKEN env)" },
-        backend: { type: "string", enum: ["lancedb", "sqlite-vec"] },
+        backend: { type: "string", enum: ["lancedb"] },
         lancedbDir: { type: "string", description: "Path to LanceDB data directory" },
         autoRecall: {
           type: "object",
