@@ -12,10 +12,19 @@
  * files and past session transcripts are automatically indexed.
  */
 
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+import chokidar, { type FSWatcher } from "chokidar";
+import { minimatch } from "minimatch";
+
+import { enforceMistakesFiles } from "../auto/mistakes.js";
 import type { WatchConfig, MemorySparkConfig } from "../config.js";
+import { type EmbedQueue } from "../embed/queue.js";
 import type { StorageBackend } from "../storage/backend.js";
-// import type { EmbedProvider } from "../embed/provider.js";
-import { EmbedQueue } from "../embed/queue.js";
+
+import { SUPPORTED_EXTS } from "./parsers.js";
 import type { Embedder } from "./pipeline.js";
 import { ingestFile } from "./pipeline.js";
 import {
@@ -24,13 +33,6 @@ import {
   toRelativePath,
   walkSupportedFiles,
 } from "./workspace.js";
-import { SUPPORTED_EXTS } from "./parsers.js";
-import { enforceMistakesFiles } from "../auto/mistakes.js";
-import chokidar, { type FSWatcher } from "chokidar";
-import { minimatch } from "minimatch";
-import path from "node:path";
-import os from "node:os";
-import fs from "node:fs/promises";
 
 // ---------------------------------------------------------------------------
 // Persistent pending-embed queue
@@ -565,7 +567,6 @@ async function runBootPass(
   );
 
   // Process files sequentially — the EmbedQueue handles backpressure/retry
-  const _CONCURRENCY = 1;
   let errors = 0;
 
   // Dynamic timeout: 60s base + 30s per 50KB of file size

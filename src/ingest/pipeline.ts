@@ -3,19 +3,21 @@
  * Handles both regular files AND session JSONL transcripts.
  */
 
+import crypto from "node:crypto";
+import path from "node:path";
+
+import { tagEntities } from "../classify/ner.js";
+import { scoreChunkQuality } from "../classify/quality.js";
 import type { MemorySparkConfig } from "../config.js";
-import type { StorageBackend, MemoryChunk } from "../storage/backend.js";
+import { chunkDocument, cleanChunkText, estimateTokens } from "../embed/chunker.js";
 import type { EmbedProvider } from "../embed/provider.js";
 import type { EmbedQueue } from "../embed/queue.js";
-import { chunkDocument, cleanChunkText, estimateTokens } from "../embed/chunker.js";
+import type { StorageBackend, MemoryChunk } from "../storage/backend.js";
 import { resolvePool } from "../storage/pool.js";
+
 import { extractText } from "./parsers.js";
 import { extractSessionText } from "./sessions.js";
 import { toRelativePath } from "./workspace.js";
-import { tagEntities } from "../classify/ner.js";
-import { scoreChunkQuality } from "../classify/quality.js";
-import crypto from "node:crypto";
-import path from "node:path";
 
 /** Anything with embedBatch — works with both raw EmbedProvider and EmbedQueue */
 export type Embedder = Pick<EmbedProvider, "embedBatch"> | Pick<EmbedQueue, "embedBatch">;
@@ -87,9 +89,10 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
 
     // 3. Chunk — use reference.chunkSize for reference content, cfg.chunk for others
     const chunkCfg = opts.cfg.chunk;
-    const chunkSize = contentType === "reference"
-      ? (opts.cfg.reference.chunkSize ?? 800)
-      : (chunkCfg?.maxTokens ?? 400);
+    const chunkSize =
+      contentType === "reference"
+        ? (opts.cfg.reference.chunkSize ?? 800)
+        : (chunkCfg?.maxTokens ?? 400);
     const rawChunks = chunkDocument(
       {
         text: rawText,

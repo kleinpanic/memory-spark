@@ -4,8 +4,8 @@
  */
 
 import fs from "node:fs/promises";
-import path from "node:path";
 import os from "node:os";
+import path from "node:path";
 
 export interface SessionEntry {
   path: string; // relative path: sessions/<filename>

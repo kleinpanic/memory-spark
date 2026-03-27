@@ -81,7 +81,8 @@ async function runRetrieval(
   },
 ): Promise<Results> {
   const { createReranker: makeReranker } = await import("../src/rerank/reranker.js");
-  const { hybridMerge, applySourceWeighting, applyTemporalDecay, mmrRerank } = await import("../src/auto/recall.js");
+  const { hybridMerge, applySourceWeighting, applyTemporalDecay, mmrRerank } =
+    await import("../src/auto/recall.js");
   const cfg = resolveConfig();
   const reranker = opts.useReranker !== false ? await makeReranker(cfg.rerank) : null;
   const k = opts.maxResults ?? 10;
@@ -147,20 +148,24 @@ async function runRetrieval(
 
     // Vector search
     if (opts.useVector !== false) {
-      const vResults = await backend.vectorSearch(queryVector, {
-        query: queryText,
-        maxResults: k * 4,
-        minScore: 0.05,
-      }).catch(() => []);
+      const vResults = await backend
+        .vectorSearch(queryVector, {
+          query: queryText,
+          maxResults: k * 4,
+          minScore: 0.05,
+        })
+        .catch(() => []);
       candidates.push(...vResults);
     }
 
     // FTS search
     if (opts.useFts !== false) {
-      const fResults = await backend.ftsSearch(queryText, {
-        query: queryText,
-        maxResults: k * 4,
-      }).catch(() => []);
+      const fResults = await backend
+        .ftsSearch(queryText, {
+          query: queryText,
+          maxResults: k * 4,
+        })
+        .catch(() => []);
       if (candidates.length > 0 && fResults.length > 0) {
         candidates = hybridMerge(candidates, fResults, k * 4);
       } else if (fResults.length > 0) {
@@ -182,7 +187,9 @@ async function runRetrieval(
         final = await reranker.rerank(queryText, diverse.slice(0, 20), k);
       } catch (err) {
         // Reranker failure is not silent — log it but continue with un-reranked results
-        console.warn(`\n    ⚠ Reranker failed for ${queryId}: ${err instanceof Error ? err.message : String(err)}`);
+        console.warn(
+          `\n    ⚠ Reranker failed for ${queryId}: ${err instanceof Error ? err.message : String(err)}`,
+        );
         final = diverse.slice(0, k);
       }
     } else {
@@ -247,7 +254,11 @@ async function tier1RetrievalQuality(
   console.log("\n📊 Tier 1: Retrieval Quality (BEIR Metrics)\n");
 
   const startTime = Date.now();
-  const runAblation = async (name: string, label: string, opts: Parameters<typeof runRetrieval>[3]) => {
+  const runAblation = async (
+    name: string,
+    label: string,
+    opts: Parameters<typeof runRetrieval>[3],
+  ) => {
     const t0 = Date.now();
     process.stdout.write(`  Running: ${label}...`);
     const results = await runRetrieval(dataset, backend, embed, opts);
@@ -265,7 +276,9 @@ async function tier1RetrievalQuality(
 
   // Full pipeline (slow — reranker on CPU takes ~5-10s/query)
   const elapsedSoFar = (Date.now() - startTime) / 1000;
-  console.log(`\n  Baselines done in ${elapsedSoFar.toFixed(0)}s. Running full pipeline (reranker)...`);
+  console.log(
+    `\n  Baselines done in ${elapsedSoFar.toFixed(0)}s. Running full pipeline (reranker)...`,
+  );
   await runAblation("full_pipeline", "Full Pipeline (Vector + FTS + Reranker)", {});
 
   return ablations;
@@ -297,10 +310,10 @@ async function tier2PipelineIntegration(
   ];
   let garbagePassed = 0;
   for (const q of garbageQueries) {
-    const result = await handler(
+    const result = (await handler(
       { prompt: "", messages: [{ role: "user", content: q }] },
       { agentId: "bench" },
-    ) as { prependContext?: string } | undefined;
+    )) as { prependContext?: string } | undefined;
     const text = result?.prependContext ?? "";
     if (!text.match(/\[media attached|\[System:|HEARTBEAT_OK|BEGIN_UNTRUSTED/i)) {
       garbagePassed++;
@@ -315,10 +328,10 @@ async function tier2PipelineIntegration(
   ];
   let budgetPassed = 0;
   for (const q of longQueries) {
-    const result = await handler(
+    const result = (await handler(
       { prompt: "", messages: [{ role: "user", content: q }] },
       { agentId: "bench" },
-    ) as { prependContext?: string } | undefined;
+    )) as { prependContext?: string } | undefined;
     const tokens = Math.ceil((result?.prependContext?.length ?? 0) / 4);
     if (tokens <= (cfg.autoRecall.maxInjectionTokens ?? 2000) * 1.2) {
       budgetPassed++;
@@ -333,10 +346,10 @@ async function tier2PipelineIntegration(
   ];
   let securityPassed = 0;
   for (const q of injectionQueries) {
-    const result = await handler(
+    const result = (await handler(
       { prompt: "", messages: [{ role: "user", content: q }] },
       { agentId: "bench" },
-    ) as { prependContext?: string } | undefined;
+    )) as { prependContext?: string } | undefined;
     const text = result?.prependContext ?? "";
     if (!text.match(/ignore previous|admin mode|override|system prompt/i)) {
       securityPassed++;
@@ -347,10 +360,10 @@ async function tier2PipelineIntegration(
   const shortQueries = ["ok", "hi", "y", ""];
   let minLenPassed = 0;
   for (const q of shortQueries) {
-    const result = await handler(
+    const result = (await handler(
       { prompt: "", messages: [{ role: "user", content: q }] },
       { agentId: "bench" },
-    ) as { prependContext?: string } | undefined;
+    )) as { prependContext?: string } | undefined;
     if (!result?.prependContext || result.prependContext.length === 0) {
       minLenPassed++;
     }
@@ -363,10 +376,16 @@ async function tier2PipelineIntegration(
     minQueryLength: { passed: minLenPassed, total: shortQueries.length },
   };
 
-  console.log(`  Garbage Rejection:  ${results.garbageRejection.passed}/${results.garbageRejection.total}`);
+  console.log(
+    `  Garbage Rejection:  ${results.garbageRejection.passed}/${results.garbageRejection.total}`,
+  );
   console.log(`  Token Budget:       ${results.tokenBudget.passed}/${results.tokenBudget.total}`);
-  console.log(`  Security Filter:    ${results.securityFilter.passed}/${results.securityFilter.total}`);
-  console.log(`  Min Query Length:   ${results.minQueryLength.passed}/${results.minQueryLength.total}`);
+  console.log(
+    `  Security Filter:    ${results.securityFilter.passed}/${results.securityFilter.total}`,
+  );
+  console.log(
+    `  Min Query Length:   ${results.minQueryLength.passed}/${results.minQueryLength.total}`,
+  );
 
   return results;
 }
@@ -422,7 +441,10 @@ async function main() {
   // Write results
   const outputDir = path.join(import.meta.dirname!, "results");
   await fs.mkdir(outputDir, { recursive: true });
-  const outputPath = path.join(outputDir, `benchmark-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.json`);
+  const outputPath = path.join(
+    outputDir,
+    `benchmark-${new Date().toISOString().slice(0, 19).replace(/:/g, "-")}.json`,
+  );
   await fs.writeFile(outputPath, JSON.stringify(output, null, 2));
   console.log(`\n📄 Results saved to: ${outputPath}`);
 

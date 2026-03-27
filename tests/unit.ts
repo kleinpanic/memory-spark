@@ -261,7 +261,9 @@ test("Deep merge partial autoRecall preserves unset defaults", () => {
       minScore: 0.65,
       queryMessageCount: 4,
       maxInjectionTokens: 2000,
-    } as Partial<import("../src/config.js").AutoRecallConfig> as import("../src/config.js").AutoRecallConfig,
+    } as Partial<
+      import("../src/config.js").AutoRecallConfig
+    > as import("../src/config.js").AutoRecallConfig,
   });
   return (
     cfg.autoRecall.agents.length === 2 &&
@@ -347,7 +349,9 @@ test("ignoreAgents override merges into autoRecall", () => {
       minScore: 0.65,
       queryMessageCount: 4,
       maxInjectionTokens: 2000,
-    } as Partial<import("../src/config.js").AutoRecallConfig> as import("../src/config.js").AutoRecallConfig,
+    } as Partial<
+      import("../src/config.js").AutoRecallConfig
+    > as import("../src/config.js").AutoRecallConfig,
   });
   return (
     cfg.autoRecall.ignoreAgents.length === 2 &&
@@ -1007,7 +1011,11 @@ test("Default language config is 'en' with 0.3 threshold", () => {
 });
 
 test("Language config can be overridden to 'all'", () => {
-  const cfg = resolveConfig({ ingest: { language: "all", languageThreshold: 0.5 } as Partial<import("../src/config.js").IngestConfig> as import("../src/config.js").IngestConfig });
+  const cfg = resolveConfig({
+    ingest: { language: "all", languageThreshold: 0.5 } as Partial<
+      import("../src/config.js").IngestConfig
+    > as import("../src/config.js").IngestConfig,
+  });
   assert.strictEqual(cfg.ingest.language, "all");
   assert.strictEqual(cfg.ingest.languageThreshold, 0.5);
 });
@@ -1064,13 +1072,15 @@ test("Actual knowledge content still scores high", () => {
 // ═══════════════════════════════════════════
 // hybridMerge tests
 // ═══════════════════════════════════════════
-import {
-  hybridMerge,
-  applySourceWeighting,
-} from "../src/auto/recall.js";
+import { hybridMerge, applySourceWeighting } from "../src/auto/recall.js";
 // SearchResult and applyTemporalDecay already imported at top of file
 
-function makeSearchResult(id: string, score: number, source: string = "memory", path: string = "test.md"): SearchResult {
+function makeSearchResult(
+  id: string,
+  score: number,
+  source: string = "memory",
+  path: string = "test.md",
+): SearchResult {
   return {
     chunk: {
       id,
@@ -1105,34 +1115,40 @@ test("hybridMerge preserves vector cosine similarity scores", () => {
 });
 
 test("hybridMerge boosts chunks found in both vector AND FTS", () => {
-  const vector = [makeSearchResult("both", 0.80)];
-  const fts = [makeSearchResult("both", 0.50)];
+  const vector = [makeSearchResult("both", 0.8)];
+  const fts = [makeSearchResult("both", 0.5)];
 
   const merged = hybridMerge(vector, fts, 10);
   assert.equal(merged.length, 1);
-  assert.ok(merged[0]!.score > 0.80, `Dual-evidence chunk should score higher than vector-only (got ${merged[0]!.score})`);
+  assert.ok(
+    merged[0]!.score > 0.8,
+    `Dual-evidence chunk should score higher than vector-only (got ${merged[0]!.score})`,
+  );
 });
 
 test("hybridMerge: FTS-only chunks get moderate scores, not cosine-level", () => {
   const vector = [makeSearchResult("v1", 0.85)];
-  const fts = [makeSearchResult("fts-only", 0.90)]; // High BM25 score
+  const fts = [makeSearchResult("fts-only", 0.9)]; // High BM25 score
 
   const merged = hybridMerge(vector, fts, 10);
   const ftsOnlyResult = merged.find((r) => r.chunk.id === "fts-only");
   assert.ok(ftsOnlyResult, "FTS-only chunk should be in results");
-  assert.ok(ftsOnlyResult!.score < 0.85, `FTS-only should score below top vector result (got ${ftsOnlyResult!.score})`);
+  assert.ok(
+    ftsOnlyResult!.score < 0.85,
+    `FTS-only should score below top vector result (got ${ftsOnlyResult!.score})`,
+  );
 });
 
 test("hybridMerge does NOT destroy score spread like old rrfMerge", () => {
-  const vector = [
-    makeSearchResult("excellent", 0.92),
-    makeSearchResult("mediocre", 0.35),
-  ];
+  const vector = [makeSearchResult("excellent", 0.92), makeSearchResult("mediocre", 0.35)];
   const fts: SearchResult[] = [];
 
   const merged = hybridMerge(vector, fts, 10);
   const spread = merged[0]!.score - merged[1]!.score;
-  assert.ok(spread > 0.3, `Score spread should be preserved (was ${spread}). Old rrfMerge compressed 0.92 and 0.35 to within 0.002 of each other.`);
+  assert.ok(
+    spread > 0.3,
+    `Score spread should be preserved (was ${spread}). Old rrfMerge compressed 0.92 and 0.35 to within 0.002 of each other.`,
+  );
 });
 
 test("applySourceWeighting penalizes sessions source", () => {
@@ -1141,8 +1157,14 @@ test("applySourceWeighting penalizes sessions source", () => {
     makeSearchResult("session", 1.0, "sessions", "sessions/chat.jsonl"),
   ];
   applySourceWeighting(results);
-  assert.ok(results[0]!.score > results[1]!.score, "Knowledge should score higher than sessions after weighting");
-  assert.ok(results[1]!.score < 0.6, `Sessions should be heavily penalized (got ${results[1]!.score})`);
+  assert.ok(
+    results[0]!.score > results[1]!.score,
+    "Knowledge should score higher than sessions after weighting",
+  );
+  assert.ok(
+    results[1]!.score < 0.6,
+    `Sessions should be heavily penalized (got ${results[1]!.score})`,
+  );
 });
 
 test("applySourceWeighting boosts MISTAKES.md", () => {
@@ -1152,7 +1174,10 @@ test("applySourceWeighting boosts MISTAKES.md", () => {
   ];
   applySourceWeighting(results);
   assert.ok(results[0]!.score > results[1]!.score, "MISTAKES.md should be boosted");
-  assert.ok(results[0]!.score >= 1.5, `MISTAKES.md should get 1.6x boost (got ${results[0]!.score})`);
+  assert.ok(
+    results[0]!.score >= 1.5,
+    `MISTAKES.md should get 1.6x boost (got ${results[0]!.score})`,
+  );
 });
 
 test("applySourceWeighting with custom weights config", () => {
@@ -1166,7 +1191,10 @@ test("applySourceWeighting with custom weights config", () => {
     paths: { "MISTAKES.md": 2.0 },
     pathPatterns: {},
   });
-  assert.ok(results[0]!.score >= 2.0, `Custom MISTAKES weight should be 2.0x (got ${results[0]!.score})`);
+  assert.ok(
+    results[0]!.score >= 2.0,
+    `Custom MISTAKES weight should be 2.0x (got ${results[0]!.score})`,
+  );
 });
 
 test("applySourceWeighting pathPatterns match substrings", () => {
@@ -1176,19 +1204,17 @@ test("applySourceWeighting pathPatterns match substrings", () => {
   applySourceWeighting(results, {
     sources: { capture: 1.5, memory: 1.0, sessions: 0.5, reference: 1.0 },
     paths: {},
-    pathPatterns: { "mistakes": 1.8 },
+    pathPatterns: { mistakes: 1.8 },
   });
   assert.ok(results[0]!.score >= 1.8, `Pattern match should apply 1.8x (got ${results[0]!.score})`);
 });
 
 test("applySourceWeighting exact path takes precedence over pattern", () => {
-  const results = [
-    makeSearchResult("exact match", 1.0, "memory", "MISTAKES.md"),
-  ];
+  const results = [makeSearchResult("exact match", 1.0, "memory", "MISTAKES.md")];
   applySourceWeighting(results, {
     sources: { capture: 1.5, memory: 1.0, sessions: 0.5, reference: 1.0 },
     paths: { "MISTAKES.md": 2.5 },
-    pathPatterns: { "mistakes": 1.6 },
+    pathPatterns: { mistakes: 1.6 },
   });
   // Exact path match = 2.5x, pattern should NOT also apply
   assert.ok(
@@ -1208,7 +1234,10 @@ test("applyTemporalDecay: recent chunk decays less than old chunk", () => {
   applyTemporalDecay(results);
 
   assert.ok(results[0]!.score > results[1]!.score, "Recent chunk should score higher after decay");
-  assert.ok(results[1]!.score >= 0.79, `Old chunk should still be >= 0.8 floor (got ${results[1]!.score})`);
+  assert.ok(
+    results[1]!.score >= 0.79,
+    `Old chunk should still be >= 0.8 floor (got ${results[1]!.score})`,
+  );
 });
 
 // ── Embedding cache ────────────────────────────────────────────────────
@@ -1314,7 +1343,15 @@ test("Quality gate still allows real decisions to pass", () => {
 // =============================================================
 // BEIR Metrics Tests (must be before summary/exit)
 // =============================================================
-import { ndcgAtK, mrrAtK, recallAtK, mapAtK, precisionAtK, mean, evaluateBEIR } from "../evaluation/metrics.js";
+import {
+  ndcgAtK,
+  mrrAtK,
+  recallAtK,
+  mapAtK,
+  precisionAtK,
+  mean,
+  evaluateBEIR,
+} from "../evaluation/metrics.js";
 
 test("NDCG@3 perfect ranking", () => {
   const qrels = { q1: { d1: 2, d2: 1, d3: 0 } };
@@ -1415,23 +1452,68 @@ test("Precision@k divides by k, not by ranked.length (bug fix)", () => {
 test("MAP@k uses min(totalRelevant, k) denominator (bug fix)", () => {
   // 20 relevant docs but k=5, retriever returns 5 results, only 2 of which are relevant
   const qrels: Record<string, Record<string, number>> = {
-    q1: Object.fromEntries(Array.from({length: 20}, (_, i) => [`d${i}`, 1])),
+    q1: Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`d${i}`, 1])),
   };
   // d0 (relevant), d99 (not relevant), d1 (relevant), d98 (not), d97 (not)
   const results = { q1: { d0: 0.9, d99: 0.8, d1: 0.7, d98: 0.6, d97: 0.5 } };
   // d0 at rank 1: precision=1/1=1.0, d1 at rank 3: precision=2/3=0.667
   // AP = (1.0 + 0.667) / min(20, 5) = 1.667 / 5 = 0.333
   const scores = mapAtK(qrels, results, 5);
-  const expected = (1.0 + 2/3) / 5;
-  assert(Math.abs(scores.q1! - expected) < 0.001, `MAP@5 should be ~${expected.toFixed(3)}, got ${scores.q1}`);
+  const expected = (1.0 + 2 / 3) / 5;
+  assert(
+    Math.abs(scores.q1! - expected) < 0.001,
+    `MAP@5 should be ~${expected.toFixed(3)}, got ${scores.q1}`,
+  );
 });
 
 test("Temporal decay skips NaN timestamps instead of poisoning scores (bug fix)", () => {
   // Fake results with invalid timestamps — cast to satisfy SearchResult shape
   const fakeResults = [
-    { chunk: { id: "a", path: "a", source: "memory", agent_id: "t", start_line: 0, end_line: 0, text: "x", vector: [], updated_at: "invalid-date" }, score: 0.8, snippet: "" },
-    { chunk: { id: "b", path: "b", source: "memory", agent_id: "t", start_line: 0, end_line: 0, text: "x", vector: [], updated_at: new Date().toISOString() }, score: 0.8, snippet: "" },
-    { chunk: { id: "c", path: "c", source: "memory", agent_id: "t", start_line: 0, end_line: 0, text: "x", vector: [], updated_at: "" }, score: 0.8, snippet: "" },
+    {
+      chunk: {
+        id: "a",
+        path: "a",
+        source: "memory",
+        agent_id: "t",
+        start_line: 0,
+        end_line: 0,
+        text: "x",
+        vector: [],
+        updated_at: "invalid-date",
+      },
+      score: 0.8,
+      snippet: "",
+    },
+    {
+      chunk: {
+        id: "b",
+        path: "b",
+        source: "memory",
+        agent_id: "t",
+        start_line: 0,
+        end_line: 0,
+        text: "x",
+        vector: [],
+        updated_at: new Date().toISOString(),
+      },
+      score: 0.8,
+      snippet: "",
+    },
+    {
+      chunk: {
+        id: "c",
+        path: "c",
+        source: "memory",
+        agent_id: "t",
+        start_line: 0,
+        end_line: 0,
+        text: "x",
+        vector: [],
+        updated_at: "",
+      },
+      score: 0.8,
+      snippet: "",
+    },
   ] as SearchResult[];
   applyTemporalDecay(fakeResults);
   // First: invalid date → score unchanged (NaN guard)
@@ -1445,7 +1527,14 @@ test("Temporal decay skips NaN timestamps instead of poisoning scores (bug fix)"
 // ═══════════════════════════════════════════
 // Pool routing tests
 // ═══════════════════════════════════════════
-import { resolvePool, POOL_VALUES, AUTO_INJECT_POOLS, REFERENCE_POOLS, isAutoInjectPool, isAlwaysInjectPool } from "../src/storage/pool.js";
+import {
+  resolvePool,
+  POOL_VALUES,
+  AUTO_INJECT_POOLS,
+  REFERENCE_POOLS,
+  isAutoInjectPool,
+  isAlwaysInjectPool,
+} from "../src/storage/pool.js";
 
 test("resolvePool routes TOOLS.md to agent_tools", () => {
   assert.strictEqual(resolvePool({ path: "workspace/TOOLS.md" }), "agent_tools");
@@ -1455,7 +1544,10 @@ test("resolvePool routes TOOLS.md to agent_tools", () => {
 
 test("resolvePool routes MISTAKES.md to agent_mistakes", () => {
   assert.strictEqual(resolvePool({ path: "workspace/MISTAKES.md" }), "agent_mistakes");
-  assert.strictEqual(resolvePool({ path: "workspace/mistakes/2026-03-27-bug.md" }), "agent_mistakes");
+  assert.strictEqual(
+    resolvePool({ path: "workspace/mistakes/2026-03-27-bug.md" }),
+    "agent_mistakes",
+  );
   assert.strictEqual(resolvePool({ content_type: "mistake" }), "agent_mistakes");
 });
 
@@ -1518,7 +1610,10 @@ test("isAlwaysInjectPool returns true only for shared_rules", () => {
 
 test("AUTO_INJECT_POOLS and REFERENCE_POOLS are disjoint", () => {
   for (const pool of REFERENCE_POOLS) {
-    assert.ok(!(AUTO_INJECT_POOLS as readonly string[]).includes(pool), `${pool} should not be in AUTO_INJECT_POOLS`);
+    assert.ok(
+      !(AUTO_INJECT_POOLS as readonly string[]).includes(pool),
+      `${pool} should not be in AUTO_INJECT_POOLS`,
+    );
   }
 });
 
@@ -1536,13 +1631,20 @@ test("resolvePool covers all original multi-table categories", () => {
   // These were the TableCategory values from the deleted MultiTableBackend.
   // Verify resolvePool produces equivalent pool strings.
   const categories = [
-    "agent_memory", "agent_tools", "agent_mistakes",
-    "shared_knowledge", "shared_mistakes", "shared_rules",
-    "reference_library", "reference_code",
+    "agent_memory",
+    "agent_tools",
+    "agent_mistakes",
+    "shared_knowledge",
+    "shared_mistakes",
+    "shared_rules",
+    "reference_library",
+    "reference_code",
   ];
   for (const cat of categories) {
-    assert.ok(POOL_VALUES.includes(cat as typeof POOL_VALUES[number]),
-      `Pool value '${cat}' should exist in POOL_VALUES`);
+    assert.ok(
+      POOL_VALUES.includes(cat as (typeof POOL_VALUES)[number]),
+      `Pool value '${cat}' should exist in POOL_VALUES`,
+    );
   }
 });
 
@@ -1573,11 +1675,56 @@ test("resolvePool: preference content routes to shared_rules", () => {
 
 test("hybridMerge with pool-scoped results preserves pool metadata", () => {
   const vectorResults: SearchResult[] = [
-    { chunk: { id: "v1", pool: "agent_memory", text: "config tip", path: "a", source: "memory", agent_id: "meta", start_line: 0, end_line: 0, vector: [], updated_at: "" }, score: 0.9, snippet: "" },
-    { chunk: { id: "v2", pool: "shared_mistakes", text: "never do X", path: "b", source: "memory", agent_id: "meta", start_line: 0, end_line: 0, vector: [], updated_at: "" }, score: 0.8, snippet: "" },
+    {
+      chunk: {
+        id: "v1",
+        pool: "agent_memory",
+        text: "config tip",
+        path: "a",
+        source: "memory",
+        agent_id: "meta",
+        start_line: 0,
+        end_line: 0,
+        vector: [],
+        updated_at: "",
+      },
+      score: 0.9,
+      snippet: "",
+    },
+    {
+      chunk: {
+        id: "v2",
+        pool: "shared_mistakes",
+        text: "never do X",
+        path: "b",
+        source: "memory",
+        agent_id: "meta",
+        start_line: 0,
+        end_line: 0,
+        vector: [],
+        updated_at: "",
+      },
+      score: 0.8,
+      snippet: "",
+    },
   ];
   const ftsResults: SearchResult[] = [
-    { chunk: { id: "f1", pool: "shared_rules", text: "prefer concise", path: "c", source: "capture", agent_id: "shared", start_line: 0, end_line: 0, vector: [], updated_at: "" }, score: 3.5, snippet: "" },
+    {
+      chunk: {
+        id: "f1",
+        pool: "shared_rules",
+        text: "prefer concise",
+        path: "c",
+        source: "capture",
+        agent_id: "shared",
+        start_line: 0,
+        end_line: 0,
+        vector: [],
+        updated_at: "",
+      },
+      score: 3.5,
+      snippet: "",
+    },
   ];
   const merged = hybridMerge(vectorResults, ftsResults, 5);
   // All chunks should preserve their pool values
@@ -1594,12 +1741,72 @@ test("hybridMerge with pool-scoped results preserves pool metadata", () => {
 test("Mistakes dedup logic: parallel pool queries merged correctly", () => {
   // Simulate the pattern used in mistakes_search tool
   const agentMistakes: SearchResult[] = [
-    { chunk: { id: "m1", pool: "agent_mistakes", text: "my mistake", path: "a", source: "capture", agent_id: "meta", start_line: 0, end_line: 0, vector: [], updated_at: "" }, score: 0.85, snippet: "" },
-    { chunk: { id: "m2", pool: "agent_mistakes", text: "another one", path: "b", source: "capture", agent_id: "meta", start_line: 0, end_line: 0, vector: [], updated_at: "" }, score: 0.60, snippet: "" },
+    {
+      chunk: {
+        id: "m1",
+        pool: "agent_mistakes",
+        text: "my mistake",
+        path: "a",
+        source: "capture",
+        agent_id: "meta",
+        start_line: 0,
+        end_line: 0,
+        vector: [],
+        updated_at: "",
+      },
+      score: 0.85,
+      snippet: "",
+    },
+    {
+      chunk: {
+        id: "m2",
+        pool: "agent_mistakes",
+        text: "another one",
+        path: "b",
+        source: "capture",
+        agent_id: "meta",
+        start_line: 0,
+        end_line: 0,
+        vector: [],
+        updated_at: "",
+      },
+      score: 0.6,
+      snippet: "",
+    },
   ];
   const sharedMistakes: SearchResult[] = [
-    { chunk: { id: "m1", pool: "shared_mistakes", text: "my mistake (promoted)", path: "a", source: "capture", agent_id: "meta", start_line: 0, end_line: 0, vector: [], updated_at: "" }, score: 0.75, snippet: "" },
-    { chunk: { id: "m3", pool: "shared_mistakes", text: "shared error", path: "c", source: "capture", agent_id: "dev", start_line: 0, end_line: 0, vector: [], updated_at: "" }, score: 0.70, snippet: "" },
+    {
+      chunk: {
+        id: "m1",
+        pool: "shared_mistakes",
+        text: "my mistake (promoted)",
+        path: "a",
+        source: "capture",
+        agent_id: "meta",
+        start_line: 0,
+        end_line: 0,
+        vector: [],
+        updated_at: "",
+      },
+      score: 0.75,
+      snippet: "",
+    },
+    {
+      chunk: {
+        id: "m3",
+        pool: "shared_mistakes",
+        text: "shared error",
+        path: "c",
+        source: "capture",
+        agent_id: "dev",
+        start_line: 0,
+        end_line: 0,
+        vector: [],
+        updated_at: "",
+      },
+      score: 0.7,
+      snippet: "",
+    },
   ];
 
   // Merge and dedup (same logic as the tool)
@@ -1626,10 +1833,12 @@ test("Mistakes dedup logic: parallel pool queries merged correctly", () => {
 test("SearchOptions supports pool and pools fields", () => {
   // Verify the SearchOptions interface supports pool-based filtering
   const singlePool: import("../src/storage/backend.js").SearchOptions = {
-    query: "test", pool: "shared_rules",
+    query: "test",
+    pool: "shared_rules",
   };
   const multiPool: import("../src/storage/backend.js").SearchOptions = {
-    query: "test", pools: ["agent_memory", "agent_tools"],
+    query: "test",
+    pools: ["agent_memory", "agent_tools"],
   };
   assert.strictEqual(singlePool.pool, "shared_rules");
   assert.deepStrictEqual(multiPool.pools, ["agent_memory", "agent_tools"]);
@@ -1637,8 +1846,15 @@ test("SearchOptions supports pool and pools fields", () => {
 
 test("MemoryChunk supports pool field", () => {
   const chunk: MemoryChunk = {
-    id: "test", path: "test", source: "memory", agent_id: "meta",
-    start_line: 0, end_line: 0, text: "test", vector: [], updated_at: "",
+    id: "test",
+    path: "test",
+    source: "memory",
+    agent_id: "meta",
+    start_line: 0,
+    end_line: 0,
+    text: "test",
+    vector: [],
+    updated_at: "",
     pool: "shared_rules",
   };
   assert.strictEqual(chunk.pool, "shared_rules");
@@ -1647,21 +1863,23 @@ test("MemoryChunk supports pool field", () => {
 test("All 8 pool values are accounted for in POOL_VALUES", () => {
   assert.strictEqual(POOL_VALUES.length, 8);
   const expected = [
-    "agent_memory", "agent_tools", "agent_mistakes",
-    "shared_knowledge", "shared_mistakes", "shared_rules",
-    "reference_library", "reference_code",
+    "agent_memory",
+    "agent_tools",
+    "agent_mistakes",
+    "shared_knowledge",
+    "shared_mistakes",
+    "shared_rules",
+    "reference_library",
+    "reference_code",
   ];
   for (const p of expected) {
-    assert.ok(POOL_VALUES.includes(p as typeof POOL_VALUES[number]),
-      `Missing pool value: ${p}`);
+    assert.ok(POOL_VALUES.includes(p as (typeof POOL_VALUES)[number]), `Missing pool value: ${p}`);
   }
 });
 
 test("Auto-inject pools include all non-reference pools", () => {
   // All pools except reference_library and reference_code should be auto-injected
-  const nonRef = POOL_VALUES.filter(
-    (p) => p !== "reference_library" && p !== "reference_code"
-  );
+  const nonRef = POOL_VALUES.filter((p) => p !== "reference_library" && p !== "reference_code");
   for (const p of nonRef) {
     assert.ok(isAutoInjectPool(p), `${p} should be auto-inject`);
   }
@@ -1731,66 +1949,108 @@ test("Default search config: refineFactor 20, retries 3, IVF(10, 64)", () => {
 });
 
 test("mmrLambda override works", () => {
-  const cfg = resolveConfig({ autoRecall: { mmrLambda: 0.5 } } as Partial<import("../src/config.js").MemorySparkConfig>);
+  const cfg = resolveConfig({ autoRecall: { mmrLambda: 0.5 } } as Partial<
+    import("../src/config.js").MemorySparkConfig
+  >);
   assert.strictEqual(cfg.autoRecall.mmrLambda, 0.5);
 });
 
 test("temporalDecay partial override merges correctly", () => {
-  const cfg = resolveConfig({ autoRecall: { temporalDecay: { floor: 0.6 } } } as Partial<import("../src/config.js").MemorySparkConfig>);
+  const cfg = resolveConfig({ autoRecall: { temporalDecay: { floor: 0.6 } } } as Partial<
+    import("../src/config.js").MemorySparkConfig
+  >);
   assert.strictEqual(cfg.autoRecall.temporalDecay?.floor, 0.6);
   assert.strictEqual(cfg.autoRecall.temporalDecay?.rate, 0.03); // default preserved
 });
 
 test("fts sigmoid midpoint override works", () => {
-  const cfg = resolveConfig({ fts: { sigmoidMidpoint: 4.5 } } as Partial<import("../src/config.js").MemorySparkConfig>);
+  const cfg = resolveConfig({ fts: { sigmoidMidpoint: 4.5 } } as Partial<
+    import("../src/config.js").MemorySparkConfig
+  >);
   assert.strictEqual(cfg.fts?.sigmoidMidpoint, 4.5);
   assert.strictEqual(cfg.fts?.enabled, true); // default preserved
 });
 
 test("chunk config override works", () => {
-  const cfg = resolveConfig({ chunk: { maxTokens: 800 } } as Partial<import("../src/config.js").MemorySparkConfig>);
+  const cfg = resolveConfig({ chunk: { maxTokens: 800 } } as Partial<
+    import("../src/config.js").MemorySparkConfig
+  >);
   assert.strictEqual(cfg.chunk?.maxTokens, 800);
   assert.strictEqual(cfg.chunk?.overlapTokens, 50); // default preserved
 });
 
 test("search config override works", () => {
-  const cfg = resolveConfig({ search: { refineFactor: 50 } } as Partial<import("../src/config.js").MemorySparkConfig>);
+  const cfg = resolveConfig({ search: { refineFactor: 50 } } as Partial<
+    import("../src/config.js").MemorySparkConfig
+  >);
   assert.strictEqual(cfg.search?.refineFactor, 50);
   assert.strictEqual(cfg.search?.maxWriteRetries, 3); // default preserved
 });
 
 test("ftsEnabled=false disables FTS in autoRecall", () => {
-  const cfg = resolveConfig({ autoRecall: { ftsEnabled: false } } as Partial<import("../src/config.js").MemorySparkConfig>);
+  const cfg = resolveConfig({ autoRecall: { ftsEnabled: false } } as Partial<
+    import("../src/config.js").MemorySparkConfig
+  >);
   assert.strictEqual(cfg.autoRecall.ftsEnabled, false);
 });
 
 test("applyTemporalDecay uses custom floor and rate", () => {
   const now = new Date();
   const thirtyDaysAgo = new Date(now.getTime() - 30 * 86400 * 1000);
-  const results: SearchResult[] = [{
-    chunk: { id: "t1", path: "a", source: "memory", agent_id: "meta", start_line: 0, end_line: 0, text: "old", vector: [], updated_at: thirtyDaysAgo.toISOString() },
-    score: 1.0, snippet: "",
-  }];
+  const results: SearchResult[] = [
+    {
+      chunk: {
+        id: "t1",
+        path: "a",
+        source: "memory",
+        agent_id: "meta",
+        start_line: 0,
+        end_line: 0,
+        text: "old",
+        vector: [],
+        updated_at: thirtyDaysAgo.toISOString(),
+      },
+      score: 1.0,
+      snippet: "",
+    },
+  ];
 
   // Custom: floor=0.5, rate=0.1 (much more aggressive decay)
   applyTemporalDecay(results, { floor: 0.5, rate: 0.1 });
   // floor + (1 - floor) * exp(-rate * 30) = 0.5 + 0.5 * exp(-3.0) ≈ 0.5 + 0.025 = 0.525
-  assert.ok(results[0]!.score > 0.5 && results[0]!.score < 0.6,
-    `Expected ~0.525, got ${results[0]!.score}`);
+  assert.ok(
+    results[0]!.score > 0.5 && results[0]!.score < 0.6,
+    `Expected ~0.525, got ${results[0]!.score}`,
+  );
 });
 
 test("applyTemporalDecay with default opts matches original formula", () => {
   const now = new Date();
   const sevenDaysAgo = new Date(now.getTime() - 7 * 86400 * 1000);
-  const results: SearchResult[] = [{
-    chunk: { id: "t2", path: "b", source: "memory", agent_id: "meta", start_line: 0, end_line: 0, text: "recent", vector: [], updated_at: sevenDaysAgo.toISOString() },
-    score: 1.0, snippet: "",
-  }];
+  const results: SearchResult[] = [
+    {
+      chunk: {
+        id: "t2",
+        path: "b",
+        source: "memory",
+        agent_id: "meta",
+        start_line: 0,
+        end_line: 0,
+        text: "recent",
+        vector: [],
+        updated_at: sevenDaysAgo.toISOString(),
+      },
+      score: 1.0,
+      snippet: "",
+    },
+  ];
 
   applyTemporalDecay(results); // no opts = use defaults
   // 0.8 + 0.2 * exp(-0.03 * 7) ≈ 0.8 + 0.2 * 0.811 ≈ 0.962
-  assert.ok(results[0]!.score > 0.95 && results[0]!.score < 0.97,
-    `Expected ~0.962, got ${results[0]!.score}`);
+  assert.ok(
+    results[0]!.score > 0.95 && results[0]!.score < 0.97,
+    `Expected ~0.962, got ${results[0]!.score}`,
+  );
 });
 
 // Summary

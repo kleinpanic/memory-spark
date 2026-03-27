@@ -2,8 +2,13 @@
  * LanceDB Storage Backend — primary backend for memory-spark.
  */
 
+import fs from "node:fs/promises";
+
 import * as lancedb from "@lancedb/lancedb";
 import type { Table } from "@lancedb/lancedb";
+
+import type { MemorySparkConfig } from "../config.js";
+
 import type {
   StorageBackend,
   MemoryChunk,
@@ -11,9 +16,7 @@ import type {
   SearchResult,
   BackendStatus,
 } from "./backend.js";
-import type { MemorySparkConfig } from "../config.js";
 import { resolvePool } from "./pool.js";
-import fs from "node:fs/promises";
 
 const TABLE_NAME = "memory_chunks";
 
@@ -311,10 +314,7 @@ export class LanceDBBackend implements StorageBackend {
     }
 
     const rows = await q.toArray();
-    return rows.map(rowToSearchResult).filter((r) => {
-      if (opts.minScore && r.score < opts.minScore) return false;
-      return true;
-    });
+    return rows.map(rowToSearchResult).filter((r) => !(opts.minScore && r.score < opts.minScore));
   }
 
   async ftsSearch(query: string, opts: SearchOptions): Promise<SearchResult[]> {

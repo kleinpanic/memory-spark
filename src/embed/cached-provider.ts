@@ -22,10 +22,7 @@ export interface CachedEmbedProvider extends EmbedLike {
  * Wrap an embed provider (or queue) with query caching.
  * Document embeddings (embedBatch) are NOT cached — they're one-shot during indexing.
  */
-export function withCache(
-  inner: EmbedLike,
-  cfg?: Partial<EmbedCacheConfig>,
-): CachedEmbedProvider {
+export function withCache(inner: EmbedLike, cfg?: Partial<EmbedCacheConfig>): CachedEmbedProvider {
   const cache = new EmbedCache(cfg);
 
   return {
