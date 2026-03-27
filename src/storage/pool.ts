@@ -50,7 +50,10 @@ export const REFERENCE_POOLS: PoolValue[] = [
   "reference_code",
 ];
 
-/** Pools that are always injected regardless of relevance score */
+/**
+ * Pools that are always injected regardless of relevance score.
+ * @public — pool API constant for consumers
+ */
 export const ALWAYS_INJECT_POOLS: PoolValue[] = [
   "shared_rules",
 ];

@@ -93,9 +93,9 @@ async function getState(
     // Cache wraps the queue for query embeddings only (recall).
     // Document embeddings (indexing) bypass the cache via queue directly.
     const cachedEmbed = withCache(queue, {
-      enabled: true,
-      maxSize: 256,
-      ttlMs: 30 * 60 * 1000, // 30 minutes
+      enabled: cfg.embedCache?.enabled ?? true,
+      maxSize: cfg.embedCache?.maxSize ?? 256,
+      ttlMs: cfg.embedCache?.ttlMs ?? (30 * 60 * 1000),
     });
 
     state = { cfg, backend, embed, queue, cachedEmbed, reranker, watcher: null };
@@ -208,9 +208,22 @@ const memorySpark = {
           properties: {
             enabled: { type: "boolean" },
             agents: { type: "array", items: { type: "string" }, description: "Agent IDs or [\"*\"] for all" },
-            maxResults: { type: "number" },
-            minScore: { type: "number" },
-            queryMessageCount: { type: "number" },
+            ignoreAgents: { type: "array", items: { type: "string" }, description: "Agent IDs to exclude from recall" },
+            maxResults: { type: "number", description: "Max memories to inject per turn (default: 5)" },
+            minScore: { type: "number", description: "Minimum similarity score (default: 0.75)" },
+            queryMessageCount: { type: "number", description: "Recent messages used as recall query (default: 2)" },
+            maxInjectionTokens: { type: "number", description: "Token budget for injected memories (default: 2000)" },
+            mmrLambda: { type: "number", description: "MMR diversity lambda 0-1 (default: 0.7, higher=more relevant)" },
+            dedupOverlapThreshold: { type: "number", description: "Context dedup overlap threshold 0-1 (default: 0.4)" },
+            overfetchMultiplier: { type: "number", description: "Overfetch multiplier for search (default: 4)" },
+            ftsEnabled: { type: "boolean", description: "Use FTS alongside vector search (default: true)" },
+            temporalDecay: {
+              type: "object",
+              properties: {
+                floor: { type: "number", description: "Minimum decay multiplier (default: 0.8)" },
+                rate: { type: "number", description: "Decay rate per day (default: 0.03)" },
+              },
+            },
           },
         },
         autoCapture: {
@@ -218,8 +231,11 @@ const memorySpark = {
           properties: {
             enabled: { type: "boolean" },
             agents: { type: "array", items: { type: "string" }, description: "Agent IDs or [\"*\"] for all" },
+            ignoreAgents: { type: "array", items: { type: "string" }, description: "Agent IDs to exclude from capture" },
             categories: { type: "array", items: { type: "string" } },
             minConfidence: { type: "number" },
+            minMessageLength: { type: "number", description: "Minimum chars to consider for capture (default: 30)" },
+            useClassifier: { type: "boolean", description: "Use Spark zero-shot classifier (default: true)" },
           },
         },
         embed: {
@@ -235,11 +251,64 @@ const memorySpark = {
             topN: { type: "number" },
           },
         },
+        fts: {
+          type: "object",
+          description: "Full-text search (BM25) tuning",
+          properties: {
+            enabled: { type: "boolean", description: "Enable FTS alongside vector search (default: true)" },
+            sigmoidMidpoint: { type: "number", description: "BM25 sigmoid normalization center (default: 3.0)" },
+          },
+        },
+        chunk: {
+          type: "object",
+          description: "Document chunking configuration",
+          properties: {
+            maxTokens: { type: "number", description: "Max tokens per chunk (default: 400)" },
+            overlapTokens: { type: "number", description: "Token overlap between chunks (default: 50)" },
+            minTokens: { type: "number", description: "Min tokens for a chunk to be indexed (default: 20)" },
+          },
+        },
+        embedCache: {
+          type: "object",
+          description: "Query embedding cache settings",
+          properties: {
+            enabled: { type: "boolean", description: "Enable embed cache (default: true)" },
+            maxSize: { type: "number", description: "Max cached embeddings (default: 256)" },
+            ttlMs: { type: "number", description: "Cache TTL in milliseconds (default: 1800000)" },
+          },
+        },
+        search: {
+          type: "object",
+          description: "Vector search and index tuning",
+          properties: {
+            refineFactor: { type: "number", description: "ANN refinement factor (default: 20)" },
+            maxWriteRetries: { type: "number", description: "Write conflict retry count (default: 3)" },
+            ivfPartitions: { type: "number", description: "IVF_PQ partitions (default: 10)" },
+            ivfSubVectors: { type: "number", description: "IVF_PQ sub-vectors (default: 64)" },
+          },
+        },
         watch: {
           type: "object",
           properties: {
             enabled: { type: "boolean" },
             indexOnBoot: { type: "boolean" },
+            indexSessions: { type: "boolean", description: "Index session JSONL transcripts (default: false)" },
+          },
+        },
+        ingest: {
+          type: "object",
+          properties: {
+            minQuality: { type: "number", description: "Minimum quality score 0-1 (default: 0.3)" },
+            language: { type: "string", description: "Primary language (default: 'en', use 'all' to disable filtering)" },
+            languageThreshold: { type: "number", description: "Non-Latin char ratio threshold (default: 0.3)" },
+          },
+        },
+        reference: {
+          type: "object",
+          properties: {
+            enabled: { type: "boolean" },
+            paths: { type: "array", items: { type: "string" }, description: "Additional paths to index as reference" },
+            chunkSize: { type: "number", description: "Chunk size for reference docs (default: 800)" },
           },
         },
       },
