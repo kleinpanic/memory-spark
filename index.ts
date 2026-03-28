@@ -1265,6 +1265,7 @@ const memorySpark = {
           backend: s.backend,
           embed: s.cachedEmbed,
           reranker: s.reranker,
+          hyde: cfg.hyde,
         });
         return await handler(event, ctx);
       } catch {
