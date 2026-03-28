@@ -123,9 +123,9 @@ async function runPreflight(): Promise<boolean> {
 
   const projectRoot = path.resolve(import.meta.dirname!, "..");
   const checks = [
-    { name: "Vitest Unit Tests", cmd: "npx vitest run" },
-    { name: "TypeScript Typecheck", cmd: "npx tsc --noEmit" },
-    { name: "ESLint (src/)", cmd: "npx eslint src/ --max-warnings 20" },
+    { name: "Vitest Unit Tests", cmd: "npx vitest run", cleanEnv: true },
+    { name: "TypeScript Typecheck", cmd: "npx tsc --noEmit", cleanEnv: false },
+    { name: "ESLint (src/)", cmd: "npx eslint src/ --max-warnings 20", cleanEnv: false },
   ];
 
   let allPassed = true;
@@ -133,11 +133,17 @@ async function runPreflight(): Promise<boolean> {
     const start = Date.now();
     process.stdout.write(`  ▶ ${check.name}... `);
     try {
+      // Unit tests need a clean env: MEMORY_SPARK_DATA_DIR would redirect
+      // their fresh temp index to the benchmark data directory, causing failures.
+      const env = check.cleanEnv
+        ? Object.fromEntries(Object.entries(process.env).filter(([k]) => k !== "MEMORY_SPARK_DATA_DIR"))
+        : process.env;
       execSync(check.cmd, { // eslint-disable-line sonarjs/os-command -- preflight commands are hardcoded, not user input
         cwd: projectRoot,
         encoding: "utf-8",
         timeout: 120000,
         stdio: ["pipe", "pipe", "pipe"],
+        env: env as NodeJS.ProcessEnv,
       });
       const elapsed = ((Date.now() - start) / 1000).toFixed(1);
       console.log(`✅ (${elapsed}s)`);
