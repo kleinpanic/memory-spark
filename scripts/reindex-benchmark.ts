@@ -36,6 +36,7 @@ const CORE_AGENTS = [
   "recovery",
   "research",
   "taskmaster",
+  "immune",    // Security/audit agent — has MISTAKES.md, TOOLS.md, distinct role
 ];
 
 const logger = {
