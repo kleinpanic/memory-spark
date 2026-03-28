@@ -48,7 +48,7 @@ import { createReranker } from "../src/rerank/reranker.js";
 import type { SearchResult } from "../src/storage/backend.js";
 import { LanceDBBackend } from "../src/storage/lancedb.js";
 
-import { judgeRetrievalResults } from "./judge.js";
+import { judgeRetrievalResults, computeJudgeNDCG } from "./judge.js";
 import { evaluateBEIR, formatBEIRResults, type Qrels, type Results } from "./metrics.js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -369,6 +369,156 @@ async function runRetrieval(
   return { results, judgeScores: enableJudge ? judgeScores : undefined };
 }
 
+/**
+ * Production-mirror retrieval — mirrors the exact multi-pool search strategy
+ * from src/auto/recall.ts to close the "eval-vs-prod" gap (audit finding #6).
+ *
+ * Key differences from runRetrieval:
+ *   1. Multi-pool search with independent limits per pool
+ *   2. Per-pool merging (mistakes get 5 slots, shared gets 10, etc.)
+ *   3. FTS sessions source filter
+ *   4. Parent-child expansion + deduplication by expanded parent tag
+ */
+async function runProductionRetrieval(
+  dataset: GoldenDataset,
+  backend: LanceDBBackend,
+  embed: EmbedQueue,
+  rerankerInstance: Awaited<ReturnType<typeof createReranker>> | null,
+  hydeConfig?: HydeConfig,
+): Promise<{ results: Results; judgeScores?: Record<string, number[]> }> {
+  const cfg = resolveConfig();
+  const maxResults = cfg.autoRecall.maxResults ?? 10;
+  const fetchN = maxResults * (cfg.autoRecall.overfetchMultiplier ?? 4);
+  const minScore = cfg.autoRecall.minScore ?? 0.1;
+  const lowThreshold = Math.max(minScore * 0.7, 0.05);
+  const lookup = buildCorpusLookup(dataset.corpus);
+  const results: Results = {};
+  const judgeScores: Record<string, number[]> = {};
+  const queryEntries = Object.entries(dataset.queries);
+
+  // Helper: hybrid search within specific pool(s) — mirrors production poolSearch
+  const poolSearch = async (
+    queryText: string,
+    queryVector: number[],
+    pools: string[],
+    limit: number,
+    threshold: number,
+  ): Promise<SearchResult[]> => {
+    const searchOpts = { query: queryText, maxResults: limit, minScore: threshold, pools };
+    const vectorResults = await backend.vectorSearch(queryVector, searchOpts).catch(() => []);
+    const rawFtsResults = await backend.ftsSearch(queryText, searchOpts).catch(() => []);
+    // Production filters: no sessions source, minScore threshold
+    const ftsResults = rawFtsResults.filter(
+      (r) => r.chunk.source !== "sessions" && r.score >= threshold,
+    );
+    const merged = hybridMerge(vectorResults, ftsResults, limit);
+    return merged.filter((r) => !r.chunk.is_parent);
+  };
+
+  for (let i = 0; i < queryEntries.length; i++) {
+    const [queryId, queryText] = queryEntries[i]!;
+    if ((i + 1) % 10 === 0 || i === queryEntries.length - 1) {
+      process.stdout.write(`\r    [${i + 1}/${queryEntries.length}]`);
+    }
+
+    if (queryText.length < 4) {
+      results[queryId] = {};
+      continue;
+    }
+
+    // HyDE embedding (matches production)
+    let queryVector: number[];
+    if (hydeConfig?.enabled) {
+      const hypothetical = await generateHypotheticalDocument(queryText, hydeConfig);
+      queryVector = hypothetical
+        ? await embed.embedQuery(hypothetical)
+        : await embed.embedQuery(queryText);
+    } else {
+      queryVector = await embed.embedQuery(queryText);
+    }
+
+    // Multi-pool search — exact production strategy
+    const agentResults = await poolSearch(queryText, queryVector, ["agent_memory", "agent_tools"], fetchN, minScore);
+    const agentMistakes = await poolSearch(queryText, queryVector, ["agent_mistakes"], 5, lowThreshold);
+    const sharedMistakes = await poolSearch(queryText, queryVector, ["shared_mistakes"], 5, lowThreshold);
+    const sharedKnowledge = await poolSearch(queryText, queryVector, ["shared_knowledge"], 10, lowThreshold);
+    const sharedRules = await poolSearch(queryText, queryVector, ["shared_rules"], 5, lowThreshold);
+
+    // Merge with dedup (matches production mergeIn)
+    const merged: SearchResult[] = [...agentResults];
+    const seenIds = new Set(merged.map((r) => r.chunk.id));
+    for (const batch of [agentMistakes, sharedMistakes, sharedKnowledge, sharedRules]) {
+      for (const r of batch) {
+        if (!seenIds.has(r.chunk.id)) {
+          merged.push(r);
+          seenIds.add(r.chunk.id);
+        }
+      }
+    }
+
+    // Source weighting → Temporal decay → MMR → Reranker (matches production order)
+    applySourceWeighting(merged, cfg.autoRecall.weights);
+    applyTemporalDecay(merged, cfg.autoRecall.temporalDecay);
+    let candidates = mmrRerank(merged, maxResults * 2, cfg.autoRecall.mmrLambda ?? 0.7);
+
+    if (rerankerInstance) {
+      try {
+        candidates = await rerankerInstance.rerank(queryText, candidates.slice(0, 20), maxResults);
+      } catch {
+        candidates = candidates.slice(0, maxResults);
+      }
+    } else {
+      candidates = candidates.slice(0, maxResults);
+    }
+
+    // Parent expansion + dedup (matches production)
+    const parentIds = new Set<string>();
+    for (const c of candidates) {
+      if (c.chunk.parent_id && !c.chunk.is_parent) parentIds.add(c.chunk.parent_id);
+    }
+    if (parentIds.size > 0) {
+      try {
+        const parents = await backend.getByIds(Array.from(parentIds));
+        const parentMap = new Map(parents.map((p) => [p.id, p]));
+        const seenParents = new Set<string>();
+        const deduped: SearchResult[] = [];
+        for (const c of candidates) {
+          if (c.chunk.parent_id && !c.chunk.is_parent) {
+            const parent = parentMap.get(c.chunk.parent_id);
+            if (parent) {
+              c.chunk.text = parent.text;
+              const tag = `expanded:${c.chunk.parent_id}`;
+              c.chunk.parent_id = tag;
+              if (seenParents.has(tag)) continue;
+              seenParents.add(tag);
+            }
+          }
+          deduped.push(c);
+        }
+        candidates = deduped;
+      } catch {
+        /* graceful fallback */
+      }
+    }
+
+    // LLM-as-judge
+    if (enableJudge && candidates.length > 0) {
+      try {
+        const topChunks = candidates.slice(0, 5);
+        const judgeResults = await judgeRetrievalResults(queryId, queryText, topChunks);
+        judgeScores[queryId] = judgeResults.map((jr) => jr.score);
+      } catch {
+        /* judge failure doesn't block */
+      }
+    }
+
+    results[queryId] = matchRetrievalToCorpus(candidates, lookup);
+  }
+
+  process.stdout.write("\r" + " ".repeat(40) + "\r");
+  return { results, judgeScores: enableJudge ? judgeScores : undefined };
+}
+
 // ── Tier 1: Retrieval Quality ───────────────────────────────────────────────
 
 async function tier1(
@@ -392,8 +542,15 @@ async function tier1(
 
   console.log(`\n📊 Tier 1: Retrieval Quality (${queryCount} queries with relevant docs)\n`);
 
-  const ablations: Record<string, { beir: ReturnType<typeof evaluateBEIR>; judgeAvg?: number }> =
-    {};
+  const ablations: Record<
+    string,
+    {
+      beir: ReturnType<typeof evaluateBEIR>;
+      judgeAvg?: number;
+      judgeNdcg?: number;
+      composite?: number;
+    }
+  > = {};
 
   const runAblation = async (name: string, cfg: Partial<RetrievalConfig>) => {
     const config = { ...DEFAULT_RETRIEVAL, ...cfg };
@@ -410,17 +567,49 @@ async function tier1(
     const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
     const beir = evaluateBEIR(evalDataset.qrels, results);
 
-    // Compute average judge score if available
+    // Compute judge metrics if available (#9: wire judge into composite NDCG)
     let judgeAvg: number | undefined;
+    let judgeNdcg: number | undefined;
+    let composite: number | undefined;
     if (judgeScores) {
       const allScores = Object.values(judgeScores).flat();
       judgeAvg =
         allScores.length > 0 ? allScores.reduce((a, b) => a + b, 0) / allScores.length : undefined;
+
+      // Compute per-query judge NDCG and average across queries
+      const queryNdcgs: number[] = [];
+      for (const [, scores] of Object.entries(judgeScores)) {
+        if (scores.length > 0) {
+          // Build JudgeResult-like objects for computeJudgeNDCG
+          const fakeResults = scores.map((s, i) => ({
+            queryId: "",
+            query: "",
+            chunkId: `chunk_${i}`,
+            chunkText: "",
+            score: s,
+            rawResponse: "",
+          }));
+          queryNdcgs.push(computeJudgeNDCG(fakeResults, 10));
+        }
+      }
+      judgeNdcg =
+        queryNdcgs.length > 0
+          ? queryNdcgs.reduce((a, b) => a + b, 0) / queryNdcgs.length
+          : undefined;
+
+      // Composite: 70% BEIR NDCG@10 + 30% Judge NDCG (weighted blend)
+      // This balances corpus-based retrieval accuracy with LLM-judged relevance.
+      const beirNdcg10 = beir.ndcg["@10"] ?? 0;
+      if (judgeNdcg !== undefined) {
+        composite = 0.7 * beirNdcg10 + 0.3 * judgeNdcg;
+      }
     }
 
-    ablations[name] = { beir, judgeAvg };
+    ablations[name] = { beir, judgeAvg, judgeNdcg, composite };
     let extra = "";
-    if (judgeAvg !== undefined) extra = ` | Judge: ${judgeAvg.toFixed(2)}/5`;
+    if (judgeAvg !== undefined) extra += ` | Judge: ${judgeAvg.toFixed(2)}/5`;
+    if (judgeNdcg !== undefined) extra += ` | J-NDCG: ${judgeNdcg.toFixed(4)}`;
+    if (composite !== undefined) extra += ` | Composite: ${composite.toFixed(4)}`;
     console.log(` (${elapsed}s)${extra}`);
     console.log(formatBEIRResults(beir));
     return { results, judgeScores };
@@ -499,6 +688,77 @@ async function tier1(
         useHyde: true,
       });
     }
+  }
+
+  // Production-Mirror: exact multi-pool search strategy from src/auto/recall.ts (#6)
+  // This uses separate pool searches with independent limits, matching how
+  // the real auto-recall handler retrieves memories in production.
+  if (!quick) {
+    const t0 = Date.now();
+    process.stdout.write("  Production Mirror (multi-pool)...");
+    const { results: prodResults, judgeScores: prodJudge } = await runProductionRetrieval(
+      evalDataset,
+      backend,
+      embed,
+      reranker,
+      hydeConfig,
+    );
+    const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
+    const beir = evaluateBEIR(evalDataset.qrels, prodResults);
+    let judgeAvg: number | undefined;
+    let judgeNdcg: number | undefined;
+    let composite: number | undefined;
+    if (prodJudge) {
+      const allScores = Object.values(prodJudge).flat();
+      judgeAvg =
+        allScores.length > 0 ? allScores.reduce((a, b) => a + b, 0) / allScores.length : undefined;
+      const queryNdcgs: number[] = [];
+      for (const [, scores] of Object.entries(prodJudge)) {
+        if (scores.length > 0) {
+          const fakeResults = scores.map((s, i) => ({
+            queryId: "",
+            query: "",
+            chunkId: `chunk_${i}`,
+            chunkText: "",
+            score: s,
+            rawResponse: "",
+          }));
+          queryNdcgs.push(computeJudgeNDCG(fakeResults, 10));
+        }
+      }
+      judgeNdcg =
+        queryNdcgs.length > 0
+          ? queryNdcgs.reduce((a, b) => a + b, 0) / queryNdcgs.length
+          : undefined;
+      const beirNdcg10 = beir.ndcg["@10"] ?? 0;
+      if (judgeNdcg !== undefined) {
+        composite = 0.7 * beirNdcg10 + 0.3 * judgeNdcg;
+      }
+    }
+    ablations["production_mirror"] = { beir, judgeAvg, judgeNdcg, composite };
+    let extra = "";
+    if (judgeAvg !== undefined) extra += ` | Judge: ${judgeAvg.toFixed(2)}/5`;
+    if (judgeNdcg !== undefined) extra += ` | J-NDCG: ${judgeNdcg.toFixed(4)}`;
+    if (composite !== undefined) extra += ` | Composite: ${composite.toFixed(4)}`;
+    console.log(` (${elapsed}s)${extra}`);
+    console.log(formatBEIRResults(beir));
+  }
+
+  // Summary table with composite scores (#9: judge integrated into primary metric)
+  if (enableJudge && Object.values(ablations).some((a) => a.composite !== undefined)) {
+    console.log("\n📊 Composite Score Summary (70% BEIR-NDCG@10 + 30% Judge-NDCG)\n");
+    console.log(`  ${"Config".padEnd(35)}  ${"NDCG@10".padStart(8)}  ${"J-NDCG".padStart(8)}  ${"Composite".padStart(10)}`);
+    console.log("  " + "─".repeat(65));
+    const sorted = Object.entries(ablations)
+      .filter(([, a]) => a.composite !== undefined)
+      .sort(([, a], [, b]) => (b.composite ?? 0) - (a.composite ?? 0));
+    for (const [name, a] of sorted) {
+      const ndcg10 = a.beir.ndcg["@10"] ?? 0;
+      console.log(
+        `  ${name.padEnd(35)}  ${ndcg10.toFixed(4).padStart(8)}  ${(a.judgeNdcg ?? 0).toFixed(4).padStart(8)}  ${(a.composite ?? 0).toFixed(4).padStart(10)}`,
+      );
+    }
+    console.log();
   }
 
   return ablations;

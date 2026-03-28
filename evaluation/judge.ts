@@ -15,8 +15,8 @@ import type { SearchResult } from "../src/storage/backend.js";
 
 // ── Config ──────────────────────────────────────────────────────────────────
 
-// eslint-disable-next-line sonarjs/no-clear-text-protocols -- internal LAN endpoint, no TLS needed
-const SPARK_LLM_URL = "http://127.0.0.1:18080/v1/chat/completions";
+const SPARK_HOST = process.env.SPARK_HOST ?? "127.0.0.1"; // eslint-disable-line sonarjs/no-hardcoded-ip -- env-overridable fallback for local LAN
+const SPARK_LLM_URL = `http://${SPARK_HOST}:18080/v1/chat/completions`;
 const SPARK_API_KEY = "610b70253998918445408763682298af4c1f492fae39c9289f938f55f7c47310";
 const MODEL = "nemotron-super";
 const MAX_PARALLEL = 3;
