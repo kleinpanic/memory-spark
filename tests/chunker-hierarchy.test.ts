@@ -3,11 +3,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import {
-  chunkDocument,
-  chunkDocumentHierarchical,
-  estimateTokens,
-} from "../src/embed/chunker.js";
+import { chunkDocument, chunkDocumentHierarchical, estimateTokens } from "../src/embed/chunker.js";
 
 describe("Hierarchical Chunking", () => {
   const sampleMarkdown = `# OpenClaw Architecture
@@ -102,9 +98,12 @@ Cron jobs use OpenClaw's built-in scheduler which supports "at" (one-shot), "eve
   });
 
   it("parent IDs are unique", () => {
-    const result = chunkDocumentHierarchical(
-      { text: sampleMarkdown, path: "test.md", source: "memory", ext: "md" },
-    );
+    const result = chunkDocumentHierarchical({
+      text: sampleMarkdown,
+      path: "test.md",
+      source: "memory",
+      ext: "md",
+    });
 
     const ids = result.map((r) => r.parent.id);
     const uniqueIds = new Set(ids);
@@ -112,9 +111,12 @@ Cron jobs use OpenClaw's built-in scheduler which supports "at" (one-shot), "eve
   });
 
   it("all children reference valid parent IDs", () => {
-    const result = chunkDocumentHierarchical(
-      { text: sampleMarkdown, path: "test.md", source: "memory", ext: "md" },
-    );
+    const result = chunkDocumentHierarchical({
+      text: sampleMarkdown,
+      path: "test.md",
+      source: "memory",
+      ext: "md",
+    });
 
     const parentIds = new Set(result.map((r) => r.parent.id));
 
@@ -126,9 +128,12 @@ Cron jobs use OpenClaw's built-in scheduler which supports "at" (one-shot), "eve
   });
 
   it("preserves parentHeading in children", () => {
-    const result = chunkDocumentHierarchical(
-      { text: sampleMarkdown, path: "test.md", source: "memory", ext: "md" },
-    );
+    const result = chunkDocumentHierarchical({
+      text: sampleMarkdown,
+      path: "test.md",
+      source: "memory",
+      ext: "md",
+    });
 
     // At least some children should have a parentHeading from the markdown
     const allChildren = result.flatMap((r) => r.children);
@@ -137,16 +142,22 @@ Cron jobs use OpenClaw's built-in scheduler which supports "at" (one-shot), "eve
   });
 
   it("returns empty array for empty input", () => {
-    const result = chunkDocumentHierarchical(
-      { text: "", path: "empty.md", source: "memory", ext: "md" },
-    );
+    const result = chunkDocumentHierarchical({
+      text: "",
+      path: "empty.md",
+      source: "memory",
+      ext: "md",
+    });
     expect(result).toEqual([]);
   });
 
   it("returns empty array for whitespace-only input", () => {
-    const result = chunkDocumentHierarchical(
-      { text: "   \n\n   ", path: "empty.md", source: "memory", ext: "md" },
-    );
+    const result = chunkDocumentHierarchical({
+      text: "   \n\n   ",
+      path: "empty.md",
+      source: "memory",
+      ext: "md",
+    });
     expect(result).toEqual([]);
   });
 
@@ -177,7 +188,8 @@ Cron jobs use OpenClaw's built-in scheduler which supports "at" (one-shot), "eve
   });
 
   it("handles small documents (single parent)", () => {
-    const small = "# OpenClaw Gateway\n\nThe gateway daemon is the central process that coordinates all agents in the system. It manages sessions, routes messages between users and agents, and handles tool execution. Configuration is stored in openclaw.json.";
+    const small =
+      "# OpenClaw Gateway\n\nThe gateway daemon is the central process that coordinates all agents in the system. It manages sessions, routes messages between users and agents, and handles tool execution. Configuration is stored in openclaw.json.";
     const result = chunkDocumentHierarchical(
       { text: small, path: "small.md", source: "memory", ext: "md" },
       { parentMaxTokens: 2000, childMaxTokens: 200, childMinTokens: 10 },

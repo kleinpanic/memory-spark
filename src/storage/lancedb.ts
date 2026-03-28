@@ -99,7 +99,15 @@ export class LanceDBBackend implements StorageBackend {
     try {
       const schema = await this.table.schema();
       const existingFields = new Set(schema.fields.map((f) => f.name));
-      const needed = ["content_type", "quality_score", "token_count", "parent_heading", "pool", "parent_id", "is_parent"];
+      const needed = [
+        "content_type",
+        "quality_score",
+        "token_count",
+        "parent_heading",
+        "pool",
+        "parent_id",
+        "is_parent",
+      ];
       this.schemaHasNewColumns = needed.every((n) => existingFields.has(n));
     } catch {
       this.schemaHasNewColumns = false;
@@ -426,10 +434,7 @@ export class LanceDBBackend implements StorageBackend {
   async getByIds(ids: string[]): Promise<MemoryChunk[]> {
     if (!this.table || ids.length === 0) return [];
     const escaped = ids.map((id) => `'${escapeSql(id)}'`).join(", ");
-    const rows = await this.table
-      .query()
-      .where(`id IN (${escaped})`)
-      .toArray();
+    const rows = await this.table.query().where(`id IN (${escaped})`).toArray();
     return rows as MemoryChunk[];
   }
 

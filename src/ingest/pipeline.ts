@@ -145,8 +145,16 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
       // Collect all texts to embed (parents first, then children)
       const parentTexts: string[] = [];
       const childTexts: string[] = [];
-      const parentMeta: Array<{ parentId: string; chunk: typeof hierarchical[0]["parent"]; quality: number }> = [];
-      const childMeta: Array<{ parentId: string; chunk: typeof hierarchical[0]["children"][0]; quality: number }> = [];
+      const parentMeta: Array<{
+        parentId: string;
+        chunk: (typeof hierarchical)[0]["parent"];
+        quality: number;
+      }> = [];
+      const childMeta: Array<{
+        parentId: string;
+        chunk: (typeof hierarchical)[0]["children"][0];
+        quality: number;
+      }> = [];
 
       for (const group of hierarchical) {
         const cleanedParentText = cleanChunkText(group.parent.text);

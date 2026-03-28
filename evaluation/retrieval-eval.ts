@@ -4,12 +4,11 @@
  * Also tests the full hybrid pipeline (vector + FTS + rerank).
  */
 
-import { resolveConfig } from "../src/config.js";
-import { LanceDBBackend } from "../src/storage/lancedb.js";
-import { createEmbedProvider } from "../src/embed/provider.js";
-import { createReranker } from "../src/rerank/reranker.js";
 import { applySourceWeighting, applyTemporalDecay } from "../src/auto/recall.js";
+import { resolveConfig } from "../src/config.js";
+import { createEmbedProvider } from "../src/embed/provider.js";
 import type { SearchResult } from "../src/storage/backend.js";
+import { LanceDBBackend } from "../src/storage/lancedb.js";
 
 const TEST_QUERIES = [
   {
@@ -59,7 +58,6 @@ async function main() {
   const backend = new LanceDBBackend(cfg);
   await backend.open();
   const embed = await createEmbedProvider(cfg.embed);
-  const reranker = await createReranker(cfg.rerank);
 
   const status = await backend.status();
   console.log(`Index: ${status.chunkCount} chunks`);

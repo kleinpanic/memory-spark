@@ -6,10 +6,10 @@
 
 import type { AutoRecallConfig, RecallWeights, HydeConfig } from "../config.js";
 import { shouldProcessAgent } from "../config.js";
-import { generateHypotheticalDocument } from "../hyde/generator.js";
 import type { EmbedLike } from "../embed/cached-provider.js";
 import type { EmbedProvider } from "../embed/provider.js";
 import type { EmbedQueue } from "../embed/queue.js";
+import { generateHypotheticalDocument } from "../hyde/generator.js";
 import type { Reranker } from "../rerank/reranker.js";
 import { looksLikePromptInjection, formatRecalledMemories } from "../security.js";
 import type { StorageBackend, SearchResult } from "../storage/backend.js";
@@ -356,8 +356,11 @@ export function hybridMerge(
     const ftsRankScore = 0.5 / (1 + rank * 0.1); // 0.50, 0.45, 0.42, ...
 
     if (existing) {
-      // Found in both vector AND FTS — boost score (dual evidence)
-      existing.score += 0.1 + (1 / (k + rank)) * 2;
+      // Found in both vector AND FTS — dual evidence boost.
+      // Use pure RRF rank component (no flat constant) scaled to be meaningful.
+      // At rank 0: boost = 10/60 = 0.167; at rank 59: boost = 10/119 = 0.084.
+      // This preserves rank discrimination unlike the old 0.1 + ... formula.
+      existing.score += (1 / (k + rank)) * 10;
       existing.sources = 2;
     } else {
       // FTS-only: use a moderate score — these lack semantic similarity
@@ -369,10 +372,12 @@ export function hybridMerge(
     }
   });
 
+  // Cap all scores at 1.0 to maintain cosine-similarity semantics.
+  // Downstream filters (minScore) and confidence attributes expect [0, 1].
   return Array.from(merged.values())
     .sort((a, b) => b.score - a.score)
     .slice(0, limit)
-    .map((s) => ({ ...s.result, score: s.score }));
+    .map((s) => ({ ...s.result, score: Math.min(1.0, s.score) }));
 }
 
 /**
@@ -412,7 +417,8 @@ export function mmrRerank(results: SearchResult[], limit: number, lambda: number
   if (results.length <= 1) return results;
 
   const tokenSets = results.map((r) => tokenize(r.chunk.text));
-  const selected: SearchResult[] = [];
+  // Precompute index map for O(1) lookup — avoids O(n) indexOf in inner loop
+  const selectedIndices: number[] = [];
   const remaining = new Set(results.map((_, i) => i));
 
   // Always pick the highest-scoring result first
@@ -424,20 +430,19 @@ export function mmrRerank(results: SearchResult[], limit: number, lambda: number
       bestIdx = i;
     }
   }
-  selected.push(results[bestIdx]!);
+  selectedIndices.push(bestIdx);
   remaining.delete(bestIdx);
 
-  while (selected.length < limit && remaining.size > 0) {
+  while (selectedIndices.length < limit && remaining.size > 0) {
     let bestMmrScore = -Infinity;
     let bestMmrIdx = -1;
 
     for (const i of remaining) {
       const relevance = results[i]!.score;
 
-      // Max similarity to any already-selected result
+      // Max similarity to any already-selected result (O(k) with precomputed indices)
       let maxSim = 0;
-      for (const s of selected) {
-        const sIdx = results.indexOf(s);
+      for (const sIdx of selectedIndices) {
         const sim = jaccardSimilarity(tokenSets[i]!, tokenSets[sIdx]!);
         if (sim > maxSim) maxSim = sim;
       }
@@ -450,11 +455,11 @@ export function mmrRerank(results: SearchResult[], limit: number, lambda: number
     }
 
     if (bestMmrIdx === -1) break;
-    selected.push(results[bestMmrIdx]!);
+    selectedIndices.push(bestMmrIdx);
     remaining.delete(bestMmrIdx);
   }
 
-  return selected;
+  return selectedIndices.map((i) => results[i]!);
 }
 
 function tokenize(text: string): Set<string> {
@@ -567,7 +572,7 @@ export function applySourceWeighting(results: SearchResult[], weights?: RecallWe
       if (!patternMatched) weight *= 1.0;
     }
 
-    r.score *= weight;
+    r.score = Math.min(1.0, r.score * weight);
   }
 }
 

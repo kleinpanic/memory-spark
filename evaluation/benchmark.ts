@@ -29,10 +29,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { resolveConfig } from "../src/config.js";
-import { LanceDBBackend } from "../src/storage/lancedb.js";
-import { createEmbedProvider } from "../src/embed/provider.js";
-import { EmbedQueue } from "../src/embed/queue.js";
 import {
   hybridMerge,
   applySourceWeighting,
@@ -40,9 +36,14 @@ import {
   mmrRerank,
   createAutoRecallHandler,
 } from "../src/auto/recall.js";
+import { resolveConfig } from "../src/config.js";
+import { createEmbedProvider } from "../src/embed/provider.js";
+import { EmbedQueue } from "../src/embed/queue.js";
 import { createReranker } from "../src/rerank/reranker.js";
-import { evaluateBEIR, formatBEIRResults, type Qrels, type Results } from "./metrics.js";
 import type { SearchResult } from "../src/storage/backend.js";
+import { LanceDBBackend } from "../src/storage/lancedb.js";
+
+import { evaluateBEIR, formatBEIRResults, type Qrels, type Results } from "./metrics.js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -478,7 +479,6 @@ async function tier3(
   console.log("\n🏊 Tier 3: Pool Isolation\n");
 
   const results: Record<string, { passed: boolean; details: string }> = {};
-  const cfg = resolveConfig();
 
   const runPoolTest = async (
     name: string,
@@ -513,7 +513,7 @@ async function tier3(
     "agent_mistakes pool returns mistake docs",
     "What mistakes were made?",
     ["agent_mistakes", "shared_mistakes"],
-    (r) => r.length >= 0, // may be empty if no mistakes indexed
+    (r) => r.length > 0, // mistakes pool should return results when queried directly
   );
 
   await runPoolTest(

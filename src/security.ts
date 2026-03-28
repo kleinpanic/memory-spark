@@ -25,10 +25,38 @@ const INJECTION_PATTERNS = [
 ];
 
 /**
+ * Normalize text to defeat zero-width character and homoglyph bypasses.
+ * Strips zero-width spaces/joiners and normalizes full-width ASCII to ASCII.
+ *
+ * Without this, attackers can bypass injection patterns by inserting U+200B
+ * between words (e.g. "ignore[ZWSP]previous") or full-width chars (U+FF01..FF5E).
+ */
+function normalizeForInjectionCheck(text: string): string {
+  // Build regex from codepoints to avoid ESLint no-irregular-whitespace
+  // and no-misleading-character-class errors with literal Unicode
+  const ZERO_WIDTH_CODEPOINTS = [0x200b, 0x200c, 0x200d, 0xfeff, 0x2060];
+  const zeroWidthChars = ZERO_WIDTH_CODEPOINTS.map((cp) => String.fromCodePoint(cp)).join("");
+
+  return (
+    text
+      // Strip zero-width characters
+      .replace(new RegExp("[" + zeroWidthChars + "]", "g"), "")
+      // Normalize full-width ASCII (U+FF01..FF5E) to basic ASCII (U+0021..007E)
+      .replace(new RegExp("[\\uFF01-\\uFF5E]", "g"), (ch) =>
+        String.fromCharCode(ch.charCodeAt(0) - 0xfee0),
+      )
+      // Normalize full-width space (U+3000) to regular space
+      .replace(new RegExp("\\u3000", "g"), " ")
+  );
+}
+
+/**
  * Check if text looks like it contains prompt injection.
+ * Normalizes zero-width characters and full-width homoglyphs before checking.
  */
 export function looksLikePromptInjection(text: string): boolean {
-  return INJECTION_PATTERNS.some((p) => p.test(text));
+  const normalized = normalizeForInjectionCheck(text);
+  return INJECTION_PATTERNS.some((p) => p.test(normalized));
 }
 
 /**
@@ -37,8 +65,11 @@ export function looksLikePromptInjection(text: string): boolean {
  */
 export function escapeMemoryText(text: string): string {
   return text
+    .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
     .replace(/\[INST\]/gi, "[inst]")
     .replace(/\[\/INST\]/gi, "[/inst]")
     .replace(/<<SYS>>/gi, "[[SYS]]")

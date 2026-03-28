@@ -16,21 +16,21 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
-import readline from "node:readline";
 
-import { resolveConfig } from "../src/config.js";
-import { LanceDBBackend } from "../src/storage/lancedb.js";
-import { createEmbedProvider } from "../src/embed/provider.js";
-import { EmbedQueue } from "../src/embed/queue.js";
-import { createReranker } from "../src/rerank/reranker.js";
 import {
   hybridMerge,
   applySourceWeighting,
   applyTemporalDecay,
   mmrRerank,
 } from "../src/auto/recall.js";
-import { evaluateBEIR, formatBEIRResults, mean, type Qrels, type Results } from "./metrics.js";
+import { resolveConfig } from "../src/config.js";
+import { createEmbedProvider } from "../src/embed/provider.js";
+import { EmbedQueue } from "../src/embed/queue.js";
+import { createReranker } from "../src/rerank/reranker.js";
 import type { SearchResult, MemoryChunk } from "../src/storage/backend.js";
+import { LanceDBBackend } from "../src/storage/lancedb.js";
+
+import { evaluateBEIR, formatBEIRResults, type Qrels, type Results } from "./metrics.js";
 
 // ── BEIR Dataset Loading ────────────────────────────────────────────────────
 
@@ -93,8 +93,9 @@ async function indexCorpus(
     let vectors: number[][];
     try {
       vectors = await embed.embedBatch(texts);
-    } catch (err) {
+    } catch (batchErr) {
       // Fallback to sequential if batch fails
+      console.warn(`[WARN] Batch embed failed, falling back to sequential:`, batchErr);
       vectors = [];
       for (const t of texts) {
         try {
@@ -235,9 +236,7 @@ async function runRetrieval(
 
 async function main() {
   const args = process.argv.slice(2);
-  const datasetName = args.includes("--dataset")
-    ? args[args.indexOf("--dataset") + 1]!
-    : "scifact";
+  const datasetName = args.includes("--dataset") ? args[args.indexOf("--dataset") + 1]! : "scifact";
   const skipIndex = args.includes("--skip-index");
   const batchSize = args.includes("--batch-size")
     ? parseInt(args[args.indexOf("--batch-size") + 1]!, 10)
@@ -257,7 +256,9 @@ async function main() {
   const queries = await loadJsonl<BeirQuery>(path.join(datasetDir, "queries.jsonl"));
   const qrels = await loadQrels(path.join(datasetDir, "qrels", "test.tsv"));
   const evalQueryCount = Object.keys(qrels).length;
-  console.log(`  Corpus: ${corpus.length} docs | Queries: ${queries.length} | Eval queries (with qrels): ${evalQueryCount}`);
+  console.log(
+    `  Corpus: ${corpus.length} docs | Queries: ${queries.length} | Eval queries (with qrels): ${evalQueryCount}`,
+  );
 
   // Setup
   const cfg = resolveConfig({ lancedbDir: indexDir } as Parameters<typeof resolveConfig>[0]);
@@ -300,7 +301,11 @@ async function main() {
   console.log("\n📊 BEIR Evaluation\n");
 
   // Baselines
-  await runConfig("vector_only", "Vector-Only", { useFts: false, useReranker: false, useMmr: false });
+  await runConfig("vector_only", "Vector-Only", {
+    useFts: false,
+    useReranker: false,
+    useMmr: false,
+  });
   await runConfig("fts_only", "FTS-Only", { useVector: false, useReranker: false, useMmr: false });
   await runConfig("hybrid", "Hybrid (Vector + FTS)", { useReranker: false });
   await runConfig("hybrid_no_mmr", "Hybrid − MMR", { useReranker: false, useMmr: false });

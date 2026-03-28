@@ -3,7 +3,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { generateHypotheticalDocument, type HydeConfig, HYDE_DEFAULTS } from "../src/hyde/generator.js";
+import {
+  generateHypotheticalDocument,
+  type HydeConfig,
+  HYDE_DEFAULTS,
+} from "../src/hyde/generator.js";
 
 const mockConfig: HydeConfig = {
   ...HYDE_DEFAULTS,
