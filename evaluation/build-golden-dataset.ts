@@ -168,6 +168,34 @@ async function buildCorpus(): Promise<Record<string, CorpusDoc>> {
     }
   }
 
+  // ── Reference Library docs (OpenClaw official docs) ──
+  const docsDir = path.join(
+    process.env.HOME ?? "",
+    ".local/share/npm/lib/node_modules/openclaw/docs",
+  );
+  const referenceFiles = [
+    { subpath: "concepts/architecture.md", title: "OpenClaw Architecture" },
+    { subpath: "concepts/agent.md", title: "OpenClaw Agent Concepts" },
+    { subpath: "concepts/agent-workspace.md", title: "Agent Workspace Docs" },
+    { subpath: "concepts/context-engine.md", title: "Context Engine Docs" },
+    { subpath: "concepts/compaction.md", title: "Compaction Docs" },
+    { subpath: "brave-search.md", title: "Brave Search Docs" },
+    { subpath: "concepts/model-providers.md", title: "Model Providers Docs" },
+    { subpath: "concepts/features.md", title: "OpenClaw Features" },
+  ];
+  for (const ref of referenceFiles) {
+    const refPath = path.join(docsDir, ref.subpath);
+    const text = await readFileOrEmpty(refPath);
+    if (text) {
+      addDoc({
+        title: ref.title,
+        text,
+        path: `reference/${ref.subpath}`,
+        pool: "reference_library",
+      });
+    }
+  }
+
   return corpus;
 }
 
@@ -405,6 +433,26 @@ function buildQueries(corpus: Record<string, CorpusDoc>): {
     { text: "When was the last gateway restart?", category: "temporal" },
     metaAgentsDocs.map((id) => ({ docId: id, score: 1 })),
   );
+  addQuery(
+    { text: "What was the latest task completed?", category: "temporal" },
+    memoryMdDocs.map((id) => ({ docId: id, score: 1 })),
+  );
+  addQuery(
+    { text: "What sessions ran in the last 24 hours?", category: "temporal" },
+    memoryMdDocs.map((id) => ({ docId: id, score: 1 })),
+  );
+  addQuery(
+    { text: "What was the most recent mistake logged?", category: "temporal" },
+    mistakesDocs.map((id) => ({ docId: id, score: 2 })),
+  );
+  addQuery(
+    { text: "What infrastructure changes happened this week?", category: "temporal" },
+    memoryMdDocs.map((id) => ({ docId: id, score: 1 })),
+  );
+  addQuery(
+    { text: "When was the last skill installed?", category: "temporal" },
+    memoryMdDocs.map((id) => ({ docId: id, score: 1 })),
+  );
 
   // ── HyDE-Beneficial Queries (natural language that benefits from doc generation) ──
 
@@ -454,6 +502,20 @@ function buildQueries(corpus: Record<string, CorpusDoc>): {
     ...findDocs((d) => d.agent_id === "recovery").map((id) => ({ docId: id, score: 2 })),
     ...agentsMdDocs.map((id) => ({ docId: id, score: 1 })),
   ]);
+  addQuery(
+    {
+      text: "I'm trying to understand how OpenClaw decides which memories to automatically inject into prompts",
+      category: "hyde",
+    },
+    memoryMdDocs.map((id) => ({ docId: id, score: 1 })),
+  );
+  addQuery(
+    {
+      text: "Explain the tradeoffs between different model providers in Klein's setup",
+      category: "hyde",
+    },
+    [...memoryMdDocs.map((id) => ({ docId: id, score: 2 })), ...agentsMdDocs.map((id) => ({ docId: id, score: 1 }))],
+  );
 
   // ── Parent-Child Queries (answers span multiple paragraphs) ─────────────
 
@@ -486,6 +548,29 @@ function buildQueries(corpus: Record<string, CorpusDoc>): {
     ...agentsMdDocs.map((id) => ({ docId: id, score: 1 })),
     ...memoryMdDocs.map((id) => ({ docId: id, score: 1 })),
   ]);
+  addQuery(
+    { text: "List all the shared resources and their paths in the meta agent config", category: "parent_child" },
+    metaAgentsDocs.map((id) => ({ docId: id, score: 2 })),
+  );
+  addQuery(
+    { text: "Describe the full config edit ban rules and their history", category: "parent_child" },
+    metaAgentsDocs.map((id) => ({ docId: id, score: 2 })),
+  );
+  addQuery(
+    { text: "What are all the deep memory reference files and their topics?", category: "parent_child" },
+    memoryMdDocs.map((id) => ({ docId: id, score: 2 })),
+  );
+  addQuery(
+    { text: "List all agents and their roles including loop vs assignment-driven", category: "parent_child" },
+    [
+      ...memoryMdDocs.map((id) => ({ docId: id, score: 2 })),
+      ...agentsMdDocs.map((id) => ({ docId: id, score: 1 })),
+    ],
+  );
+  addQuery(
+    { text: "Walk through the delegated infra fix protocol from immune to meta", category: "parent_child" },
+    metaAgentsDocs.map((id) => ({ docId: id, score: 2 })),
+  );
 
   // ── Agent-Specific Factual Queries ──────────────────────────────────────
 
@@ -683,6 +768,24 @@ function buildQueries(corpus: Record<string, CorpusDoc>): {
     { text: "What tools are shared across all agents?", category: "cross_agent" },
     toolsDocs.map((id) => ({ docId: id, score: 1 })),
   );
+  addQuery(
+    { text: "How do loop agents differ from assignment agents in behavior?", category: "cross_agent" },
+    [
+      ...memoryMdDocs.map((id) => ({ docId: id, score: 2 })),
+      ...agentsMdDocs.map((id) => ({ docId: id, score: 1 })),
+    ],
+  );
+  addQuery(
+    { text: "What happens when an agent needs to edit another agent's workspace?", category: "cross_agent" },
+    metaAgentsDocs.map((id) => ({ docId: id, score: 2 })),
+  );
+  addQuery(
+    { text: "How do agents share user preferences and profile data?", category: "cross_agent" },
+    [
+      ...memoryMdDocs.map((id) => ({ docId: id, score: 2 })),
+      ...userMdDocs.map((id) => ({ docId: id, score: 1 })),
+    ],
+  );
 
   // ── More Mistakes/Learning Queries ──────────────────────────────────────
 
@@ -705,6 +808,28 @@ function buildQueries(corpus: Record<string, CorpusDoc>): {
     { text: "What lessons were learned about Gemini Flash for coding?", category: "mistakes" },
     memoryMdDocs.map((id) => ({ docId: id, score: 2 })),
   );
+  addQuery(
+    { text: "What happened on February 20 2026 with config changes?", category: "mistakes" },
+    [
+      ...metaAgentsDocs.map((id) => ({ docId: id, score: 2 })),
+      ...memoryMdDocs.map((id) => ({ docId: id, score: 1 })),
+    ],
+  );
+  addQuery(
+    { text: "What is the critical provider rule and why was it created?", category: "mistakes" },
+    memoryMdDocs.map((id) => ({ docId: id, score: 2 })),
+  );
+  addQuery(
+    { text: "What config.patch mistakes have been documented?", category: "mistakes" },
+    [
+      ...mistakesDocs.map((id) => ({ docId: id, score: 2 })),
+      ...memoryMdDocs.map((id) => ({ docId: id, score: 1 })),
+    ],
+  );
+  addQuery(
+    { text: "What SIGUSR1 incident happened and what rule was created?", category: "mistakes" },
+    metaAgentsDocs.map((id) => ({ docId: id, score: 2 })),
+  );
 
   // ── More Pool-Specific Queries ──────────────────────────────────────────
 
@@ -726,16 +851,35 @@ function buildQueries(corpus: Record<string, CorpusDoc>): {
       .filter((id) => corpus[id]?.agent_id === "immune")
       .map((id) => ({ docId: id, score: 2 })),
   );
+  // Reference library pool queries (#7 from audit — test reference_library retrieval)
+  const refDocs = findDocs((d) => d.pool === "reference_library");
   addQuery(
-    {
-      text: "What reference documentation is indexed?",
-      category: "pool",
-      expected_pool: ["reference_library"],
-    },
-    findDocs((d) => d.pool === "reference_library" || d.content_type === "reference").map((id) => ({
-      docId: id,
-      score: 1,
-    })),
+    { text: "What reference documentation is indexed?", category: "pool", expected_pool: ["reference_library"] },
+    refDocs.map((id) => ({ docId: id, score: 1 })),
+  );
+  addQuery(
+    { text: "How does OpenClaw's context engine work?", category: "pool", expected_pool: ["reference_library"] },
+    refDocs.filter((id) => corpus[id]?.title.includes("Context")).map((id) => ({ docId: id, score: 2 })),
+  );
+  addQuery(
+    { text: "What is OpenClaw's architecture?", category: "pool", expected_pool: ["reference_library"] },
+    refDocs.filter((id) => corpus[id]?.title.includes("Architecture")).map((id) => ({ docId: id, score: 2 })),
+  );
+  addQuery(
+    { text: "How do model providers work in OpenClaw?", category: "pool", expected_pool: ["reference_library"] },
+    refDocs.filter((id) => corpus[id]?.title.includes("Model Provider")).map((id) => ({ docId: id, score: 2 })),
+  );
+  addQuery(
+    { text: "What is an agent workspace?", category: "pool", expected_pool: ["reference_library"] },
+    refDocs.filter((id) => corpus[id]?.title.includes("Workspace")).map((id) => ({ docId: id, score: 2 })),
+  );
+  addQuery(
+    { text: "What shared knowledge exists in the system?", category: "pool", expected_pool: ["shared_knowledge"] },
+    findDocs((d) => d.pool === "shared_knowledge").map((id) => ({ docId: id, score: 1 })),
+  );
+  addQuery(
+    { text: "What are the school agent's tool permissions?", category: "pool", expected_pool: ["agent_tools"] },
+    toolsDocs.filter((id) => corpus[id]?.agent_id === "school").map((id) => ({ docId: id, score: 2 })),
   );
 
   // ── More Security (adversarial) ─────────────────────────────────────────
