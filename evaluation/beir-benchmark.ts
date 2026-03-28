@@ -355,9 +355,105 @@ async function main() {
   console.log(`\n📄 Results: ${outputPath}`);
 
   await backend.close();
+  return allResults;
 }
 
-main().catch((err) => {
-  console.error("FATAL:", err);
-  process.exit(1);
-});
+/**
+ * Multi-dataset runner: iterates over all available BEIR datasets in beir-datasets/
+ * and produces a summary table.
+ *
+ * Usage: npx tsx evaluation/beir-benchmark.ts --multi [--quick]
+ */
+async function runMulti() {
+  const args = process.argv.slice(2);
+  const quick = args.includes("--quick");
+  const datasetsDir = path.join(import.meta.dirname!, "beir-datasets");
+  const entries = await fs.readdir(datasetsDir, { withFileTypes: true });
+  const datasets = entries
+    .filter((e) => e.isDirectory() && !e.name.endsWith("-index"))
+    .map((e) => e.name)
+    .sort();
+
+  if (datasets.length === 0) {
+    console.log("No BEIR datasets found. Run: bash evaluation/scripts/download-beir.sh --small");
+    return;
+  }
+
+  console.log("═══════════════════════════════════════════════════");
+  console.log(`  BEIR Multi-Dataset Benchmark (${datasets.length} datasets)`);
+  console.log("═══════════════════════════════════════════════════\n");
+
+  const summary: Record<string, Record<string, { ndcg10: number; mrr10: number }>> = {};
+
+  for (const ds of datasets) {
+    const corpusPath = path.join(datasetsDir, ds, "corpus.jsonl");
+    try {
+      await fs.access(corpusPath);
+    } catch {
+      console.log(`⏭️  Skipping ${ds} (no corpus.jsonl)`);
+      continue;
+    }
+
+    // Re-run main() logic for each dataset by manipulating argv
+    const origArgv = process.argv;
+    process.argv = [
+      origArgv[0]!,
+      origArgv[1]!,
+      "--dataset",
+      ds,
+      ...(quick ? ["--quick"] : []),
+    ];
+    try {
+      const results = await main();
+      if (results) {
+        summary[ds] = {};
+        for (const [config, metrics] of Object.entries(results)) {
+          summary[ds]![config] = {
+            ndcg10: (metrics as Record<string, Record<string, number>>)["10"]?.ndcg ?? 0,
+            mrr10: (metrics as Record<string, Record<string, number>>)["10"]?.mrr ?? 0,
+          };
+        }
+      }
+    } catch (err) {
+      console.error(`❌ ${ds} failed:`, err);
+    }
+    process.argv = origArgv;
+  }
+
+  // Print summary table
+  console.log("\n═══════════════════════════════════════════════════");
+  console.log("  BEIR Cross-Dataset Summary");
+  console.log("═══════════════════════════════════════════════════\n");
+
+  // Collect all config names
+  const allConfigs = new Set<string>();
+  for (const dsResults of Object.values(summary)) {
+    for (const config of Object.keys(dsResults)) allConfigs.add(config);
+  }
+
+  console.log(
+    `  ${"Config".padEnd(30)}  ${datasets.map((d) => d.padStart(12)).join("  ")}`,
+  );
+  console.log("  " + "─".repeat(30 + datasets.length * 14));
+
+  for (const config of allConfigs) {
+    const values = datasets.map((ds) => {
+      const v = summary[ds]?.[config]?.ndcg10;
+      return v !== undefined ? v.toFixed(4).padStart(12) : "     N/A    ";
+    });
+    console.log(`  ${config.padEnd(30)}  ${values.join("  ")}`);
+  }
+  console.log();
+}
+
+if (process.argv.includes("--multi")) {
+  runMulti().catch((err) => {
+    console.error("FATAL:", err);
+    process.exit(1);
+  });
+} else {
+  main().catch((err) => {
+    console.error("FATAL:", err);
+    process.exit(1);
+  });
+}
