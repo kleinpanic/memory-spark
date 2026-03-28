@@ -37,9 +37,15 @@ async function main() {
   const scores = result.details.map((d) => d.score);
   const expected = result.details.map((d) => d.pair.expectedScore);
   const diffs = result.details.map((d) => d.diff);
-  console.log(`\n  Score distribution: mean=${(scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2)}`);
-  console.log(`  Expected mean: ${(expected.reduce((a, b) => a + b, 0) / expected.length).toFixed(2)}`);
-  console.log(`  Mean absolute error: ${(diffs.reduce((a, b) => a + b, 0) / diffs.length).toFixed(2)}`);
+  console.log(
+    `\n  Score distribution: mean=${(scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(2)}`,
+  );
+  console.log(
+    `  Expected mean: ${(expected.reduce((a, b) => a + b, 0) / expected.length).toFixed(2)}`,
+  );
+  console.log(
+    `  Mean absolute error: ${(diffs.reduce((a, b) => a + b, 0) / diffs.length).toFixed(2)}`,
+  );
 
   process.exit(passRate >= 0.8 ? 0 : 1);
 }

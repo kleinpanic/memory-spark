@@ -2,6 +2,7 @@
  * memory-spark config schema + defaults
  */
 
+import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
@@ -277,8 +278,6 @@ export interface MemorySparkConfig {
   /** Override SPARK_BEARER_TOKEN env var. Loaded from env/.env if not set. */
   sparkBearerToken?: string;
 }
-
-import fs from "node:fs";
 
 /**
  * Load Spark bearer token — checks process.env first, then ~/.openclaw/.env.

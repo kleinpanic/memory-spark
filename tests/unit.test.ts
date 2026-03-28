@@ -1197,21 +1197,22 @@ describe("Quality Score Defaults", () => {
 
   it("applySourceWeighting boosts MISTAKES.md", () => {
     const results = [
-      makeSearchResult("mistakes", 1.0, "memory", "MISTAKES.md"),
-      makeSearchResult("regular", 1.0, "memory", "notes.md"),
+      makeSearchResult("mistakes", 0.5, "memory", "MISTAKES.md"),
+      makeSearchResult("regular", 0.5, "memory", "notes.md"),
     ];
     applySourceWeighting(results);
     assert.ok(results[0]!.score > results[1]!.score, "MISTAKES.md should be boosted");
+    // 0.5 * 1.6 = 0.8 — below cap
     assert.ok(
-      results[0]!.score >= 1.5,
-      `MISTAKES.md should get 1.6x boost (got ${results[0]!.score})`,
+      Math.abs(results[0]!.score - 0.8) < 0.01,
+      `MISTAKES.md should get 1.6x boost (got ${results[0]!.score}, expected 0.8)`,
     );
   });
 
   it("applySourceWeighting with custom weights config", () => {
     const results = [
-      makeSearchResult("mistakes", 1.0, "memory", "MISTAKES.md"),
-      makeSearchResult("regular", 1.0, "memory", "notes.md"),
+      makeSearchResult("mistakes", 0.4, "memory", "MISTAKES.md"),
+      makeSearchResult("regular", 0.4, "memory", "notes.md"),
     ];
     // Custom config: MISTAKES.md at 2.0x instead of default 1.6x
     applySourceWeighting(results, {
@@ -1219,38 +1220,50 @@ describe("Quality Score Defaults", () => {
       paths: { "MISTAKES.md": 2.0 },
       pathPatterns: {},
     });
+    // 0.4 * 1.0 (source) * 2.0 (path) = 0.8
     assert.ok(
-      results[0]!.score >= 2.0,
-      `Custom MISTAKES weight should be 2.0x (got ${results[0]!.score})`,
+      Math.abs(results[0]!.score - 0.8) < 0.01,
+      `Custom MISTAKES weight should produce 0.8 (got ${results[0]!.score})`,
     );
   });
 
   it("applySourceWeighting pathPatterns match substrings", () => {
     const results = [
-      makeSearchResult("deep mistake", 1.0, "memory", "mistakes/2026-03-01-config-bug.md"),
+      makeSearchResult("deep mistake", 0.5, "memory", "mistakes/2026-03-01-config-bug.md"),
     ];
     applySourceWeighting(results, {
       sources: { capture: 1.5, memory: 1.0, sessions: 0.5, reference: 1.0 },
       paths: {},
       pathPatterns: { mistakes: 1.8 },
     });
+    // 0.5 * 1.0 (source) * 1.8 (pattern) = 0.9
     assert.ok(
-      results[0]!.score >= 1.8,
-      `Pattern match should apply 1.8x (got ${results[0]!.score})`,
+      Math.abs(results[0]!.score - 0.9) < 0.01,
+      `Pattern match should apply 1.8x (got ${results[0]!.score}, expected 0.9)`,
     );
   });
 
   it("applySourceWeighting exact path takes precedence over pattern", () => {
-    const results = [makeSearchResult("exact match", 1.0, "memory", "MISTAKES.md")];
+    const results = [makeSearchResult("exact match", 0.3, "memory", "MISTAKES.md")];
     applySourceWeighting(results, {
       sources: { capture: 1.5, memory: 1.0, sessions: 0.5, reference: 1.0 },
       paths: { "MISTAKES.md": 2.5 },
       pathPatterns: { mistakes: 1.6 },
     });
-    // Exact path match = 2.5x, pattern should NOT also apply
+    // 0.3 * 1.0 (source) * 2.5 (exact path) = 0.75 — capped at 1.0 check not needed
     assert.ok(
-      Math.abs(results[0]!.score - 2.5) < 0.01,
-      `Exact path should win (got ${results[0]!.score}, expected 2.5)`,
+      Math.abs(results[0]!.score - 0.75) < 0.01,
+      `Exact path should win (got ${results[0]!.score}, expected 0.75)`,
+    );
+  });
+
+  it("applySourceWeighting caps at 1.0", () => {
+    const results = [makeSearchResult("high score", 0.9, "capture", "MISTAKES.md")];
+    applySourceWeighting(results);
+    // 0.9 * 1.5 (capture source) * 1.6 (mistakes pattern) = 2.16 → capped at 1.0
+    assert.ok(
+      results[0]!.score === 1.0,
+      `Score should be capped at 1.0 (got ${results[0]!.score})`,
     );
   });
 

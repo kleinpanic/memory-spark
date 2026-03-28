@@ -124,7 +124,10 @@ describe.skipIf(SKIP)("Integration: Spark Connectivity", () => {
     const resp = await fetch(`http://${SPARK_HOST}:18113/v1/classify`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${SPARK_TOKEN}` },
-      body: JSON.stringify({ text: "We decided to use LanceDB", labels: ["fact", "decision", "preference"] }),
+      body: JSON.stringify({
+        text: "We decided to use LanceDB",
+        labels: ["fact", "decision", "preference"],
+      }),
       signal: AbortSignal.timeout(5000),
     });
     expect(resp.ok).toBe(true);
@@ -192,7 +195,10 @@ describe.skipIf(SKIP)("Integration: Ingest + Search Pipeline", { timeout: 120_00
   });
 
   it("FTS search works for keyword lookup", async () => {
-    const results = await backend.ftsSearch("TypeScript Neovim", { query: "TypeScript", maxResults: 5 });
+    const results = await backend.ftsSearch("TypeScript Neovim", {
+      query: "TypeScript",
+      maxResults: 5,
+    });
     expect(results.length).toBeGreaterThan(0);
   });
 

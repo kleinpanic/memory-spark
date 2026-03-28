@@ -15,14 +15,14 @@
  *   9. Auto-Capture Quality Gate (garbage vs real captures)
  */
 
+import { looksLikeCaptureGarbage } from "../src/auto/capture.js";
+import { createAutoRecallHandler } from "../src/auto/recall.js";
+import { scoreChunkQuality } from "../src/classify/quality.js";
 import { resolveConfig } from "../src/config.js";
-import { LanceDBBackend } from "../src/storage/lancedb.js";
 import { createEmbedProvider } from "../src/embed/provider.js";
 import { EmbedQueue } from "../src/embed/queue.js";
 import { createReranker } from "../src/rerank/reranker.js";
-import { createAutoRecallHandler } from "../src/auto/recall.js";
-import { scoreChunkQuality } from "../src/classify/quality.js";
-import { looksLikeCaptureGarbage } from "../src/auto/capture.js";
+import { LanceDBBackend } from "../src/storage/lancedb.js";
 
 interface TestCase {
   name: string;
@@ -311,7 +311,7 @@ const EDGE_TESTS: TestCase[] = [
 
 // ─── CATEGORY 8: Capture Quality Gate ───────────────────────────────
 
-const CAPTURE_TESTS: TestCase[] = [
+const _CAPTURE_TESTS: TestCase[] = [
   {
     name: "Discord metadata rejected as garbage",
     category: "capture-gate",

@@ -25,7 +25,7 @@ export interface HydeConfig {
   model: string;
   /** Max tokens for the hypothetical document. Default: 150 */
   maxTokens: number;
-  /** Temperature for generation. Default: 0.7 (some creativity helps diversity) */
+  /** Temperature for generation. Default: 0.3 (low to stay factual per Gao et al. 2022) */
   temperature: number;
   /** Timeout for the LLM call in ms. Default: 10000 */
   timeoutMs: number;
@@ -35,10 +35,10 @@ export interface HydeConfig {
 
 export const HYDE_DEFAULTS: HydeConfig = {
   enabled: true,
-  llmUrl: "http://10.99.1.1:18080/v1/chat/completions", // eslint-disable-line sonarjs/no-clear-text-protocols -- local network endpoint, not public
+  llmUrl: `http://${process.env.SPARK_HOST ?? "10.99.1.1"}:18080/v1/chat/completions`, // eslint-disable-line sonarjs/no-hardcoded-ip -- local network fallback, configurable via SPARK_HOST env
   model: "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
   maxTokens: 150,
-  temperature: 0.7,
+  temperature: 0.3,
   timeoutMs: 10000,
 };
 
@@ -101,9 +101,10 @@ export async function generateHypotheticalDocument(
     const content = data.choices?.[0]?.message?.content?.trim();
     if (!content || content.length < 20) return null;
 
-    // Strip think blocks (tag + content between tags) that leaked through
+    // Strip think blocks — handle both closed (<think>...</think>) and unclosed (<think>...) tags
     const cleaned = content
       .replace(/<think>[\s\S]*?<\/think>/gi, "")
+      .replace(/<think>[\s\S]*/gi, "") // unclosed <think> — strip everything after it
       .replace(/<\/?think>/gi, "")
       .replace(/^(Now|Let me|I'll|We need to)\b.*$/gm, "")
       .replace(/\n{2,}/g, "\n")

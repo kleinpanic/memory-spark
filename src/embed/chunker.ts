@@ -2,6 +2,8 @@
  * Smart Chunker — token-aware, markdown-aware document splitting.
  */
 
+import { createHash } from "node:crypto";
+
 export interface ChunkInput {
   text: string;
   path: string;
@@ -215,7 +217,7 @@ export function chunkDocumentHierarchical(
 
   for (const parentChunk of parentRawChunks) {
     // Generate stable parent ID from content hash
-    const parentId = `p_${simpleHash(input.path + ":" + parentChunk.startLine)}`;
+    const parentId = `p_${stableHash(input.path + ":" + parentChunk.startLine)}`;
 
     // Step 2: Split each parent into child-sized chunks
     const childRawChunks = chunkDocument(
@@ -250,14 +252,13 @@ export function chunkDocumentHierarchical(
   return results;
 }
 
-/** Simple fast hash for generating stable IDs. Not cryptographic. */
-function simpleHash(input: string): string {
-  let hash = 0;
-  for (let i = 0; i < input.length; i++) {
-    const char = input.charCodeAt(i);
-    hash = ((hash << 5) - hash + char) | 0;
-  }
-  return Math.abs(hash).toString(36).slice(0, 10);
+/**
+ * Stable content-based hash for generating parent IDs.
+ * Uses SHA-1 truncated to 16 hex chars (64 bits of entropy).
+ * Birthday collision probability <0.01% at 1M entries (vs the old 31-bit hash's 50% at 65k).
+ */
+function stableHash(input: string): string {
+  return createHash("sha1").update(input).digest("hex").slice(0, 16);
 }
 
 /**
