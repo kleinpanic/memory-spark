@@ -338,7 +338,7 @@ const CALIBRATION_SET: CalibrationPair[] = [
   {
     query: "What are the WIP limits for agents?",
     document:
-      "### Work on in_progress tasks\n- Log progress: `oc-tasks comment <id> \"what you did\"`\n- Respect WIP limit (max 3 in_progress)",
+      '### Work on in_progress tasks\n- Log progress: `oc-tasks comment <id> "what you did"`\n- Respect WIP limit (max 3 in_progress)',
     expectedScore: 4,
     tolerance: 1,
   },

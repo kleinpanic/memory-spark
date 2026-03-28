@@ -35,7 +35,7 @@ function run(name: string, cmd: string, allowFail = false): boolean {
   const start = Date.now();
   process.stdout.write(`\n▶ ${name}... `);
   try {
-    const output = execSync(cmd, {
+    const output = execSync(cmd, { // eslint-disable-line sonarjs/os-command -- hardcoded test runner commands, not user input
       cwd: import.meta.dirname!.replace(/\/evaluation$/, ""),
       encoding: "utf-8",
       timeout: 300000,
