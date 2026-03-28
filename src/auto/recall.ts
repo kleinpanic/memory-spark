@@ -113,7 +113,11 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
       const ftsResults = rawFtsResults.filter(
         (r) => r.chunk.source !== "sessions" && r.score >= (minScore ?? 0.1),
       );
-      return hybridMerge(vectorResults, ftsResults, limit);
+      const merged = hybridMerge(vectorResults, ftsResults, limit);
+      // Exclude parent chunks from search results — they exist for context
+      // expansion only. Children are the precise search targets; after reranking,
+      // matched children get expanded to their parent's text for delivery.
+      return merged.filter((r) => !r.chunk.is_parent);
     };
 
     // 1. Agent's own memory + tools (primary recall)
@@ -203,13 +207,21 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
           }
         }
 
-        // Dedup: remove results that now have identical text (multiple children → same parent)
-        const seenTexts = new Set<string>();
+        // Dedup: if multiple children mapped to the same parent, keep only
+        // the highest-scoring one. Use the expanded parent_id as the dedup key
+        // (it's "expanded:<parentId>") — far more reliable than text prefix matching.
+        const seenParents = new Set<string>();
         const dedupedReranked: SearchResult[] = [];
         for (const r of reranked) {
-          const textKey = r.chunk.text.slice(0, 200);
-          if (!seenTexts.has(textKey)) {
-            seenTexts.add(textKey);
+          const expandedTag = r.chunk.parent_id;
+          if (expandedTag?.startsWith("expanded:")) {
+            if (!seenParents.has(expandedTag)) {
+              seenParents.add(expandedTag);
+              dedupedReranked.push(r);
+            }
+            // else skip — a higher-scoring sibling already claimed this parent
+          } else {
+            // Non-expanded chunks (flat or failed lookup) pass through
             dedupedReranked.push(r);
           }
         }
@@ -270,7 +282,9 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
       .map((r) => ({
         // Prefix with "memory-spark:" so agents know which plugin this came from
         source: `memory-spark:${r.chunk.source}:${r.chunk.path}`,
-        text: r.chunk.text.slice(0, 500),
+        // No hard truncation here — token budget enforcement below handles sizing.
+        // Parent chunks (~2000 tokens) need to flow through intact after expansion.
+        text: r.chunk.text,
         score: r.score,
         // Use the ORIGINAL content timestamp, not when it was re-indexed.
         // For captures, updated_at is when the capture was stored (correct).
