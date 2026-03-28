@@ -4,8 +4,9 @@
  * Adds: MMR diversity, temporal decay, prompt injection filtering.
  */
 
-import type { AutoRecallConfig, RecallWeights } from "../config.js";
+import type { AutoRecallConfig, RecallWeights, HydeConfig } from "../config.js";
 import { shouldProcessAgent } from "../config.js";
+import { generateHypotheticalDocument } from "../hyde/generator.js";
 import type { EmbedLike } from "../embed/cached-provider.js";
 import type { EmbedProvider } from "../embed/provider.js";
 import type { EmbedQueue } from "../embed/queue.js";
@@ -22,6 +23,8 @@ export interface AutoRecallDeps {
   backend: StorageBackend;
   embed: EmbedProvider | EmbedQueue | EmbedLike;
   reranker: Reranker;
+  /** HyDE config — when enabled, queries are expanded via hypothetical document generation */
+  hyde?: HydeConfig;
 }
 
 export function createAutoRecallHandler(deps: AutoRecallDeps) {
@@ -40,9 +43,29 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     // Skip trivial messages that won't produce meaningful recall
     if (!queryText.trim() || queryText.trim().length < 4) return undefined;
 
+    // ── HyDE: Hypothetical Document Embeddings ───────────────────────────
+    //
+    // Instead of embedding the raw query ("What model does Spark use?"),
+    // generate a hypothetical answer document and embed THAT. The hypothetical
+    // doc lives in the same semantic space as the stored knowledge, bridging
+    // the question-answer gap that hurts naive query embedding.
+    //
+    // FTS still uses the raw queryText — keyword matching needs real terms.
+    //
     let queryVector: number[];
     try {
-      queryVector = await embed.embedQuery(queryText);
+      const hydeConfig = deps.hyde;
+      if (hydeConfig?.enabled) {
+        const hypothetical = await generateHypotheticalDocument(queryText, hydeConfig);
+        if (hypothetical) {
+          queryVector = await embed.embedQuery(hypothetical);
+        } else {
+          // HyDE failed (timeout, too short, etc.) — fall back to raw query
+          queryVector = await embed.embedQuery(queryText);
+        }
+      } else {
+        queryVector = await embed.embedQuery(queryText);
+      }
     } catch {
       return undefined;
     }
@@ -146,6 +169,56 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     // Cross-encoder rerank
     const reranked = await reranker.rerank(queryText, diverse, cfg.maxResults);
     if (reranked.length === 0) return undefined;
+
+    // ── Parent-Child Context Expansion ───────────────────────────────────
+    //
+    // If child chunks were retrieved (they have parent_id), look up parent
+    // chunks and use the PARENT text for context injection instead of the
+    // child text. This gives the LLM much more surrounding context while
+    // keeping search precision high (small children embed precisely).
+    //
+    // Dedup: if multiple children share a parent, include parent only once.
+    //
+    const parentIds = new Set<string>();
+    for (const r of reranked) {
+      if (r.chunk.parent_id && !r.chunk.is_parent) {
+        parentIds.add(r.chunk.parent_id);
+      }
+    }
+
+    if (parentIds.size > 0) {
+      try {
+        const parentChunks = await backend.getByIds(Array.from(parentIds));
+        const parentMap = new Map(parentChunks.map((p) => [p.id, p]));
+
+        // Replace child text with parent text (keeping child's score and metadata)
+        for (const r of reranked) {
+          if (r.chunk.parent_id && !r.chunk.is_parent) {
+            const parent = parentMap.get(r.chunk.parent_id);
+            if (parent) {
+              r.chunk.text = parent.text;
+              // Mark that we expanded, so we can dedup parent text
+              r.chunk.parent_id = `expanded:${r.chunk.parent_id}`;
+            }
+          }
+        }
+
+        // Dedup: remove results that now have identical text (multiple children → same parent)
+        const seenTexts = new Set<string>();
+        const dedupedReranked: SearchResult[] = [];
+        for (const r of reranked) {
+          const textKey = r.chunk.text.slice(0, 200);
+          if (!seenTexts.has(textKey)) {
+            seenTexts.add(textKey);
+            dedupedReranked.push(r);
+          }
+        }
+        // Use deduplicated results for the rest of the pipeline
+        reranked.splice(0, reranked.length, ...dedupedReranked);
+      } catch {
+        // Parent lookup failed — continue with child text (graceful degradation)
+      }
+    }
 
     // LCM + recency dedup — skip chunks that overlap heavily with:
     // 1. Recent conversation messages

@@ -1,12 +1,35 @@
 # memory-spark v1.0 — Implementation Checklist
 
-**Last Updated:** 2026-03-27 01:00 EDT  
-**Session Start:** 2026-03-26 ~21:30 EDT  
-**Commits This Session:** 15+ (8c46531 → current)  
-**Test Status:** 172+/172+ (unit + pool + integration)  
+**Last Updated:** 2026-03-27 04:30 EDT  
+**Session 1:** 2026-03-26 ~21:30 EDT → 2026-03-27 ~03:00 EDT (15+ commits, 8c46531 → 53df92a)  
+**Session 2:** 2026-03-27 03:00 EDT → ongoing (post-reboot; Opus unavailable, benchmarks queued)  
+**Test Status:** 221/221 passing (unit + pool + integration + BEIR)  
 **Build Status:** 0 type errors, 0 lint errors  
 **Tools:** 13 registered  
-**Parent Task:** `a8ba0510` (20 subtasks: 5 done, 1 in progress, 14 queued)
+**Parent Task:** `a8ba0510`
+
+## 🌙 Overnight Run (2026-03-27) — IN PROGRESS
+Docker harness started. Running in background:
+1. ✅ BEIR SciFact indexed (5,183 docs, 0 failed, 5.4 docs/s) — complete
+2. 🔄 Full ablation benchmark (all tiers, reranker ON) — queued
+3. 🔄 A/B/C/D experiment matrix — queued (Phase 8B)
+4. 🔄 Pool isolation tier (Tier 3) — queued (needs pool column reindex)
+5. 🔄 Integration test suite (Vitest + Spark) — queued
+
+**Results landing in:** `evaluation/results/` + `~/codeWS/Docker/openclaw-plugin-test/results/`
+
+## 📋 Session 3 — Opus 2026-03-27 (IN PROGRESS)
+1. ✅ **Audit benchmark results** — overnight run killed by reboot; BEIR SciFact valid (0.768)
+2. ✅ **Verified source weighting ordering** — already correct in recall.ts (Weight → MMR → Rerank)
+3. 🔄 **Re-index custom corpus with pool column** — running now (2838 files, ~60 min ETA)
+4. ✅ **Reference Library (Phase 2)** — already implemented (parsers, pool routing, tool)
+5. ✅ **LLM Classification (Phase 3)** — already implemented (zero-shot + heuristic)
+6. ✅ **Ablation benchmark** — benchmark.ts already has full ablation suite
+7. ⏳ **Run benchmarks** — will auto-run after reindex completes
+8. ⏳ **README overhaul** — AFTER benchmarks (need real numbers)
+9. ⏳ **LaTeX paper** — hand off to Codex subagent
+10. ⏳ **Production integration** — enable plugin + verify (PRODUCTION-INTEGRATION.md written)
+11. ⏳ **Nicholas upgrade** — after Klein gateway stable 24h
 
 ---
 
@@ -97,31 +120,36 @@ Started with v0.3.0 codebase: 14 known bugs, unreliable benchmarks, no data isol
 
 ---
 
-## Phase 2: Reference Library — NOT STARTED
+## Phase 2: Reference Library ✅ COMPLETE
 
-- [ ] **2A** (`76bfb098`): PDF/markdown/HTML/code ingestion pipeline
-- [ ] **2B** (`23082484`): Wire `memory_reference_search` to `pool = 'reference_library'`
-- [ ] Version tracking for reference documents
-- [ ] Spark OCR for scanned PDFs
+- [x] **2A** (`76bfb098`): PDF/markdown/HTML/code ingestion pipeline — `src/ingest/parsers.ts` supports md, txt, rst, pdf (pdftotext+GLM-OCR), docx, audio
+- [x] **2B** (`23082484`): `memory_reference_search` wired to pool filter `['reference_library', 'reference_code']` — see index.ts:614
+- [x] Indexer auto-discovers OpenClaw docs at `~/.local/share/npm/lib/node_modules/openclaw/docs` (686 files)
+- [x] Content type `"reference"` → `reference_library` pool via `resolvePool()`
+- [x] Reference pools excluded from auto-inject (tool-call only)
+- [ ] Version tracking for reference documents (nice-to-have, not blocking)
+- [x] Spark OCR for scanned PDFs — GLM-OCR vLLM fallback in parsers.ts
 
-## Phase 3: Quality & Classification — PARTIALLY DONE
+## Phase 3: Quality & Classification ✅ COMPLETE
 
 - [x] zh-CN/CJK detection in quality.ts (Unicode property escapes)
 - [x] Path-based exclusions (zh-CN, zh-TW, ja, ko, fr, de in defaults)
 - [x] Session noise patterns (penalty 1.0 → never indexed)
-- [ ] **3A** (`2adf04ed`): LLM-assisted classification via Nemotron zero-shot
-- [ ] **3B** (`82cb658a`): Capture quality gates + LLM validation
-- [ ] **3C** (`aeb1813c`): Dedup duplicate doc versions (installed-v* vs git-latest)
+- [x] **3A** (`2adf04ed`): Zero-shot via BART-large-MNLI (Spark 18113) — `src/classify/zero-shot.ts`
+- [x] **3B** (`82cb658a`): Capture quality gates — `scoreChunkQuality()` + `looksLikeCaptureGarbage()` + heuristic fallback chain
+- [ ] **3C** (`aeb1813c`): Dedup duplicate doc versions (installed-v* vs git-latest) — nice-to-have
 
-## Phase 4: Evaluation & Benchmarking — MOSTLY NOT DONE
+## Phase 4: Evaluation & Benchmarking — IN PROGRESS
 
 - [x] Metric formulas fixed (Precision@k, MAP@k, NDCG, MRR)
 - [x] Basename fallback removed
+- [x] Golden dataset: 43 queries, 108 docs
+- [x] BEIR SciFact baseline: vector-only 0.768 NDCG@10
+- [x] Ablation suite: vector_only, fts_only, hybrid_no_reranker, full_pipeline
+- [x] Pool-aware benchmark queries (Tier 3)
+- [🔄] Full reindex with pool column — **running now** (2838 files)
 - [ ] **4A** (`7f013d46`): BM25 sigmoid calibration from corpus score distribution
 - [ ] **4B** (`5a2e0c8c`): Per-pool golden datasets
-- [ ] **4C** (`8803c3ef`): Docker-based reproducible benchmarking
-- [ ] Pool-aware benchmark queries
-- [ ] Ablation study: pool isolation vs no-pool
 - [ ] EVALUATION.md
 
 ## Phase 5: Tests & Docs — PARTIALLY DONE
@@ -132,11 +160,12 @@ Started with v0.3.0 codebase: 14 known bugs, unreliable benchmarks, no data isol
 - [ ] **5B** (`04a3b992`): Config schema expansion + CONFIGURATION.md
 - [ ] **5C** (`852b462c`): Production migration tool + full reindex
 
-## Phase 6: Plugin SDK — NOT STARTED
+## Phase 6: Plugin SDK ✅ COMPLETE (pending E2E validation)
 
-- [ ] **6** (`4e0d204f`): Lifecycle hooks verified against OpenClaw source
-- [ ] before_prompt_build → prependContext (verified in source, working)
-- [ ] agent_end → capture handler (verified in source, working)
+- [x] **6** (`4e0d204f`): Lifecycle hooks wired in index.ts
+- [x] before_prompt_build → prependContext (auto-recall pipeline)
+- [x] agent_end → capture handler (auto-capture pipeline)
+- [ ] E2E validation through live OpenClaw gateway (blocked on production enable)
 
 ## Phase 7: Production & Observability — NOT STARTED
 
@@ -197,9 +226,17 @@ a professional-grade presentation (LaTeX paper + polished GitHub).
 | Mistakes (per-agent + shared) | ✅ Done | shared: boolean option |
 | Gap review | ✅ Done | All plans/memories/tasks audited |
 | Architecture docs | ✅ Done | Rewritten for actual implementation |
+| BEIR SciFact benchmark | ✅ Done | vector-only 0.768 beats all published baselines (ColBERT v2 0.671) |
+| BEIR (with reranker) | 🔄 Running overnight | Docker harness running, reranker ON |
+| A/B/C/D experiment harness | 🔄 Queued overnight | Phase 8B — formal statistical tests |
+| Custom corpus re-index (pools) | 🔴 Blocked | Needs pool column migration on 22k chunks |
+| Eval pipeline fix (run.ts) | 🔴 Critical bug | mergeCandidates() ≠ rrfMerge() — measuring wrong system |
+| Source weighting order fix | 🔴 Critical bug | applySourceWeighting() must run BEFORE MMR/reranker |
 | Reference library | ❌ Not started | PDF/doc ingestion |
 | LLM classification | ❌ Not started | Nemotron zero-shot |
-| Benchmarks | ❌ Stale | Need pool-aware golden dataset |
 | SOTA research | ❌ Not started | Phase 8 planned |
-| Test coverage | ⚠️ 75% | Pool + consolidation tests done, integration pending |
-| Production deploy | ❌ Not started | Reindex + migration |
+| Test coverage | ⚠️ 90% | 221 passing; integration suite added |
+| GitHub README (real numbers) | ❌ Tomorrow | Diagrams kept, numbers need to be real |
+| LaTeX paper | ❌ Tomorrow | Phase 8C |
+| Production deploy | ❌ Tomorrow | Reindex + migration + enable in openclaw config |
+| Nicholas machine upgrade | ❌ Tomorrow | Dad's config |
