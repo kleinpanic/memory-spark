@@ -9,7 +9,12 @@ import path from "node:path";
 import { tagEntities } from "../classify/ner.js";
 import { scoreChunkQuality } from "../classify/quality.js";
 import type { MemorySparkConfig } from "../config.js";
-import { chunkDocument, cleanChunkText, estimateTokens } from "../embed/chunker.js";
+import {
+  chunkDocument,
+  chunkDocumentHierarchical,
+  cleanChunkText,
+  estimateTokens,
+} from "../embed/chunker.js";
 import type { EmbedProvider } from "../embed/provider.js";
 import type { EmbedQueue } from "../embed/queue.js";
 import type { StorageBackend, MemoryChunk } from "../storage/backend.js";
@@ -33,6 +38,8 @@ export interface IngestFileOptions {
   source?: "memory" | "sessions" | "ingest";
   /** Content type for reference library indexing. Default: "knowledge" */
   contentType?: "knowledge" | "reference" | "tool";
+  /** Use hierarchical parent-child chunking for better recall. Default: false */
+  hierarchical?: boolean;
   logger?: { info: (m: string) => void; warn: (m: string) => void; error: (m: string) => void };
 }
 
@@ -87,139 +94,259 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
       contentType = "tool" as typeof contentType;
     }
 
-    // 3. Chunk — use reference.chunkSize for reference content, cfg.chunk for others
+    // 3. Chunk — hierarchical (parent-child) or flat depending on config
     const chunkCfg = opts.cfg.chunk;
-    const chunkSize =
-      contentType === "reference"
-        ? (opts.cfg.reference.chunkSize ?? 800)
-        : (chunkCfg?.maxTokens ?? 400);
-    const rawChunks = chunkDocument(
-      {
-        text: rawText,
-        path: relPath,
-        source,
-        ext: isSession ? "txt" : ext,
-      },
-      {
-        maxTokens: chunkSize,
-        overlapTokens: chunkCfg?.overlapTokens,
-        minTokens: chunkCfg?.minTokens,
-      },
-    );
+    const useHierarchical = opts.hierarchical ?? chunkCfg?.hierarchical ?? true;
+    const chunkInput = {
+      text: rawText,
+      path: relPath,
+      source: source as "memory" | "sessions" | "ingest" | "capture",
+      ext: isSession ? "txt" : ext,
+    };
 
-    if (rawChunks.length === 0) {
-      return {
-        filePath: opts.filePath,
-        chunksAdded: 0,
-        chunksRemoved: 0,
-        durationMs: Date.now() - start,
-      };
-    }
-
-    // 3b. Quality gate — score chunks and drop noise before embedding
+    // Quality gate helper
     const minQuality = opts.cfg.ingest?.minQuality ?? 0.3;
-    const qualifiedWithScores = rawChunks
-      .map((c) => {
-        const quality = scoreChunkQuality(c.text, relPath, source, {
-          language: opts.cfg.ingest?.language,
-          threshold: opts.cfg.ingest?.languageThreshold,
-        });
-        return { chunk: c, qualityScore: quality.score };
-      })
-      .filter((item) => item.qualityScore >= minQuality);
+    const qualityGate = (text: string) => {
+      const quality = scoreChunkQuality(text, relPath, source, {
+        language: opts.cfg.ingest?.language,
+        threshold: opts.cfg.ingest?.languageThreshold,
+      });
+      return quality.score >= minQuality ? quality.score : null;
+    };
 
-    if (qualifiedWithScores.length === 0) {
-      opts.logger?.info(
-        `memory-spark: ${source} ${relPath} — all ${rawChunks.length} chunks filtered by quality gate`,
-      );
-      return {
-        filePath: opts.filePath,
-        chunksAdded: 0,
-        chunksRemoved: 0,
-        durationMs: Date.now() - start,
-      };
-    }
-
-    // 3c. Clean chunk text — strip metadata noise before embedding
-    const cleanedWithScores = qualifiedWithScores
-      .map((item) => ({
-        chunk: { ...item.chunk, text: cleanChunkText(item.chunk.text) },
-        qualityScore: item.qualityScore,
-      }))
-      .filter((item) => item.chunk.text.trim().length > 0);
-
-    if (cleanedWithScores.length === 0) {
-      return {
-        filePath: opts.filePath,
-        chunksAdded: 0,
-        chunksRemoved: 0,
-        durationMs: Date.now() - start,
-      };
-    }
-
-    const cleanedChunks = cleanedWithScores.map((item) => item.chunk);
-    const qualityScores = cleanedWithScores.map((item) => item.qualityScore);
-
-    // 4. NER tag (best-effort, sequential to avoid overwhelming single-worker service)
-    const entitiesPerChunk: string[][] = [];
-    for (const c of cleanedChunks) {
-      try {
-        entitiesPerChunk.push(await tagEntities(c.text, opts.cfg));
-      } catch {
-        entitiesPerChunk.push([]);
-      }
-    }
-
-    // 5. Embed raw chunk text.
-    //    TODO (Phase 2B): Implement Anthropic "Contextual Retrieval" — prepend
-    //    LLM-generated context prefix per chunk before embedding. Currently we
-    //    embed raw text only. Contextual metadata (content_type, parent_heading)
-    //    is stored as columns for post-retrieval use, not embedded.
-    const vectors = await opts.embed.embedBatch(cleanedChunks.map((c) => c.text));
-
-    // 6. Build MemoryChunk objects with RELATIVE paths
-    //    Use file mtime as updated_at — NOT current time.
-    //    This preserves temporal accuracy: a file from February stays "February"
-    //    even when re-indexed on a gateway restart. Without this, every restart
-    //    resets all timestamps and breaks temporal decay scoring.
+    // Get file mtime for temporal accuracy
     let fileTime: string;
     try {
       const stat = await import("fs/promises").then((fs) => fs.stat(opts.filePath));
       fileTime = stat.mtime.toISOString();
     } catch {
-      fileTime = new Date().toISOString(); // fallback for virtual/missing files
+      fileTime = new Date().toISOString();
     }
-    const chunks: MemoryChunk[] = cleanedChunks.map((raw, i) => {
-      const chunk: MemoryChunk = {
-        id: chunkId(relPath, raw.startLine, opts.agentId),
-        path: relPath,
-        source,
-        agent_id: opts.agentId,
-        start_line: raw.startLine,
-        end_line: raw.endLine,
-        text: raw.text,
-        vector: vectors[i]!,
-        updated_at: fileTime,
-        entities: JSON.stringify(entitiesPerChunk[i] ?? []),
-        content_type: contentType,
-        quality_score: qualityScores[i] ?? 0.5,
-        token_count: estimateTokens(raw.text),
-        parent_heading: raw.parentHeading ?? "",
-      };
-      // Assign pool based on content_type and path
-      chunk.pool = resolvePool(chunk);
-      return chunk;
-    });
+
+    let allChunksToStore: MemoryChunk[];
+
+    if (useHierarchical) {
+      // ── Hierarchical Parent-Child Chunking ──────────────────────────────
+      const hierarchical = chunkDocumentHierarchical(chunkInput, {
+        parentMaxTokens: chunkCfg?.parentMaxTokens ?? 2000,
+        childMaxTokens: chunkCfg?.childMaxTokens ?? 200,
+        childOverlapTokens: chunkCfg?.childOverlapTokens ?? 25,
+      });
+
+      if (hierarchical.length === 0) {
+        return {
+          filePath: opts.filePath,
+          chunksAdded: 0,
+          chunksRemoved: 0,
+          durationMs: Date.now() - start,
+        };
+      }
+
+      // Collect all texts to embed (parents first, then children)
+      const parentTexts: string[] = [];
+      const childTexts: string[] = [];
+      const parentMeta: Array<{ parentId: string; chunk: typeof hierarchical[0]["parent"]; quality: number }> = [];
+      const childMeta: Array<{ parentId: string; chunk: typeof hierarchical[0]["children"][0]; quality: number }> = [];
+
+      for (const group of hierarchical) {
+        const cleanedParentText = cleanChunkText(group.parent.text);
+        const parentQuality = qualityGate(cleanedParentText);
+        if (parentQuality === null || !cleanedParentText.trim()) continue;
+
+        parentTexts.push(cleanedParentText);
+        parentMeta.push({ parentId: group.parent.id, chunk: group.parent, quality: parentQuality });
+
+        for (const child of group.children) {
+          const cleanedChildText = cleanChunkText(child.text);
+          const childQuality = qualityGate(cleanedChildText);
+          if (childQuality === null || !cleanedChildText.trim()) continue;
+
+          childTexts.push(cleanedChildText);
+          childMeta.push({ parentId: group.parent.id, chunk: child, quality: childQuality });
+        }
+      }
+
+      if (parentTexts.length === 0) {
+        return {
+          filePath: opts.filePath,
+          chunksAdded: 0,
+          chunksRemoved: 0,
+          durationMs: Date.now() - start,
+        };
+      }
+
+      // Embed all in one batch (parents + children)
+      const allTexts = [...parentTexts, ...childTexts];
+      const allVectors = await opts.embed.embedBatch(allTexts);
+
+      // NER for all chunks (best effort)
+      const allEntities: string[][] = [];
+      for (const text of allTexts) {
+        try {
+          allEntities.push(await tagEntities(text, opts.cfg));
+        } catch {
+          allEntities.push([]);
+        }
+      }
+
+      allChunksToStore = [];
+      const parentCount = parentTexts.length;
+
+      // Build parent MemoryChunks
+      for (let i = 0; i < parentCount; i++) {
+        const meta = parentMeta[i]!;
+        const chunk: MemoryChunk = {
+          id: meta.parentId,
+          path: relPath,
+          source,
+          agent_id: opts.agentId,
+          start_line: meta.chunk.startLine,
+          end_line: meta.chunk.endLine,
+          text: parentTexts[i]!,
+          vector: allVectors[i]!,
+          updated_at: fileTime,
+          entities: JSON.stringify(allEntities[i] ?? []),
+          content_type: contentType,
+          quality_score: meta.quality,
+          token_count: estimateTokens(parentTexts[i]!),
+          parent_heading: meta.chunk.parentHeading ?? "",
+          is_parent: true,
+        };
+        chunk.pool = resolvePool(chunk);
+        allChunksToStore.push(chunk);
+      }
+
+      // Build child MemoryChunks
+      for (let i = 0; i < childTexts.length; i++) {
+        const meta = childMeta[i]!;
+        const vecIdx = parentCount + i;
+        const chunk: MemoryChunk = {
+          id: chunkId(relPath, meta.chunk.startLine, opts.agentId + ":" + meta.parentId),
+          path: relPath,
+          source,
+          agent_id: opts.agentId,
+          start_line: meta.chunk.startLine,
+          end_line: meta.chunk.endLine,
+          text: childTexts[i]!,
+          vector: allVectors[vecIdx]!,
+          updated_at: fileTime,
+          entities: JSON.stringify(allEntities[vecIdx] ?? []),
+          content_type: contentType,
+          quality_score: meta.quality,
+          token_count: estimateTokens(childTexts[i]!),
+          parent_heading: meta.chunk.parentHeading ?? "",
+          parent_id: meta.parentId,
+          is_parent: false,
+        };
+        chunk.pool = resolvePool(chunk);
+        allChunksToStore.push(chunk);
+      }
+    } else {
+      // ── Flat Chunking (legacy) ──────────────────────────────────────────
+      const chunkSize =
+        contentType === "reference"
+          ? (opts.cfg.reference.chunkSize ?? 800)
+          : (chunkCfg?.maxTokens ?? 400);
+      const rawChunks = chunkDocument(chunkInput, {
+        maxTokens: chunkSize,
+        overlapTokens: chunkCfg?.overlapTokens,
+        minTokens: chunkCfg?.minTokens,
+      });
+
+      if (rawChunks.length === 0) {
+        return {
+          filePath: opts.filePath,
+          chunksAdded: 0,
+          chunksRemoved: 0,
+          durationMs: Date.now() - start,
+        };
+      }
+
+      // Quality gate
+      const qualifiedWithScores = rawChunks
+        .map((c) => {
+          const score = qualityGate(c.text);
+          return score !== null ? { chunk: c, qualityScore: score } : null;
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null);
+
+      if (qualifiedWithScores.length === 0) {
+        opts.logger?.info(
+          `memory-spark: ${source} ${relPath} — all ${rawChunks.length} chunks filtered by quality gate`,
+        );
+        return {
+          filePath: opts.filePath,
+          chunksAdded: 0,
+          chunksRemoved: 0,
+          durationMs: Date.now() - start,
+        };
+      }
+
+      // Clean + filter empty
+      const cleanedWithScores = qualifiedWithScores
+        .map((item) => ({
+          chunk: { ...item.chunk, text: cleanChunkText(item.chunk.text) },
+          qualityScore: item.qualityScore,
+        }))
+        .filter((item) => item.chunk.text.trim().length > 0);
+
+      if (cleanedWithScores.length === 0) {
+        return {
+          filePath: opts.filePath,
+          chunksAdded: 0,
+          chunksRemoved: 0,
+          durationMs: Date.now() - start,
+        };
+      }
+
+      const cleanedChunks = cleanedWithScores.map((item) => item.chunk);
+      const qualityScores = cleanedWithScores.map((item) => item.qualityScore);
+
+      // NER tag
+      const entitiesPerChunk: string[][] = [];
+      for (const c of cleanedChunks) {
+        try {
+          entitiesPerChunk.push(await tagEntities(c.text, opts.cfg));
+        } catch {
+          entitiesPerChunk.push([]);
+        }
+      }
+
+      // Embed
+      const vectors = await opts.embed.embedBatch(cleanedChunks.map((c) => c.text));
+
+      // Build MemoryChunks
+      allChunksToStore = cleanedChunks.map((raw, i) => {
+        const chunk: MemoryChunk = {
+          id: chunkId(relPath, raw.startLine, opts.agentId),
+          path: relPath,
+          source,
+          agent_id: opts.agentId,
+          start_line: raw.startLine,
+          end_line: raw.endLine,
+          text: raw.text,
+          vector: vectors[i]!,
+          updated_at: fileTime,
+          entities: JSON.stringify(entitiesPerChunk[i] ?? []),
+          content_type: contentType,
+          quality_score: qualityScores[i] ?? 0.5,
+          token_count: estimateTokens(raw.text),
+          parent_heading: raw.parentHeading ?? "",
+        };
+        chunk.pool = resolvePool(chunk);
+        return chunk;
+      });
+    }
 
     // 7. Remove old chunks for this path, then upsert new
     const removed = await opts.backend.deleteByPath(relPath, opts.agentId);
-    await opts.backend.upsert(chunks);
+    await opts.backend.upsert(allChunksToStore);
 
-    opts.logger?.info(`memory-spark: ${source} ${relPath} → ${chunks.length} chunks`);
+    opts.logger?.info(`memory-spark: ${source} ${relPath} → ${allChunksToStore.length} chunks`);
 
     return {
       filePath: opts.filePath,
-      chunksAdded: chunks.length,
+      chunksAdded: allChunksToStore.length,
       chunksRemoved: removed,
       durationMs: Date.now() - start,
     };

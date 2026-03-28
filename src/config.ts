@@ -56,12 +56,20 @@ export interface FtsConfig {
 
 /** Chunking configuration for document ingestion. All fields optional — defaults applied at use site. */
 export interface ChunkConfig {
-  /** Maximum tokens per chunk. Default: 400 */
+  /** Maximum tokens per chunk (flat mode). Default: 400 */
   maxTokens?: number;
   /** Token overlap between consecutive chunks. Default: 50 */
   overlapTokens?: number;
   /** Minimum tokens for a chunk to be indexed. Default: 20 */
   minTokens?: number;
+  /** Enable hierarchical parent-child chunking. Default: true */
+  hierarchical?: boolean;
+  /** Parent chunk size in tokens (hierarchical mode). Default: 2000 */
+  parentMaxTokens?: number;
+  /** Child chunk size in tokens (hierarchical mode). Default: 200 */
+  childMaxTokens?: number;
+  /** Child overlap tokens (hierarchical mode). Default: 25 */
+  childOverlapTokens?: number;
 }
 
 /** Embed cache configuration. All fields optional — defaults applied at use site. */
@@ -84,6 +92,24 @@ export interface SearchConfig {
   ivfPartitions?: number;
   /** IVF_PQ sub-vectors for vector index. Default: 64 */
   ivfSubVectors?: number;
+}
+
+/** HyDE (Hypothetical Document Embeddings) configuration */
+export interface HydeConfig {
+  /** Whether HyDE is enabled. Default: true */
+  enabled: boolean;
+  /** vLLM / OpenAI-compatible chat completions URL */
+  llmUrl: string;
+  /** Model name for the LLM */
+  model: string;
+  /** Max tokens for the hypothetical document. Default: 150 */
+  maxTokens: number;
+  /** Temperature for generation. Default: 0.7 */
+  temperature: number;
+  /** Timeout for the LLM call in ms. Default: 10000 */
+  timeoutMs: number;
+  /** Bearer token for auth (optional) */
+  apiKey?: string;
 }
 
 /** Source and path weighting for recall scoring. All values are multipliers (1.0 = no change). */
@@ -244,6 +270,8 @@ export interface MemorySparkConfig {
   embedCache?: EmbedCacheConfig;
   /** Vector search and index tuning. Default: refineFactor 20, 3 retries, IVF_PQ(10, 64) */
   search?: SearchConfig;
+  /** HyDE (Hypothetical Document Embeddings) — generate hypothetical docs for better retrieval */
+  hyde?: HydeConfig;
   /** Override SPARK_HOST env var. Used to point at a different Spark node. */
   sparkHost?: string;
   /** Override SPARK_BEARER_TOKEN env var. Loaded from env/.env if not set. */
@@ -404,6 +432,15 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
       chunkSize: 800,
       tags: {},
     },
+    hyde: {
+      enabled: true,
+      llmUrl: `http://${sparkHost}:18080/v1/chat/completions`,
+      model: "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
+      maxTokens: 150,
+      temperature: 0.7,
+      timeoutMs: 10000,
+      apiKey: sparkToken,
+    },
     fts: {
       enabled: true,
       sigmoidMidpoint: 3.0,
@@ -563,6 +600,7 @@ export function resolveConfig(userConfig?: Partial<MemorySparkConfig>): MemorySp
       ...userConfig.migrate,
       statusFile: expandHome(userConfig.migrate?.statusFile ?? defaults.migrate.statusFile),
     },
+    hyde: { ...defaults.hyde!, ...userConfig.hyde },
     fts: { ...defaults.fts, ...userConfig.fts },
     chunk: { ...defaults.chunk, ...userConfig.chunk },
     embedCache: { ...defaults.embedCache, ...userConfig.embedCache },

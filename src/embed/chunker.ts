@@ -160,6 +160,106 @@ export function cleanChunkText(text: string): string {
   return text;
 }
 
+// ── Parent-Child Hierarchical Chunking ────────────────────────────────────
+//
+// Creates a two-level hierarchy:
+//   Parent chunks: ~2000 tokens — large context windows for delivery
+//   Child chunks: ~200 tokens — precise search targets
+//
+// Search is done against child chunks (small = precise embeddings).
+// When a child matches, its parent is retrieved for context injection
+// (large = full surrounding context).
+//
+// This is the single biggest recall improvement in modern RAG:
+// small chunks embed precisely, large chunks deliver full context.
+
+export interface ParentChildChunk {
+  parent: RawChunk & { id: string };
+  children: Array<RawChunk & { parentId: string }>;
+}
+
+export interface HierarchicalChunkerOptions {
+  parentMaxTokens?: number; // default: 2000
+  childMaxTokens?: number; // default: 200
+  childOverlapTokens?: number; // default: 25
+  childMinTokens?: number; // default: 15
+}
+
+/**
+ * Split a document into hierarchical parent-child chunks.
+ * Parents are large context windows; children are precise search targets.
+ *
+ * Usage: search against children, retrieve parent for context delivery.
+ */
+export function chunkDocumentHierarchical(
+  input: ChunkInput,
+  opts: HierarchicalChunkerOptions = {},
+): ParentChildChunk[] {
+  const parentMaxTokens = opts.parentMaxTokens ?? 2000;
+  const childMaxTokens = opts.childMaxTokens ?? 200;
+  const childOverlapTokens = opts.childOverlapTokens ?? 25;
+  const childMinTokens = opts.childMinTokens ?? 15;
+
+  if (!input.text.trim()) return [];
+
+  // Step 1: Create parent-sized chunks using the standard chunker
+  const parentRawChunks = chunkDocument(input, {
+    maxTokens: parentMaxTokens,
+    overlapTokens: 100, // parents get more overlap for context continuity
+    minTokens: 40,
+  });
+
+  if (parentRawChunks.length === 0) return [];
+
+  const results: ParentChildChunk[] = [];
+
+  for (const parentChunk of parentRawChunks) {
+    // Generate stable parent ID from content hash
+    const parentId = `p_${simpleHash(input.path + ":" + parentChunk.startLine)}`;
+
+    // Step 2: Split each parent into child-sized chunks
+    const childRawChunks = chunkDocument(
+      {
+        text: parentChunk.text,
+        path: input.path,
+        source: input.source,
+        ext: input.ext,
+      },
+      {
+        maxTokens: childMaxTokens,
+        overlapTokens: childOverlapTokens,
+        minTokens: childMinTokens,
+      },
+    );
+
+    // Adjust child line numbers to be relative to document, not parent
+    const children = childRawChunks.map((child) => ({
+      ...child,
+      startLine: parentChunk.startLine + child.startLine - 1,
+      endLine: parentChunk.startLine + child.endLine - 1,
+      parentHeading: child.parentHeading ?? parentChunk.parentHeading,
+      parentId,
+    }));
+
+    results.push({
+      parent: { ...parentChunk, id: parentId },
+      children,
+    });
+  }
+
+  return results;
+}
+
+/** Simple fast hash for generating stable IDs. Not cryptographic. */
+function simpleHash(input: string): string {
+  let hash = 0;
+  for (let i = 0; i < input.length; i++) {
+    const char = input.charCodeAt(i);
+    hash = ((hash << 5) - hash + char) | 0;
+  }
+  return Math.abs(hash).toString(36).slice(0, 10);
+}
+
 /**
  * Hard-split a string at character boundaries with overlap.
  */

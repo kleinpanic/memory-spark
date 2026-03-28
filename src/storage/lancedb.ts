@@ -99,7 +99,7 @@ export class LanceDBBackend implements StorageBackend {
     try {
       const schema = await this.table.schema();
       const existingFields = new Set(schema.fields.map((f) => f.name));
-      const needed = ["content_type", "quality_score", "token_count", "parent_heading", "pool"];
+      const needed = ["content_type", "quality_score", "token_count", "parent_heading", "pool", "parent_id", "is_parent"];
       this.schemaHasNewColumns = needed.every((n) => existingFields.has(n));
     } catch {
       this.schemaHasNewColumns = false;
@@ -195,6 +195,8 @@ export class LanceDBBackend implements StorageBackend {
       token_count: 0,
       parent_heading: "",
       pool: "agent_memory",
+      parent_id: "",
+      is_parent: false,
     };
     this.table = await this.db.createTable(TABLE_NAME, [seed]);
     await this.table.delete("id = '__seed__'");
@@ -239,6 +241,8 @@ export class LanceDBBackend implements StorageBackend {
         // Pool: route based on content_type and path
         base.pool = resolvePool(c);
         base.parent_heading = c.parent_heading ?? "";
+        base.parent_id = c.parent_id ?? "";
+        base.is_parent = c.is_parent ?? false;
       }
       return base;
     });
@@ -417,6 +421,16 @@ export class LanceDBBackend implements StorageBackend {
       .limit(1)
       .toArray();
     return rows.length > 0 ? (rows[0] as MemoryChunk) : null;
+  }
+
+  async getByIds(ids: string[]): Promise<MemoryChunk[]> {
+    if (!this.table || ids.length === 0) return [];
+    const escaped = ids.map((id) => `'${escapeSql(id)}'`).join(", ");
+    const rows = await this.table
+      .query()
+      .where(`id IN (${escaped})`)
+      .toArray();
+    return rows as MemoryChunk[];
   }
 
   async readFile(params: {
@@ -606,6 +620,8 @@ function rowToSearchResult(row: Record<string, unknown>): SearchResult {
     token_count: row.token_count as number | undefined,
     parent_heading: row.parent_heading as string | undefined,
     pool: (row.pool as string | undefined) ?? "agent_memory",
+    parent_id: (row.parent_id as string | undefined) ?? undefined,
+    is_parent: (row.is_parent as boolean | undefined) ?? undefined,
   };
 
   return {

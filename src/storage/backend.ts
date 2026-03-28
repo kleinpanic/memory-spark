@@ -25,6 +25,10 @@ export interface MemoryChunk {
   token_count?: number;
   /** Most recent markdown heading (## or ###) above this chunk */
   parent_heading?: string;
+  /** Parent chunk ID — if this is a child chunk, references the parent for context expansion */
+  parent_id?: string;
+  /** Whether this is a parent chunk (true) or a child/flat chunk (omitted/false) */
+  is_parent?: boolean;
   /**
    * Logical pool within the single LanceDB table.
    * Determines auto-injection behavior and access patterns.
@@ -93,4 +97,6 @@ export interface StorageBackend {
     agentId?: string;
   }): Promise<{ text: string; path: string }>;
   status(): Promise<BackendStatus>;
+  /** Retrieve chunks by their IDs — used for parent chunk expansion */
+  getByIds(ids: string[]): Promise<MemoryChunk[]>;
 }
