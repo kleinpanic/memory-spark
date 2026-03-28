@@ -42,7 +42,18 @@ export const HYDE_DEFAULTS: HydeConfig = {
   timeoutMs: 10000,
 };
 
-const HYDE_SYSTEM_PROMPT = `You are a technical documentation writer for an AI agent system called OpenClaw. Given a question, write a short document (2-4 sentences) that would directly answer it. Write as if you are the source document, not as if you are answering a question. Be specific and factual. Do not include phrases like "Based on..." or "According to...". Just state the information directly.`;
+/**
+ * HyDE system prompt — domain-agnostic by design.
+ *
+ * Per Gao et al. 2022, the hypothetical document should be written in the
+ * style of a source document, NOT as a conversational answer. This ensures
+ * the embedding lands in the same vector space as stored knowledge chunks.
+ *
+ * The prompt avoids mentioning specific domains (OpenClaw, Spark, etc.)
+ * because the memory system stores diverse content: config docs, code notes,
+ * personal preferences, school assignments, infrastructure docs, etc.
+ */
+const HYDE_SYSTEM_PROMPT = `Given a question or topic, write a short factual document (2-4 sentences) that would directly contain the answer. Write as if you are the source document itself — state facts directly. Do not write as if answering a question. Do not include phrases like "Based on...", "According to...", or "The answer is...". Just state the information.`;
 
 /**
  * Generate a hypothetical document that would answer the given query.
