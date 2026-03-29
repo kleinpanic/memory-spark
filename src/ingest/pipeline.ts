@@ -20,12 +20,28 @@ import type { EmbedQueue } from "../embed/queue.js";
 import type { StorageBackend, MemoryChunk } from "../storage/backend.js";
 import { resolvePool } from "../storage/pool.js";
 
-import { extractText } from "./parsers.js";
+import { extractPdfBatched, extractText } from "./parsers.js";
 import { extractSessionText } from "./sessions.js";
 import { toRelativePath } from "./workspace.js";
 
 /** Anything with embedBatch — works with both raw EmbedProvider and EmbedQueue */
 export type Embedder = Pick<EmbedProvider, "embedBatch"> | Pick<EmbedQueue, "embedBatch">;
+
+/** Create a quality gate function for chunk filtering. */
+function createQualityGate(
+  cfg: MemorySparkConfig,
+  relPath: string,
+  source: string,
+): (text: string) => number | null {
+  const minQuality = cfg.ingest?.minQuality ?? 0.3;
+  return (text: string) => {
+    const quality = scoreChunkQuality(text, relPath, source, {
+      language: cfg.ingest?.language,
+      threshold: cfg.ingest?.languageThreshold,
+    });
+    return quality.score >= minQuality ? quality.score : null;
+  };
+}
 
 export interface IngestFileOptions {
   filePath: string;
@@ -58,6 +74,11 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
     const ext = path.extname(opts.filePath).replace(".", "").toLowerCase();
     const isSession = ext === "jsonl" || opts.source === "sessions";
 
+    // Route PDFs to batched processing to prevent OOM on large files
+    if (ext === "pdf") {
+      return ingestPdfBatched(opts);
+    }
+
     // 1. Extract text
     let rawText: string;
     if (isSession) {
@@ -87,16 +108,12 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
     // 2. Convert to relative path for storage
     const relPath = toRelativePath(opts.filePath, opts.workspaceDir);
     const source = opts.source ?? (isSession ? "sessions" : "memory");
-    // Auto-detect content type based on filename and extension
+    // Auto-detect content type based on filename
     const basename = path.basename(opts.filePath).toLowerCase();
-    const fileExt = path.extname(opts.filePath).replace(".", "").toLowerCase();
     let contentType = opts.contentType ?? "knowledge";
     if (basename === "tools.md" || basename.startsWith("tools-")) {
       contentType = "tool" as typeof contentType;
     }
-    // PDF contentType is set by the caller — reference docs in reference.paths
-    // directories already arrive with contentType="reference" from the indexer.
-    // No need to override here.
 
     // 3. Chunk — hierarchical (parent-child) or flat depending on config
     const chunkCfg = opts.cfg.chunk;
@@ -109,14 +126,7 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
     };
 
     // Quality gate helper
-    const minQuality = opts.cfg.ingest?.minQuality ?? 0.3;
-    const qualityGate = (text: string) => {
-      const quality = scoreChunkQuality(text, relPath, source, {
-        language: opts.cfg.ingest?.language,
-        threshold: opts.cfg.ingest?.languageThreshold,
-      });
-      return quality.score >= minQuality ? quality.score : null;
-    };
+    const qualityGate = createQualityGate(opts.cfg, relPath, source);
 
     // Get file mtime for temporal accuracy
     let fileTime: string;
@@ -365,6 +375,191 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
   } catch (err) {
     const error = err instanceof Error ? err.message : String(err);
     opts.logger?.error(`memory-spark: ingest failed for ${opts.filePath}: ${error}`);
+    return {
+      filePath: opts.filePath,
+      chunksAdded: 0,
+      chunksRemoved: 0,
+      durationMs: Date.now() - start,
+      error,
+    };
+  }
+}
+
+/** Maximum chunks to produce from a single PDF batch. Safety cap for dense sections. */
+const MAX_CHUNKS_PER_PDF_BATCH = 200;
+
+/**
+ * Ingest a PDF file using batched page processing to prevent OOM.
+ *
+ * Large PDFs are processed in batches of 25 pages:
+ * - Extract text for each batch
+ * - Chunk, embed, and store each batch separately
+ * - This keeps embed calls small and prevents GPU OOM on Spark
+ *
+ * This is lossless — all pages are processed, no data is truncated.
+ */
+export async function ingestPdfBatched(opts: IngestFileOptions): Promise<IngestResult> {
+  const start = Date.now();
+
+  try {
+    // 1. Extract PDF in page batches
+    const batches = await extractPdfBatched(opts.filePath, opts.cfg);
+
+    if (batches.length === 0) {
+      return {
+        filePath: opts.filePath,
+        chunksAdded: 0,
+        chunksRemoved: 0,
+        durationMs: Date.now() - start,
+      };
+    }
+
+    // 2. Setup
+    const relPath = toRelativePath(opts.filePath, opts.workspaceDir);
+    const source = opts.source ?? "memory";
+    const basename = path.basename(opts.filePath).toLowerCase();
+    let contentType = opts.contentType ?? "knowledge";
+    if (basename === "tools.md" || basename.startsWith("tools-")) {
+      contentType = "tool" as typeof contentType;
+    }
+
+    const chunkCfg = opts.cfg.chunk;
+    const chunkSize =
+      contentType === "reference"
+        ? (opts.cfg.reference.chunkSize ?? 800)
+        : (chunkCfg?.maxTokens ?? 400);
+
+    const qualityGate = createQualityGate(opts.cfg, relPath, source);
+
+    // Get file mtime
+    let fileTime: string;
+    try {
+      const stat = await import("fs/promises").then((fs) => fs.stat(opts.filePath));
+      fileTime = stat.mtime.toISOString();
+    } catch {
+      fileTime = new Date().toISOString();
+    }
+
+    // 3. Remove old chunks for this file first (once, not per batch)
+    await opts.backend.deleteByPath(relPath, opts.agentId);
+
+    // 4. Process each batch
+    let totalChunksAdded = 0;
+    const batchCount = batches.length;
+
+    for (let batchIdx = 0; batchIdx < batches.length; batchIdx++) {
+      const batch = batches[batchIdx]!;
+      const batchText = batch.text.trim();
+
+      if (!batchText) {
+        opts.logger?.info(
+          `memory-spark: PDF batch ${batchIdx + 1}/${batchCount} (pages ${batch.pageStart}-${batch.pageEnd}) — empty, skipping`,
+        );
+        continue;
+      }
+
+      // Chunk this batch
+      const rawChunks = chunkDocument(
+        {
+          text: batchText,
+          path: relPath,
+          source: source as "memory" | "sessions" | "ingest" | "capture",
+          ext: "md", // Treat as markdown for section awareness
+        },
+        {
+          maxTokens: chunkSize,
+          overlapTokens: chunkCfg?.overlapTokens,
+          minTokens: chunkCfg?.minTokens,
+        },
+      );
+
+      if (rawChunks.length === 0) continue;
+
+      // Safety cap per batch (dense sections)
+      let chunksToProcess = rawChunks;
+      if (rawChunks.length > MAX_CHUNKS_PER_PDF_BATCH) {
+        opts.logger?.warn(
+          `memory-spark: ${relPath} batch ${batchIdx + 1}/${batchCount} has ${rawChunks.length} chunks, capping at ${MAX_CHUNKS_PER_PDF_BATCH}`,
+        );
+        chunksToProcess = rawChunks.slice(0, MAX_CHUNKS_PER_PDF_BATCH);
+      }
+
+      // Quality gate
+      const qualifiedWithScores = chunksToProcess
+        .map((c) => {
+          const score = qualityGate(c.text);
+          return score !== null ? { chunk: c, qualityScore: score } : null;
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null);
+
+      if (qualifiedWithScores.length === 0) continue;
+
+      // Clean text
+      const cleanedWithScores = qualifiedWithScores
+        .map((item) => ({
+          chunk: { ...item.chunk, text: cleanChunkText(item.chunk.text) },
+          qualityScore: item.qualityScore,
+        }))
+        .filter((item) => item.chunk.text.trim().length > 0);
+
+      if (cleanedWithScores.length === 0) continue;
+
+      const cleanedChunks = cleanedWithScores.map((item) => item.chunk);
+      const qualityScores = cleanedWithScores.map((item) => item.qualityScore);
+
+      // Embed this batch
+      const vectors = await opts.embed.embedBatch(cleanedChunks.map((c) => c.text));
+
+      // NER for this batch
+      const entitiesPerChunk: string[][] = [];
+      for (const c of cleanedChunks) {
+        try {
+          entitiesPerChunk.push(await tagEntities(c.text, opts.cfg));
+        } catch {
+          entitiesPerChunk.push([]);
+        }
+      }
+
+      // Build MemoryChunks for this batch
+      const batchChunks: MemoryChunk[] = cleanedChunks.map((raw, i) => {
+        const chunk: MemoryChunk = {
+          id: chunkId(relPath, raw.startLine, `${opts.agentId}:batch${batchIdx}:${i}`),
+          path: relPath,
+          source,
+          agent_id: opts.agentId,
+          start_line: raw.startLine,
+          end_line: raw.endLine,
+          text: raw.text,
+          vector: vectors[i]!,
+          updated_at: fileTime,
+          entities: JSON.stringify(entitiesPerChunk[i] ?? []),
+          content_type: contentType,
+          quality_score: qualityScores[i] ?? 0.5,
+          token_count: estimateTokens(raw.text),
+          parent_heading: raw.parentHeading ?? "",
+        };
+        chunk.pool = resolvePool(chunk);
+        return chunk;
+      });
+
+      // Store this batch
+      await opts.backend.upsert(batchChunks);
+      totalChunksAdded += batchChunks.length;
+
+      opts.logger?.info(
+        `memory-spark: PDF batch ${batchIdx + 1}/${batchCount} (pages ${batch.pageStart}-${batch.pageEnd}) → ${batchChunks.length} chunks`,
+      );
+    }
+
+    return {
+      filePath: opts.filePath,
+      chunksAdded: totalChunksAdded,
+      chunksRemoved: 0, // Already deleted above
+      durationMs: Date.now() - start,
+    };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    opts.logger?.error(`memory-spark: PDF ingest failed for ${opts.filePath}: ${error}`);
     return {
       filePath: opts.filePath,
       chunksAdded: 0,

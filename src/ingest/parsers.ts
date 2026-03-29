@@ -103,6 +103,111 @@ async function extractPdfPageRange(
   }
 }
 
+/** Result of extracting a single batch of PDF pages */
+export interface PdfBatch {
+  /** Extracted text (empty string if extraction failed) */
+  text: string;
+  /** First page of this batch (1-indexed) */
+  pageStart: number;
+  /** Last page of this batch (inclusive) */
+  pageEnd: number;
+}
+
+/**
+ * Extract PDF text in page batches for memory-efficient processing.
+ * Returns array of batches, one per PDF_BATCH_PAGES chunk.
+ * Use this for large PDFs where you need to process each batch separately
+ * (e.g., chunk + embed + store per batch to avoid OOM).
+ */
+export async function extractPdfBatched(
+  filePath: string,
+  cfg: MemorySparkConfig,
+  batchSize: number = PDF_BATCH_PAGES,
+): Promise<PdfBatch[]> {
+  const pageCount = await getPdfPageCount(filePath);
+
+  // If we can't get page count, fall back to single batch (all pages at once)
+  if (pageCount === null) {
+    const text = await extractPdfSingleBatch(filePath, cfg);
+    return [{ text, pageStart: 1, pageEnd: 0 }]; // pageEnd=0 indicates unknown
+  }
+
+  const batches: PdfBatch[] = [];
+
+  // Process in page batches
+  for (let start = 1; start <= pageCount; start += batchSize) {
+    const end = Math.min(start + batchSize - 1, pageCount);
+    const text = await extractPdfPageRange(filePath, start, end);
+    batches.push({ text, pageStart: start, pageEnd: end });
+  }
+
+  return batches;
+}
+
+/**
+ * Fallback: extract entire PDF as a single batch.
+ * Used when page count is unavailable or for small PDFs.
+ */
+async function extractPdfSingleBatch(filePath: string, cfg: MemorySparkConfig): Promise<string> {
+  // Try pdftotext first
+  try {
+    const { stdout } = await execFileAsync("pdftotext", ["-layout", "-q", filePath, "-"]);
+    if (stdout.trim().length > 50) return stdout;
+  } catch {
+    // Fall through
+  }
+
+  // Try pdf-parse for small files
+  try {
+    const stat = await fs.stat(filePath);
+    if (stat.size < 2 * 1024 * 1024) {
+      const pdfParse = (await import("pdf-parse")).default;
+      const buffer = await fs.readFile(filePath);
+      const data = await pdfParse(buffer);
+      if (data.text.trim().length > 50) return data.text;
+    }
+  } catch {
+    // Fall through
+  }
+
+  // Try GLM-OCR for scanned PDFs
+  try {
+    const stat = await fs.stat(filePath);
+    if (stat.size <= 10 * 1024 * 1024) {
+      const buffer = await fs.readFile(filePath);
+      const base64 = buffer.toString("base64");
+      const text = await glmOcrRequest(base64, cfg, GLM_OCR_TIMEOUT_MS);
+      if (text && text.length > 50) return text;
+    }
+  } catch {
+    // Fall through
+  }
+
+  // Try EasyOCR
+  try {
+    const stat = await fs.stat(filePath);
+    if (stat.size < 5 * 1024 * 1024) {
+      const buffer = await fs.readFile(filePath);
+      const formData = new FormData();
+      formData.append("file", new Blob([buffer]), "document.pdf");
+
+      const resp = await fetch(cfg.spark.ocr, {
+        method: "POST",
+        body: formData,
+        signal: AbortSignal.timeout(EASY_OCR_TIMEOUT_MS),
+      });
+      if (resp.ok) {
+        const data = (await resp.json()) as { text: string };
+        if (data.text?.trim().length > 50) return data.text;
+      }
+    }
+  } catch {
+    // No more fallbacks
+  }
+
+  throw new Error(`memory-spark: could not extract text from PDF: ${filePath}`);
+}
+
 async function extractPdf(filePath: string, cfg: MemorySparkConfig): Promise<string> {
   const pageCount = await getPdfPageCount(filePath);
 
