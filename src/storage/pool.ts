@@ -96,6 +96,11 @@ export function resolvePool(chunk: Partial<MemoryChunk>): PoolValue {
     return "reference_library";
   }
 
+  // Note: PDFs are routed by contentType like everything else.
+  // Reference docs get contentType="reference" at ingest time
+  // (set by the indexer for files in reference.paths directories).
+  // No PDF-specific routing needed here.
+
   // Code references → reference_code
   if (contentType === "reference_code") {
     return "reference_code";
@@ -104,6 +109,7 @@ export function resolvePool(chunk: Partial<MemoryChunk>): PoolValue {
   // Default: agent's own memory
   return "agent_memory";
 }
+
 
 /**
  * Check if a pool should be auto-injected during recall.
