@@ -195,13 +195,28 @@ export class EmbedQueue {
       } catch (err) {
         this.consecutiveFailures++;
         const errMsg = err instanceof Error ? err.message : String(err);
+        const httpStatus = (err as { httpStatus?: number }).httpStatus;
 
-        if (item.retries < this.maxRetries) {
-          // Retry with exponential backoff
+        // Fatal errors — don't retry, they won't get better
+        const isFatal = httpStatus === 401 || httpStatus === 403;
+        if (isFatal) {
+          this._failed++;
+          this.logger.error(
+            `memory-spark queue: FATAL ${httpStatus} — not retrying (check auth/token): ${errMsg}`,
+          );
+          item.reject(err instanceof Error ? err : new Error(errMsg));
+        } else if (item.retries < this.maxRetries) {
+          // Retryable: network errors, 429, 500, 502, 503, 504, timeouts
           item.retries++;
-          const delay = Math.min(this.baseDelayMs * Math.pow(2, item.retries - 1), this.maxDelayMs);
+          // Use longer backoff for rate limits (429)
+          const multiplier = httpStatus === 429 ? 3 : 1;
+          const delay = Math.min(
+            this.baseDelayMs * Math.pow(2, item.retries - 1) * multiplier,
+            this.maxDelayMs,
+          );
+          const tag = httpStatus === 429 ? "RATE LIMITED" : httpStatus ? `HTTP ${httpStatus}` : "network";
           this.logger.warn(
-            `memory-spark queue: retry ${item.retries}/${this.maxRetries} in ${delay}ms: ${errMsg}`,
+            `memory-spark queue: retry ${item.retries}/${this.maxRetries} [${tag}] in ${delay}ms: ${errMsg}`,
           );
           setTimeout(() => {
             this.queue.unshift(item); // Re-add to front of queue

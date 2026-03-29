@@ -77,17 +77,30 @@ function makeOpenAiCompat(
   const dims = DIMS[model] ?? 1536;
 
   async function embed(input: string | string[]): Promise<number[][]> {
-    const resp = await fetch(`${baseUrl}/embeddings`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({ model, input }),
-    });
+    let resp: Response;
+    try {
+      resp = await fetch(`${baseUrl}/embeddings`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({ model, input }),
+      });
+    } catch (err: unknown) {
+      // Unwrap Node fetch errors — they wrap the real cause (ECONNREFUSED, ETIMEDOUT, etc.)
+      const cause = (err as { cause?: Error })?.cause;
+      const code = (cause as { code?: string })?.code ?? "UNKNOWN";
+      const detail = cause?.message ?? (err instanceof Error ? err.message : String(err));
+      throw new Error(`Embed ${id} network error [${code}]: ${detail}`);
+    }
     if (!resp.ok) {
       const body = await resp.text().catch(() => "");
-      throw new Error(`Embed ${id} failed (${resp.status}): ${body.slice(0, 200)}`);
+      const status = resp.status;
+      // Tag retryable vs fatal for the queue layer
+      const err = new Error(`Embed ${id} failed (${status}): ${body.slice(0, 200)}`);
+      (err as Error & { httpStatus: number }).httpStatus = status;
+      throw err;
     }
     const data = (await resp.json()) as { data: Array<{ embedding: number[]; index: number }> };
     // Sort by index to preserve order
