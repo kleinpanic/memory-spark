@@ -87,12 +87,16 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
     // 2. Convert to relative path for storage
     const relPath = toRelativePath(opts.filePath, opts.workspaceDir);
     const source = opts.source ?? (isSession ? "sessions" : "memory");
-    // Auto-detect content type based on filename
+    // Auto-detect content type based on filename and extension
     const basename = path.basename(opts.filePath).toLowerCase();
+    const fileExt = path.extname(opts.filePath).replace(".", "").toLowerCase();
     let contentType = opts.contentType ?? "knowledge";
     if (basename === "tools.md" || basename.startsWith("tools-")) {
       contentType = "tool" as typeof contentType;
     }
+    // PDF contentType is set by the caller — reference docs in reference.paths
+    // directories already arrive with contentType="reference" from the indexer.
+    // No need to override here.
 
     // 3. Chunk — hierarchical (parent-child) or flat depending on config
     const chunkCfg = opts.cfg.chunk;

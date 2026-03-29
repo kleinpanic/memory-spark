@@ -421,12 +421,17 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
           "openclaw",
           "docs",
         );
+        const refLibPath = path.join(os.homedir(), "Documents", "OpenClaw");
+        const paths: string[] = [];
         try {
           fs.accessSync(docsPath);
-          return [docsPath];
-        } catch {
-          return [];
-        }
+          paths.push(docsPath);
+        } catch { /* skip */ }
+        try {
+          fs.accessSync(refLibPath);
+          paths.push(refLibPath);
+        } catch { /* skip */ }
+        return paths;
       })(),
       chunkSize: 800,
       tags: {},
