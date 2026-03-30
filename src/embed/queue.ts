@@ -176,6 +176,7 @@ export class EmbedQueue {
       consecutiveFailures: this.consecutiveFailures,
       failedItemsCount: this.failedItems.size,
       nextRetryMs: this.getNextRetryMs(),
+      healthy: this.isHealthy(),
     };
   }
 
