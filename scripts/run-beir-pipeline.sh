@@ -125,8 +125,8 @@ log ""
 
 command -v npx &>/dev/null || die "npx not found"
 command -v jq &>/dev/null || die "jq not found"
-[[ -f evaluation/index-beir.ts ]] || die "evaluation/index-beir.ts missing"
-[[ -f evaluation/run-beir-bench.ts ]] || die "evaluation/run-beir-bench.ts missing"
+[[ -f scripts/index-beir.ts ]] || die "scripts/index-beir.ts missing"
+[[ -f scripts/run-beir-bench.ts ]] || die "scripts/run-beir-bench.ts missing"
 
 echo "RUNNING: preflight OK" > "$STATEFILE"
 
@@ -159,7 +159,7 @@ for ds in $DATASETS; do
   log "Indexing $ds..."
   
   NODE_OPTIONS="--max-old-space-size=8192" \
-    npx tsx evaluation/index-beir.ts --dataset "$ds" --resume 2>&1 \
+    npx tsx scripts/index-beir.ts --dataset "$ds" --resume 2>&1 \
     | while IFS= read -r line; do
         echo "$line"
         echo "$line" >> "$LOGFILE"
@@ -197,7 +197,7 @@ for ds in $DATASETS; do
   log "═══════════════════════════════════════════════════"
   
   NODE_OPTIONS="--max-old-space-size=8192" \
-    npx tsx evaluation/run-beir-bench.ts --dataset "$ds" 2>&1 | tee -a "$LOGFILE"
+    npx tsx scripts/run-beir-bench.ts --dataset "$ds" 2>&1 | tee -a "$LOGFILE"
   
   # Extract metrics from summary
   SUMMARY=$(ls -t evaluation/results/beir-${ds}-summary-*.json 2>/dev/null | head -1)
