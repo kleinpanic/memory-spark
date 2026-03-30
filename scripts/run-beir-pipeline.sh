@@ -1,11 +1,13 @@
 #!/bin/bash
 # BEIR Benchmark Pipeline — Index ALL BEIR + Benchmark A-G + Notifications
 #
-# Datasets: scifact (5183), nfcorpus (3633), fiqa (57638) = 66,454 docs total
-# Configs: A/B/C/D/E/F/G with NDCG@10, MRR, Recall@10, MAP@10, p95 latency
-#
 # Usage:
-#   ./scripts/run-beir-pipeline.sh
+#   ./scripts/run-beir-pipeline.sh --all           # scifact + nfcorpus + fiqa (66,454 docs)
+#   ./scripts/run-beir-pipeline.sh --without-fiqa  # scifact + nfcorpus (8,816 docs)
+#   ./scripts/run-beir-pipeline.sh --fiqa-only     # fiqa only (57,638 docs)
+#
+# Metrics per config (A-G):
+#   NDCG@10, MRR@10, Recall@10, MAP@10, p95 latency
 #
 # Notifications:
 #   1. Indexing complete / Benchmarking started
@@ -20,8 +22,33 @@ LOG_DIR="$PROJECT_ROOT/evaluation/results"
 LOG_FILE="$LOG_DIR/pipeline-$(date +%Y%m%d-%H%M%S).log"
 BEIR_LANCEDB_DIR="${BEIR_LANCEDB_DIR:-/home/node/.openclaw/data/testDbBEIR/lancedb}"
 
-# All BEIR datasets
-DATASETS="scifact nfcorpus fiqa"
+# ─────────────────────────────────────────────────────────────────────────────
+# Parse flags
+# ─────────────────────────────────────────────────────────────────────────────
+
+MODE="all"
+if [ "${1:-}" = "--without-fiqa" ]; then
+    MODE="without-fiqa"
+elif [ "${1:-}" = "--fiqa-only" ]; then
+    MODE="fiqa-only"
+elif [ "${1:-}" = "--all" ]; then
+    MODE="all"
+fi
+
+case "$MODE" in
+    "all")
+        DATASETS="scifact nfcorpus fiqa"
+        TOTAL_DOCS=66454
+        ;;
+    "without-fiqa")
+        DATASETS="scifact nfcorpus"
+        TOTAL_DOCS=8816
+        ;;
+    "fiqa-only")
+        DATASETS="fiqa"
+        TOTAL_DOCS=57638
+        ;;
+esac
 
 mkdir -p "$LOG_DIR"
 
@@ -58,7 +85,7 @@ if [ -z "${TMUX:-}" ]; then
     else
         echo "[INFO] Starting new tmux session 'beir-pipeline'"
         tmux new-session -d -s beir-pipeline -x 200 -y 50 \
-            "cd '$PROJECT_ROOT' && bash '$SCRIPT_DIR/run-beir-pipeline.sh'"
+            "cd '$PROJECT_ROOT' && bash '$SCRIPT_DIR/run-beir-pipeline.sh' $1"
         echo "[INFO] Session started. Attach with: tmux attach -t beir-pipeline"
         echo "[INFO] Logs: $LOG_FILE"
         exit 0
@@ -73,8 +100,9 @@ cd "$PROJECT_ROOT"
 
 log "═══════════════════════════════════════════════════════════════"
 log "  BEIR Benchmark Pipeline"
+log "  Mode: $MODE"
 log "  Datasets: $DATASETS"
-log "  Total docs: 66,454"
+log "  Total docs: $TOTAL_DOCS"
 log "  Configs: A/B/C/D/E/F/G"
 log "═══════════════════════════════════════════════════════════════"
 
@@ -88,30 +116,26 @@ npm run build 2>&1 | tee -a "$LOG_FILE" || {
 }
 log "✅ Build complete"
 
-# Phase 2: Index ALL BEIR datasets
+# Phase 2: Index BEIR datasets
 log ""
-log "▶ Phase 2: Index ALL BEIR datasets to testDbBEIR"
+log "▶ Phase 2: Index BEIR datasets to testDbBEIR"
 log "  Target: $BEIR_LANCEDB_DIR"
+log "  Resume: enabled (checkpoint.json)"
 
-TOTAL_DOCS=0
 for ds in $DATASETS; do
     log ""
     log "  Indexing $ds..."
     BEIR_LANCEDB_DIR="$BEIR_LANCEDB_DIR" \
         npx tsx evaluation/index-beir.ts --dataset "$ds" --resume 2>&1 | tee -a "$LOG_FILE"
-    # Count docs
-    docs=$(wc -l < "evaluation/beir-datasets/$ds/corpus.jsonl")
-    TOTAL_DOCS=$((TOTAL_DOCS + docs))
 done
 
 log ""
-log "✅ Indexing complete: $TOTAL_DOCS docs indexed"
+log "✅ Indexing complete for: $DATASETS"
 notify "✅ BEIR Indexing Complete
 
-Indexed: $TOTAL_DOCS documents across 3 datasets
-- scifact: 5,183 docs
-- nfcorpus: 3,633 docs
-- fiqa: 57,638 docs
+Mode: $MODE
+Datasets: $DATASETS
+Docs: ~$TOTAL_DOCS
 
 Database: testDbBEIR
 Benchmarking A/B/C/D/E/F/G starting now..."
@@ -134,10 +158,10 @@ for ds in $DATASETS; do
     if [ -n "$latest_summary" ]; then
         log "  Results: $latest_summary"
         
-        # Extract key metrics for notification
+        # Extract metrics for notification
         notify "📊 BEIR $ds Complete
 
-$(cat "$latest_summary" | jq -r '.results[] | "Config \(.config): NDCG=\(.ndcg | tostring | .[0:6]) MRR=\(.mrr | tostring | .[0:6]) Recall=\(.recall | tostring | .[0:6])"' 2>/dev/null || cat "$latest_summary")"
+$(cat "$latest_summary" | jq -r '.results[] | "Config \(.config): NDCG=\(.ndcg | tostring | .[0:6]) MRR=\(.mrr | tostring | .[0:6]) Recall=\(.recall | tostring | .[0:6]) p95=\(.latencyP95)ms"' 2>/dev/null || cat "$latest_summary")"
     fi
 done
 
@@ -166,15 +190,17 @@ ls -la evaluation/results/*telemetry*.json 2>/dev/null | tee -a "$LOG_FILE" || t
 
 notify "✅ BEIR Benchmark Pipeline COMPLETE
 
-All 3 datasets benchmarked with A-G configs:
-- scifact (1,109 queries)
-- nfcorpus (3,237 queries)
-- fiqa (6,648 queries)
+Mode: $MODE
+Datasets: $DATASETS
 
-Results saved to: evaluation/results/
-Log file: $LOG_FILE
+All configs A-G benchmarked with:
+- NDCG@10, MRR@10, Recall@10, MAP@10
+- p50, p95 latency
 
-Attach to review: tmux attach -t beir-pipeline"
+Results: evaluation/results/
+Log: $LOG_FILE
+
+Attach: tmux attach -t beir-pipeline"
 
 log ""
 log "✅ Pipeline complete."
