@@ -426,11 +426,15 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
         try {
           fs.accessSync(docsPath);
           paths.push(docsPath);
-        } catch { /* skip */ }
+        } catch {
+          /* skip */
+        }
         try {
           fs.accessSync(refLibPath);
           paths.push(refLibPath);
-        } catch { /* skip */ }
+        } catch {
+          /* skip */
+        }
         return paths;
       })(),
       chunkSize: 800,

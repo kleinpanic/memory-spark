@@ -141,7 +141,8 @@ async function runPreflight(): Promise<boolean> {
             Object.entries(process.env).filter(([k]) => k !== "MEMORY_SPARK_DATA_DIR"),
           )
         : process.env;
-      execSync(check.cmd, { // eslint-disable-line sonarjs/os-command -- preflight commands are hardcoded, not user input
+      execSync(check.cmd, {
+        // eslint-disable-line sonarjs/os-command -- preflight commands are hardcoded, not user input
         cwd: projectRoot,
         encoding: "utf-8",
         timeout: 120000,
@@ -438,10 +439,34 @@ async function runProductionRetrieval(
     }
 
     // Multi-pool search — exact production strategy
-    const agentResults = await poolSearch(queryText, queryVector, ["agent_memory", "agent_tools"], fetchN, minScore);
-    const agentMistakes = await poolSearch(queryText, queryVector, ["agent_mistakes"], 5, lowThreshold);
-    const sharedMistakes = await poolSearch(queryText, queryVector, ["shared_mistakes"], 5, lowThreshold);
-    const sharedKnowledge = await poolSearch(queryText, queryVector, ["shared_knowledge"], 10, lowThreshold);
+    const agentResults = await poolSearch(
+      queryText,
+      queryVector,
+      ["agent_memory", "agent_tools"],
+      fetchN,
+      minScore,
+    );
+    const agentMistakes = await poolSearch(
+      queryText,
+      queryVector,
+      ["agent_mistakes"],
+      5,
+      lowThreshold,
+    );
+    const sharedMistakes = await poolSearch(
+      queryText,
+      queryVector,
+      ["shared_mistakes"],
+      5,
+      lowThreshold,
+    );
+    const sharedKnowledge = await poolSearch(
+      queryText,
+      queryVector,
+      ["shared_knowledge"],
+      10,
+      lowThreshold,
+    );
     const sharedRules = await poolSearch(queryText, queryVector, ["shared_rules"], 5, lowThreshold);
 
     // Merge with dedup (matches production mergeIn)
@@ -747,7 +772,9 @@ async function tier1(
   // Summary table with composite scores (#9: judge integrated into primary metric)
   if (enableJudge && Object.values(ablations).some((a) => a.composite !== undefined)) {
     console.log("\n📊 Composite Score Summary (70% BEIR-NDCG@10 + 30% Judge-NDCG)\n");
-    console.log(`  ${"Config".padEnd(35)}  ${"NDCG@10".padStart(8)}  ${"J-NDCG".padStart(8)}  ${"Composite".padStart(10)}`);
+    console.log(
+      `  ${"Config".padEnd(35)}  ${"NDCG@10".padStart(8)}  ${"J-NDCG".padStart(8)}  ${"Composite".padStart(10)}`,
+    );
     console.log("  " + "─".repeat(65));
     const sorted = Object.entries(ablations)
       .filter(([, a]) => a.composite !== undefined)
