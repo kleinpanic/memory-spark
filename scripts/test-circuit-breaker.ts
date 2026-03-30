@@ -22,6 +22,7 @@ function createMockProvider(failCount: number): EmbedProvider {
       }
       return texts.map(() => new Array(384).fill(0));
     },
+    probe: async () => true, // Mock probe always succeeds
   };
 }
 

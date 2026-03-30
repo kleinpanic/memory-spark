@@ -1,8 +1,25 @@
 # PLAN: Docker Test Harness for Memory-Spark
 
 **Created:** 2026-03-29 20:35 EDT
-**Updated:** 2026-03-29 20:50 EDT
+**Updated:** 2026-03-29 21:05 EDT
 **Goal:** Move all testing/benchmarking to Docker, isolated from production OpenClaw
+
+---
+
+## Phase -1: End Goal Definition
+
+**Target:** Outperform state-of-the-art RAG architectures with similar design
+
+**Deliverables:**
+1. **Professional TeX document** — LaTeX paper-style documentation
+2. **Populated docs/ directory** — All processes, architecture, benchmark methodology
+3. **Professional README** — Badges, SVG charts, architecture diagrams, ablation tables
+
+**Scientific Claims to Prove:**
+1. **Standard RAG Quality:** Outperforms SOTA on BEIR benchmarks
+2. **OpenClaw Integration:** Demonstrably improves agent recall vs. vanilla RAG
+
+**Reference:** https://github.com/kleinpanic/memory-spark (old README style is the target)
 
 ---
 
