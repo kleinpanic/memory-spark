@@ -75,8 +75,8 @@ interface QueueItem<T> {
 
 const DEFAULT_CIRCUIT_BREAKER: CircuitBreakerConfig = {
   failureThreshold: 5,
-  initialResetMs: 5 * 60_000,  // 5 min
-  maxResetMs: 30 * 60_000,     // 30 min
+  initialResetMs: 5 * 60_000, // 5 min
+  maxResetMs: 30 * 60_000, // 30 min
   multiplier: 2,
 };
 
@@ -137,13 +137,10 @@ export class EmbedQueue {
 
   /** Embed a single query (for search). Goes through queue. */
   async embedQuery(text: string): Promise<number[]> {
-    return this.enqueue(
-      async () => {
-        const result = await this.withTimeout(this.provider.embedQuery(text));
-        return result;
-      },
-      text
-    );
+    return this.enqueue(async () => {
+      const result = await this.withTimeout(this.provider.embedQuery(text));
+      return result;
+    }, text);
   }
 
   /** Embed a batch of texts (for indexing). Serialized through queue one batch at a time. */
@@ -154,12 +151,9 @@ export class EmbedQueue {
     const allResults: number[][] = [];
     for (let i = 0; i < texts.length; i += BATCH_SIZE) {
       const batch = texts.slice(i, i + BATCH_SIZE);
-      const results = await this.enqueue(
-        async () => {
-          return this.withTimeout(this.provider.embedBatch(batch));
-        },
-        batch
-      );
+      const results = await this.enqueue(async () => {
+        return this.withTimeout(this.provider.embedBatch(batch));
+      }, batch);
       allResults.push(...results);
     }
     return allResults;
@@ -266,7 +260,7 @@ export class EmbedQueue {
       if (!this.isHealthy()) {
         const waitMs = this.getNextRetryMs();
         this.logger.warn(
-          `memory-spark queue: [CIRCUIT OPEN] Spark unreachable, next retry in ${Math.round(waitMs / 1000)}s`
+          `memory-spark queue: [CIRCUIT OPEN] Spark unreachable, next retry in ${Math.round(waitMs / 1000)}s`,
         );
         // Schedule next check
         setTimeout(() => this.process(), Math.min(waitMs + 1000, this.currentResetMs));
@@ -334,7 +328,7 @@ export class EmbedQueue {
     if (isFatal) {
       this._failed++;
       this.logger.error(
-        `memory-spark queue: FATAL ${httpStatus} — not retrying (check auth/token): ${errMsg}`
+        `memory-spark queue: FATAL ${httpStatus} — not retrying (check auth/token): ${errMsg}`,
       );
       item.reject(err instanceof Error ? err : new Error(errMsg));
       return;
@@ -345,12 +339,12 @@ export class EmbedQueue {
       // Failed in HALF_OPEN → back to OPEN with doubled timeout
       this.currentResetMs = Math.min(
         this.currentResetMs * this.circuitBreaker.multiplier,
-        this.circuitBreaker.maxResetMs
+        this.circuitBreaker.maxResetMs,
       );
       this.circuitState = "OPEN";
       this.circuitOpenedAt = Date.now();
       this.logger.error(
-        `memory-spark queue: [CIRCUIT OPEN] HALF_OPEN failed, next retry in ${this.currentResetMs / 60000}min: ${errMsg}`
+        `memory-spark queue: [CIRCUIT OPEN] HALF_OPEN failed, next retry in ${this.currentResetMs / 60000}min: ${errMsg}`,
       );
     } else if (this.consecutiveFailures >= this.circuitBreaker.failureThreshold) {
       // Threshold reached → open circuit
@@ -359,7 +353,7 @@ export class EmbedQueue {
       this.currentResetMs = this.circuitBreaker.initialResetMs;
       this._wasUnhealthy = true;
       this.logger.error(
-        `memory-spark queue: [CIRCUIT OPEN] ${this.consecutiveFailures} consecutive failures, parking for ${this.currentResetMs / 60000}min`
+        `memory-spark queue: [CIRCUIT OPEN] ${this.consecutiveFailures} consecutive failures, parking for ${this.currentResetMs / 60000}min`,
       );
     }
 
@@ -369,12 +363,12 @@ export class EmbedQueue {
       const multiplier = httpStatus === 429 ? 3 : 1;
       const delay = Math.min(
         this.baseDelayMs * Math.pow(2, item.retries - 1) * multiplier,
-        this.maxDelayMs
+        this.maxDelayMs,
       );
       const tag =
         httpStatus === 429 ? "RATE LIMITED" : httpStatus ? `HTTP ${httpStatus}` : "network";
       this.logger.warn(
-        `memory-spark queue: retry ${item.retries}/${this.maxRetries} [${tag}] in ${delay}ms: ${errMsg}`
+        `memory-spark queue: retry ${item.retries}/${this.maxRetries} [${tag}] in ${delay}ms: ${errMsg}`,
       );
       setTimeout(() => {
         this.queue.unshift(item);
@@ -384,15 +378,13 @@ export class EmbedQueue {
       // Circuit is open — don't reject, just leave in failed items for later retry
       this._failed++;
       this.logger.error(
-        `memory-spark queue: circuit OPEN, deferring item (${this.failedItems.size} failed items pending)`
+        `memory-spark queue: circuit OPEN, deferring item (${this.failedItems.size} failed items pending)`,
       );
       item.reject(new Error(`Circuit breaker OPEN: ${errMsg}`));
     } else {
       // Max retries exceeded
       this._failed++;
-      this.logger.error(
-        `memory-spark queue: gave up after ${this.maxRetries} retries: ${errMsg}`
-      );
+      this.logger.error(`memory-spark queue: gave up after ${this.maxRetries} retries: ${errMsg}`);
       item.reject(err instanceof Error ? err : new Error(errMsg));
     }
   }
@@ -421,7 +413,7 @@ export class EmbedQueue {
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(
         () => reject(new Error(`Embed timeout (${this.timeoutMs}ms)`)),
-        this.timeoutMs
+        this.timeoutMs,
       );
       promise
         .then((v) => {

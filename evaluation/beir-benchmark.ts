@@ -396,13 +396,7 @@ async function runMulti() {
 
     // Re-run main() logic for each dataset by manipulating argv
     const origArgv = process.argv;
-    process.argv = [
-      origArgv[0]!,
-      origArgv[1]!,
-      "--dataset",
-      ds,
-      ...(quick ? ["--quick"] : []),
-    ];
+    process.argv = [origArgv[0]!, origArgv[1]!, "--dataset", ds, ...(quick ? ["--quick"] : [])];
     try {
       const results = await main();
       if (results) {
@@ -431,9 +425,7 @@ async function runMulti() {
     for (const config of Object.keys(dsResults)) allConfigs.add(config);
   }
 
-  console.log(
-    `  ${"Config".padEnd(30)}  ${datasets.map((d) => d.padStart(12)).join("  ")}`,
-  );
+  console.log(`  ${"Config".padEnd(30)}  ${datasets.map((d) => d.padStart(12)).join("  ")}`);
   console.log("  " + "─".repeat(30 + datasets.length * 14));
 
   for (const config of allConfigs) {

@@ -110,7 +110,6 @@ export function resolvePool(chunk: Partial<MemoryChunk>): PoolValue {
   return "agent_memory";
 }
 
-
 /**
  * Check if a pool should be auto-injected during recall.
  * Reference pools are NEVER auto-injected.
