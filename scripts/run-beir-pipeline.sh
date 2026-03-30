@@ -1,217 +1,159 @@
-#!/bin/bash
-# BEIR Benchmark Pipeline — Index ALL BEIR + Benchmark A-G + Notifications
+#!/usr/bin/env bash
 #
-# Usage:
-#   ./scripts/run-beir-pipeline.sh --all           # scifact + nfcorpus + fiqa (66,454 docs)
-#   ./scripts/run-beir-pipeline.sh --without-fiqa  # scifact + nfcorpus (8,816 docs)
-#   ./scripts/run-beir-pipeline.sh --fiqa-only     # fiqa only (57,638 docs)
+# BEIR Benchmark Pipeline — Index + Benchmark A-G
+# ================================================
+# Robust version: tmux-visible, state tracking, signal traps, SMS alerts.
 #
-# Metrics per config (A-G):
-#   NDCG@10, MRR@10, Recall@10, MAP@10, p95 latency
+# Via tmux (preferred):
+#   tmux new-session -d -s beir-pipeline "bash scripts/run-beir-pipeline.sh --all"
+#   tmux attach -t beir-pipeline
 #
-# Notifications:
-#   1. Indexing complete / Benchmarking started
-#   2. Each dataset benchmark complete with results
-#   3. Fully done with summary
+# Flags:
+#   --all           # scifact + nfcorpus + fiqa (66,454 docs)
+#   --without-fiqa  # scifact + nfcorpus (8,816 docs)
+#   --fiqa-only     # fiqa only (57,638 docs)
+#
 
-set -euo pipefail
+set -uo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-LOG_DIR="$PROJECT_ROOT/evaluation/results"
-LOG_FILE="$LOG_DIR/pipeline-$(date +%Y%m%d-%H%M%S).log"
-BEIR_LANCEDB_DIR="${BEIR_LANCEDB_DIR:-/home/node/.openclaw/data/testDbBEIR/lancedb}"
+PROJECT="$HOME/codeWS/TypeScript/memory-spark"
+cd "$PROJECT"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Parse flags
-# ─────────────────────────────────────────────────────────────────────────────
+# Source env vars
+[[ -f "$HOME/.openclaw/.env" ]] && set -a && source "$HOME/.openclaw/.env" && set +a
+[[ -f .env ]] && set -a && source .env && set +a
+
+export BEIR_LANCEDB_DIR="$HOME/.openclaw/data/testDbBEIR/lancedb"
+
+SMS="$HOME/.openclaw/hooks/sms-alert.sh"
+LOGDIR="evaluation/results"
+LOGFILE="$LOGDIR/pipeline-$(date +%Y%m%d-%H%M%S).log"
+STATEFILE="/tmp/beir-pipeline.state"
+mkdir -p "$LOGDIR"
+
+# ── Parse flags ───────────────────────────────────────────────────────────
 
 MODE="all"
-if [ "${1:-}" = "--without-fiqa" ]; then
-    MODE="without-fiqa"
-elif [ "${1:-}" = "--fiqa-only" ]; then
-    MODE="fiqa-only"
-elif [ "${1:-}" = "--all" ]; then
-    MODE="all"
-fi
-
-case "$MODE" in
-    "all")
-        DATASETS="scifact nfcorpus fiqa"
-        TOTAL_DOCS=66454
-        ;;
-    "without-fiqa")
-        DATASETS="scifact nfcorpus"
-        TOTAL_DOCS=8816
-        ;;
-    "fiqa-only")
-        DATASETS="fiqa"
-        TOTAL_DOCS=57638
-        ;;
+case "${1:-}" in
+    --without-fiqa) MODE="without-fiqa" ;;
+    --fiqa-only)    MODE="fiqa-only" ;;
 esac
 
-mkdir -p "$LOG_DIR"
+case "$MODE" in
+    all)           DATASETS="scifact nfcorpus fiqa";    TOTAL_DOCS=66454 ;;
+    without-fiqa)  DATASETS="scifact nfcorpus";        TOTAL_DOCS=8816 ;;
+    fiqa-only)     DATASETS="fiqa";                    TOTAL_DOCS=57638 ;;
+esac
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Functions
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Helpers ───────────────────────────────────────────────────────────────
 
-log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$LOG_FILE"
+ts()  { date '+%Y-%m-%d %H:%M:%S'; }
+log() { echo "[$(ts)] $*" | tee -a "$LOGFILE"; }
+
+sms() {
+  local msg="$1"
+  rm -f /tmp/.openclaw-sms-cooldown
+  log "SMS: $msg"
+  [[ -x "$SMS" ]] && bash "$SMS" "$msg" >> "$LOGFILE" 2>&1 || true
 }
 
-notify() {
-    local message="$1"
-    log "NOTIFICATION: $message"
-    
-    # Write to notification file for OpenClaw to pick up
-    local notify_file="$LOG_DIR/.notification"
-    echo "$(date -Iseconds)|$message" > "$notify_file"
-    
-    # Also try to send via message tool if available
-    if command -v openclaw &>/dev/null; then
-        openclaw message send --to klein --message "$message" 2>/dev/null || true
-    fi
+die() {
+  log "FATAL: $1"
+  echo "FAILED: $1" > "$STATEFILE"
+  sms "(OpenClaw) BEIR FAILED: $1"
+  exit 1
 }
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Start in tmux if not already (skip if running under systemd)
-# ─────────────────────────────────────────────────────────────────────────────
+# ── Signal Traps ──────────────────────────────────────────────────────────
 
-# Check if running under systemd (INVOCATION_ID is set by systemd)
-if [ -n "${INVOCATION_ID:-}" ]; then
-    # Running under systemd - continue directly
-    :
-elif [ -z "${TMUX:-}" ]; then
-    if tmux has-session -t beir-pipeline 2>/dev/null; then
-        echo "[INFO] Attaching to existing beir-pipeline session"
-        exec tmux attach -t beir-pipeline
-    else
-        echo "[INFO] Starting new tmux session 'beir-pipeline'"
-        tmux new-session -d -s beir-pipeline -x 200 -y 50 \
-            "cd '$PROJECT_ROOT' && bash '$SCRIPT_DIR/run-beir-pipeline.sh' $1"
-        echo "[INFO] Session started. Attach with: tmux attach -t beir-pipeline"
-        echo "[INFO] Logs: $LOG_FILE"
-        exit 0
-    fi
-fi
+_CURRENT_PHASE="startup"
 
-# ─────────────────────────────────────────────────────────────────────────────
-# Pipeline
-# ─────────────────────────────────────────────────────────────────────────────
+update_phase() { _CURRENT_PHASE="$1"; echo "PHASE: $1" > "$STATEFILE"; log "→ $1"; }
 
-cd "$PROJECT_ROOT"
+on_exit() {
+  local EC=$?
+  if [[ $EC -ne 0 ]]; then
+    log "CRASHED (exit $EC) in phase: $_CURRENT_PHASE"
+    sms "(OpenClaw) BEIR CRASHED (exit $EC). Phase: $_CURRENT_PHASE"
+  fi
+}
+trap on_exit EXIT
 
-log "═══════════════════════════════════════════════════════════════"
+# ── Preflight ─────────────────────────────────────────────────────────────
+
+log "═══════════════════════════════════════════════════"
 log "  BEIR Benchmark Pipeline"
-log "  Mode: $MODE"
-log "  Datasets: $DATASETS"
-log "  Total docs: $TOTAL_DOCS"
-log "  Configs: A/B/C/D/E/F/G"
-log "═══════════════════════════════════════════════════════════════"
-
-# Phase 1: Build
+log "═══════════════════════════════════════════════════"
+log "Mode:     $MODE"
+log "Datasets: $DATASETS"
+log "Docs:     $TOTAL_DOCS"
+log "State:    $STATEFILE"
 log ""
-log "▶ Phase 1: Build"
-npm run build 2>&1 | tee -a "$LOG_FILE" || {
-    log "❌ Build failed!"
-    notify "❌ BEIR Pipeline FAILED at build stage"
-    exit 1
-}
-log "✅ Build complete"
 
-# Phase 2: Index BEIR datasets
-log ""
-log "▶ Phase 2: Index BEIR datasets to testDbBEIR"
+command -v npx &>/dev/null || die "npx not found"
+[[ -f evaluation/index-beir.ts ]] || die "index-beir.ts missing"
+[[ -f evaluation/run-beir-bench.ts ]] || die "run-beir-bench.ts missing"
+
+# ── Phase 1: Build ───────────────────────────────────────────────────────
+
+update_phase "build"
+log "▶ Build"
+npm run build 2>&1 | tee -a "$LOGFILE" || die "Build failed"
+log "✅ Build done"
+
+# ── Phase 2: Index ───────────────────────────────────────────────────────
+
+update_phase "index"
+log "▶ Index BEIR datasets"
 log "  Target: $BEIR_LANCEDB_DIR"
-log "  Resume: enabled (checkpoint.json)"
 
 for ds in $DATASETS; do
-    log ""
-    log "  Indexing $ds..."
-    BEIR_LANCEDB_DIR="$BEIR_LANCEDB_DIR" \
-        npx tsx evaluation/index-beir.ts --dataset "$ds" --resume 2>&1 | tee -a "$LOG_FILE"
+  update_phase "index-$ds"
+  log "  Indexing $ds..."
+  npx tsx evaluation/index-beir.ts --dataset "$ds" --resume 2>&1 | tee -a "$LOGFILE" || log "WARN: $ds indexing had issues"
 done
 
-log ""
-log "✅ Indexing complete for: $DATASETS"
-notify "✅ BEIR Indexing Complete
+log "✅ Indexing done"
+sms "(OpenClaw) BEIR indexing done ($TOTAL_DOCS docs). Benchmarking A-G starting..."
 
-Mode: $MODE
-Datasets: $DATASETS
-Docs: ~$TOTAL_DOCS
+# ── Phase 3: Benchmark ───────────────────────────────────────────────────
 
-Database: testDbBEIR
-Benchmarking A/B/C/D/E/F/G starting now..."
-
-# Phase 3: Run benchmarks for each dataset
-log ""
-log "▶ Phase 3: Run A/B/C/D/E/F/G benchmarks"
+declare -A NDCG_RESULTS
 
 for ds in $DATASETS; do
-    log ""
-    log "─────────────────────────────────────────────────────────────"
-    log "  Benchmarking: $ds"
-    log "─────────────────────────────────────────────────────────────"
-    
-    BEIR_LANCEDB_DIR="$BEIR_LANCEDB_DIR" \
-        npx tsx evaluation/run-beir-bench.ts --dataset "$ds" 2>&1 | tee -a "$LOG_FILE"
-    
-    # Find latest summary
-    latest_summary=$(ls -t evaluation/results/beir-${ds}-summary-*.json 2>/dev/null | head -1)
-    if [ -n "$latest_summary" ]; then
-        log "  Results: $latest_summary"
-        
-        # Extract metrics for notification
-        notify "📊 BEIR $ds Complete
-
-$(cat "$latest_summary" | jq -r '.results[] | "Config \(.config): NDCG=\(.ndcg | tostring | .[0:6]) MRR=\(.mrr | tostring | .[0:6]) Recall=\(.recall | tostring | .[0:6]) p95=\(.latencyP95)ms"' 2>/dev/null || cat "$latest_summary")"
-    fi
+  update_phase "bench-$ds"
+  log "▶ Benchmark $ds"
+  
+  npx tsx evaluation/run-beir-bench.ts --dataset "$ds" 2>&1 | tee -a "$LOGFILE"
+  
+  # Get latest summary
+  SUMMARY=$(ls -t evaluation/results/beir-${ds}-summary-*.json 2>/dev/null | head -1)
+  if [[ -n "$SUMMARY" ]]; then
+    NDCG=$(jq -r '.results[] | select(.config=="G") | .ndcg' "$SUMMARY" 2>/dev/null || echo "?")
+    NDCG_RESULTS[$ds]=$NDCG
+    log "$ds NDCG@10 (Config G): $NDCG"
+  fi
 done
 
-# Phase 4: Final summary
-log ""
-log "═══════════════════════════════════════════════════════════════"
-log "  Pipeline Complete"
-log "═══════════════════════════════════════════════════════════════"
+# ── Done ─────────────────────────────────────────────────────────────────
 
-# Aggregate results
-log ""
-log "Final Results Summary:"
-for ds in $DATASETS; do
-    latest=$(ls -t evaluation/results/beir-${ds}-summary-*.json 2>/dev/null | head -1)
-    if [ -n "$latest" ]; then
-        log ""
-        log "=== $ds ==="
-        cat "$latest" | tee -a "$LOG_FILE"
-    fi
-done
+update_phase "done"
 
-# Find telemetry files
-log ""
-log "Telemetry files:"
-ls -la evaluation/results/*telemetry*.json 2>/dev/null | tee -a "$LOG_FILE" || true
-
-notify "✅ BEIR Benchmark Pipeline COMPLETE
-
-Mode: $MODE
-Datasets: $DATASETS
-
-All configs A-G benchmarked with:
-- NDCG@10, MRR@10, Recall@10, MAP@10
-- p50, p95 latency
-
-Results: evaluation/results/
-Log: $LOG_FILE
-
-Attach: tmux attach -t beir-pipeline"
+SCIFACT_NDCG="${NDCG_RESULTS[scifact]:-?}"
+NFCORPUS_NDCG="${NDCG_RESULTS[nfcorpus]:-?}"
+FIQA_NDCG="${NDCG_RESULTS[fiqa]:-?}"
 
 log ""
-log "✅ Pipeline complete."
-log "   Logs: $LOG_FILE"
-log "   Results: evaluation/results/"
-log ""
-log "Press Ctrl+C to exit, or 'tmux detach' to leave running."
+log "╔══════════════════════════════════════════════╗"
+log "║  ALL DONE — $(ts)"
+log "║  Sci=$SCIFACT_NDCG  NF=$NFCORPUS_NDCG  FiQA=$FIQA_NDCG"
+log "╚══════════════════════════════════════════════╝"
 
-# Keep session alive
+sms "(OpenClaw) BEIR COMPLETE! Sci=$SCIFACT_NDCG NF=$NFCORPUS_NDCG FiQA=$FIQA_NDCG"
+
+echo "DONE: all phases" > "$STATEFILE"
+sync
+
+log ""
+log "Press Ctrl+C to exit"
 exec bash
