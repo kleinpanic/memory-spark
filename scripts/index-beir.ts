@@ -45,8 +45,8 @@ interface Checkpoint {
 const args = process.argv.slice(2);
 const datasetArg = args.includes("--dataset") ? args[args.indexOf("--dataset") + 1] : null;
 const resume = args.includes("--resume");
-const datasetsDir = path.join(import.meta.dirname!, "beir-datasets");
-const checkpointDir = path.join(import.meta.dirname!, ".checkpoints");
+const datasetsDir = path.join(import.meta.dirname!, "..", "evaluation", "beir-datasets");
+const checkpointDir = path.join(import.meta.dirname!, "../evaluation/.checkpoints");
 
 const DATASETS = datasetArg ? [datasetArg] : ["scifact", "nfcorpus", "fiqa"];
 
