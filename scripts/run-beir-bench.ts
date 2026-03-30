@@ -37,7 +37,7 @@ import { createReranker } from "../src/rerank/reranker.js";
 import type { SearchResult } from "../src/storage/backend.js";
 import { LanceDBBackend } from "../src/storage/lancedb.js";
 
-import { evaluateBEIR, type Qrels, type Results } from "./metrics.js";
+import { evaluateBEIR, type Qrels, type Results } from "../evaluation/metrics.js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
