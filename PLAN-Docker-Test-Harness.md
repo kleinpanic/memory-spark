@@ -11,8 +11,8 @@
 **Target:** Outperform state-of-the-art RAG architectures with similar design
 
 **Deliverables:**
-1. **Professional TeX document** — LaTeX paper-style documentation
-2. **Populated docs/ directory** — All processes, architecture, benchmark methodology
+1. **ONE professional LaTeX document** — Scientific analysis paper (final deliverable, last thing we do)
+2. **docs/ directory** — Architecture, processes, benchmark methodology (can be markdown)
 3. **Professional README** — Badges, SVG charts, architecture diagrams, ablation tables
 
 **Scientific Claims to Prove:**

@@ -1601,7 +1601,10 @@ describe("Quality Score Defaults", () => {
   it("resolvePool routes reference contentType to reference_library (regardless of extension)", () => {
     // PDFs with contentType="reference" (set by indexer for reference.paths)
     assert.strictEqual(
-      resolvePool({ path: "reference-library/nvidia-docs/DGX-OS7-User-Guide.pdf", content_type: "reference" }),
+      resolvePool({
+        path: "reference-library/nvidia-docs/DGX-OS7-User-Guide.pdf",
+        content_type: "reference",
+      }),
       "reference_library",
     );
     // Markdown reference docs too
@@ -1613,15 +1616,9 @@ describe("Quality Score Defaults", () => {
 
   it("resolvePool keeps PDFs without reference contentType in agent_memory", () => {
     // PDF in workspace — no special contentType → normal memory
-    assert.strictEqual(
-      resolvePool({ path: "workspace/project-spec.pdf" }),
-      "agent_memory",
-    );
+    assert.strictEqual(resolvePool({ path: "workspace/project-spec.pdf" }), "agent_memory");
     // PDF in memory dir — stays as memory
-    assert.strictEqual(
-      resolvePool({ path: "memory/meeting-notes.pdf" }),
-      "agent_memory",
-    );
+    assert.strictEqual(resolvePool({ path: "memory/meeting-notes.pdf" }), "agent_memory");
     // Explicit pool override still wins
     assert.strictEqual(
       resolvePool({ path: "docs/guide.pdf", pool: "shared_knowledge" }),

@@ -92,7 +92,7 @@ function makeOpenAiCompat(
       const cause = (err as { cause?: Error })?.cause;
       const code = (cause as { code?: string })?.code ?? "UNKNOWN";
       const detail = cause?.message ?? (err instanceof Error ? err.message : String(err));
-      throw new Error(`Embed ${id} network error [${code}]: ${detail}`);
+      throw new Error(`Embed ${id} network error [${code}]: ${detail}`, { cause: err });
     }
     if (!resp.ok) {
       const body = await resp.text().catch(() => "");

@@ -32,22 +32,19 @@ async function hasPdfTools(): Promise<boolean> {
 describe("PDF Pool Routing", () => {
   it("routes PDFs with contentType=reference to reference_library", () => {
     assert.strictEqual(
-      resolvePool({ path: "reference-library/nvidia-docs/DGX-OS7-User-Guide.pdf", content_type: "reference" }),
+      resolvePool({
+        path: "reference-library/nvidia-docs/DGX-OS7-User-Guide.pdf",
+        content_type: "reference",
+      }),
       "reference_library",
     );
   });
 
   it("keeps PDFs without contentType=reference in agent_memory", () => {
     // Normal PDF in workspace — no special routing
-    assert.strictEqual(
-      resolvePool({ path: "workspace/project-spec.pdf" }),
-      "agent_memory",
-    );
+    assert.strictEqual(resolvePool({ path: "workspace/project-spec.pdf" }), "agent_memory");
     // Normal PDF in memory dir
-    assert.strictEqual(
-      resolvePool({ path: "memory/meeting-notes.pdf" }),
-      "agent_memory",
-    );
+    assert.strictEqual(resolvePool({ path: "memory/meeting-notes.pdf" }), "agent_memory");
   });
 
   it("preserves explicit pool override even for reference PDFs", () => {
