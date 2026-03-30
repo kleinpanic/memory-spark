@@ -53,7 +53,7 @@ async function main() {
     text: testText,
     vector: embedding,
     updated_at: new Date().toISOString(),
-    pool: 'test',
+    pool: 'agent_memory', // Use valid pool from POOL_VALUES
     category: 'fact',
     quality_score: 1.0,
     token_count: 10,
@@ -64,7 +64,7 @@ async function main() {
 
   const results = await backend.vectorSearch(embedding, {
     query: testText,
-    pool: 'test',
+    agentId: 'test', // Filter by agent_id instead of pool
     maxResults: 1,
   });
   console.log(`  ✓ Search returned ${results.length} result(s)`);
