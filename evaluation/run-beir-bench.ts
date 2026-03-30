@@ -75,6 +75,18 @@ interface QueryTelemetry {
   latencyMs: number;
 }
 
+interface ConfigResult {
+  config: string;
+  label: string;
+  ndcg: number;
+  mrr: number;
+  recall: number;
+  map: number;
+  latencyP50: number;
+  latencyP95: number;
+  latencyMean: number;
+}
+
 // ── A/B/C/D/E/F/G Configurations ─────────────────────────────────────────────
 
 const CONFIGS: RetrievalConfig[] = [
@@ -378,7 +390,7 @@ async function main() {
   await fs.mkdir(resultsDir, { recursive: true });
 
   // Run benchmarks
-  const allResults: { config: string; label: string; ndcg: number; map: number; recall: number }[] = [];
+  const allResults: ConfigResult[] = [];
   const allTelemetry: QueryTelemetry[] = [];
 
   for (const config of configs) {
@@ -395,18 +407,32 @@ async function main() {
     );
 
     const metrics = evaluateBEIR(qrels, results, [10]);
-    console.log(`  NDCG@10: ${metrics.ndcg["@10"].toFixed(4)}`);
-    console.log(`  MAP@10:  ${metrics.map["@10"].toFixed(4)}`);
-    console.log(`  Recall@10: ${metrics.recall["@10"].toFixed(4)}`);
 
-    allResults.push({
+    // Compute latency stats from telemetry
+    const latencies = telemetry.map((t) => t.latencyMs).sort((a, b) => a - b);
+    const p50 = latencies[Math.floor(latencies.length * 0.5)] ?? 0;
+    const p95 = latencies[Math.floor(latencies.length * 0.95)] ?? 0;
+    const mean = latencies.reduce((a, b) => a + b, 0) / latencies.length;
+
+    console.log(`  NDCG@10:    ${metrics.ndcg["@10"].toFixed(4)}`);
+    console.log(`  MRR@10:     ${metrics.mrr["@10"].toFixed(4)}`);
+    console.log(`  Recall@10:  ${metrics.recall["@10"].toFixed(4)}`);
+    console.log(`  MAP@10:     ${metrics.map["@10"].toFixed(4)}`);
+    console.log(`  Latency:    p50=${p50}ms, p95=${p95}ms, mean=${mean.toFixed(0)}ms`);
+
+    const configResult: ConfigResult = {
       config: config.id,
       label: config.label,
       ndcg: metrics.ndcg["@10"],
-      map: metrics.map["@10"],
+      mrr: metrics.mrr["@10"],
       recall: metrics.recall["@10"],
-    });
+      map: metrics.map["@10"],
+      latencyP50: p50,
+      latencyP95: p95,
+      latencyMean: mean,
+    };
 
+    allResults.push(configResult);
     allTelemetry.push(...telemetry);
 
     // Save individual config results
@@ -422,11 +448,11 @@ async function main() {
   console.log("  Summary: BEIR " + datasetArg);
   console.log("═══════════════════════════════════════════\n");
 
-  console.log("ID | Config               | NDCG@10 | MAP@10  | Recall@10");
-  console.log("---|----------------------|---------|---------|----------");
+  console.log("ID | Config               | NDCG@10 | MRR@10  | Recall@10 | MAP@10  | p95(ms)");
+  console.log("---|----------------------|---------|---------|-----------|---------|--------");
   for (const r of allResults) {
     console.log(
-      `${r.config}  | ${r.label.padEnd(20)} | ${r.ndcg.toFixed(4)}  | ${r.map.toFixed(4)}  | ${r.recall.toFixed(4)}`,
+      `${r.config}  | ${r.label.padEnd(20)} | ${r.ndcg.toFixed(4)}  | ${r.mrr.toFixed(4)}  | ${r.recall.toFixed(4)}   | ${r.map.toFixed(4)}  | ${r.latencyP95}`,
     );
   }
 
