@@ -172,7 +172,7 @@ const CONFIGS: RetrievalConfig[] = [
 // ── Functions ───────────────────────────────────────────────────────────────
 
 async function loadQueries(dataset: string): Promise<BeirQuery[]> {
-  const file = path.join(import.meta.dirname!, "beir-datasets", dataset, "queries.jsonl");
+  const file = path.join(import.meta.dirname!, "../evaluation/beir-datasets", dataset, "queries.jsonl");
   const content = await fs.readFile(file, "utf-8");
   return content
     .trim()
@@ -182,7 +182,7 @@ async function loadQueries(dataset: string): Promise<BeirQuery[]> {
 }
 
 async function loadQrels(dataset: string): Promise<Qrels> {
-  const file = path.join(import.meta.dirname!, "beir-datasets", dataset, "qrels", "test.tsv");
+  const file = path.join(import.meta.dirname!, "../evaluation/beir-datasets", dataset, "qrels", "test.tsv");
   const content = await fs.readFile(file, "utf-8");
   const lines = content.trim().split("\n");
   const qrels: Qrels = {};
@@ -386,7 +386,7 @@ async function main() {
   const configs = configArg ? CONFIGS.filter((c) => c.id === configArg.toUpperCase()) : CONFIGS;
 
   // Results directory
-  const resultsDir = path.join(import.meta.dirname!, "results");
+  const resultsDir = path.join(import.meta.dirname!, "../evaluation/results");
   await fs.mkdir(resultsDir, { recursive: true });
 
   // Run benchmarks
