@@ -169,7 +169,7 @@ for ds in $DATASETS; do
         fi
       done
   
-  local EC=${PIPESTATUS[0]}
+  EC=${PIPESTATUS[0]}
   if [[ "$EC" -ne 0 ]]; then
     log "WARN: $ds indexing exited $EC (continuing...)"
   fi
