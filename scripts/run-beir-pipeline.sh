@@ -75,10 +75,14 @@ notify() {
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Start in tmux if not already
+# Start in tmux if not already (skip if running under systemd)
 # ─────────────────────────────────────────────────────────────────────────────
 
-if [ -z "${TMUX:-}" ]; then
+# Check if running under systemd (INVOCATION_ID is set by systemd)
+if [ -n "${INVOCATION_ID:-}" ]; then
+    # Running under systemd - continue directly
+    :
+elif [ -z "${TMUX:-}" ]; then
     if tmux has-session -t beir-pipeline 2>/dev/null; then
         echo "[INFO] Attaching to existing beir-pipeline session"
         exec tmux attach -t beir-pipeline
