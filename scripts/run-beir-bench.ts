@@ -250,42 +250,41 @@ async function runRetrieval(
       }
     }
 
-    let candidates: SearchResult[] = [];
+    // Keep vector and FTS results separate until explicit fusion
+    let vectorResults: SearchResult[] = [];
+    let ftsResults: SearchResult[] = [];
 
     // Vector search
     if (config.useVector) {
-      const vResults = await backend
+      vectorResults = await backend
         .vectorSearch(queryVector, { query: q.text, maxResults: k * 4, minScore: 0.0 })
         .catch(() => []);
-      if (vResults.length > 0) {
+      if (vectorResults.length > 0) {
         tel.stages.vector = {
-          count: vResults.length,
-          top1Id: vResults[0]!.chunk.id,
-          top1Score: vResults[0]!.score,
+          count: vectorResults.length,
+          top1Id: vectorResults[0]!.chunk.id,
+          top1Score: vectorResults[0]!.score,
         };
       }
-      candidates.push(...vResults);
     }
 
     // FTS search
     if (config.useFts) {
-      const fResults = await backend
+      ftsResults = await backend
         .ftsSearch(q.text, { query: q.text, maxResults: k * 4 })
         .catch(() => []);
-      if (fResults.length > 0) {
+      if (ftsResults.length > 0) {
         tel.stages.fts = {
-          count: fResults.length,
-          top1Id: fResults[0]!.chunk.id,
-          top1Score: fResults[0]!.score,
+          count: ftsResults.length,
+          top1Id: ftsResults[0]!.chunk.id,
+          top1Score: ftsResults[0]!.score,
         };
       }
-      candidates.push(...fResults);
     }
 
-    // Hybrid merge - combine vector and FTS results
-    if (config.useVector && config.useFts && candidates.length > 0) {
-      const vectorResults = candidates.filter((r) => r.score > 0 && r.chunk.id.startsWith("beir-"));
-      const ftsResults = candidates.filter((r) => r.score > 0);
+    // Hybrid merge — fuse vector and FTS with proper separation
+    let candidates: SearchResult[];
+    if (config.useVector && config.useFts && vectorResults.length > 0 && ftsResults.length > 0) {
       candidates = hybridMerge(vectorResults, ftsResults, k * 2);
       if (candidates.length > 0) {
         tel.stages.hybrid = {
@@ -295,9 +294,10 @@ async function runRetrieval(
         };
       }
     } else {
-      // Dedupe by ID
+      // Single-source — dedupe by ID
+      const combined = [...vectorResults, ...ftsResults];
       const seen = new Set<string>();
-      candidates = candidates.filter((r) => {
+      candidates = combined.filter((r) => {
         if (seen.has(r.chunk.id)) return false;
         seen.add(r.chunk.id);
         return true;
@@ -350,7 +350,7 @@ async function main() {
   const args = process.argv.slice(2);
   const datasetArg = args.includes("--dataset") ? args[args.indexOf("--dataset") + 1] : "scifact";
   const configArg = args.includes("--config") ? args[args.indexOf("--config") + 1] : null;
-  const enableHyde = args.includes("--hyde");
+  const cliHyde = args.includes("--hyde");
 
   console.log("═══════════════════════════════════════════");
   console.log(`  BEIR Benchmark: ${datasetArg}`);
@@ -372,9 +372,10 @@ async function main() {
   const reranker = cfg.rerank.enabled ? await createReranker(cfg.rerank) : null;
   console.log(`[INFO] Reranker: ${reranker ? "enabled" : "disabled"}`);
 
-  // HyDE config
-  const hydeConfig = enableHyde ? cfg.hyde : undefined;
-  console.log(`[INFO] HyDE: ${hydeConfig?.enabled ? "enabled" : "disabled"}`);
+  // HyDE config — always available; per-config useHyde controls activation.
+  // CLI --hyde forces HyDE on for ALL configs (useful for quick testing).
+  const hydeConfig = (cliHyde || cfg.hyde?.enabled) ? cfg.hyde : undefined;
+  console.log(`[INFO] HyDE: ${hydeConfig?.enabled ? "enabled" : "disabled"} (cli-forced: ${cliHyde})`);
 
   // Load dataset
   console.log(`[INFO] Loading ${datasetArg} queries and qrels...`);

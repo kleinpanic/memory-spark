@@ -28,7 +28,13 @@ export async function createEmbedProvider(cfg: EmbedConfig): Promise<EmbedProvid
 
   if (cfg.spark) {
     providers.push(() =>
-      makeOpenAiCompat("spark", cfg.spark!.baseUrl, cfg.spark!.apiKey ?? "none", cfg.spark!.model),
+      makeOpenAiCompat(
+        "spark",
+        cfg.spark!.baseUrl,
+        cfg.spark!.apiKey ?? "none",
+        cfg.spark!.model,
+        cfg.spark!.queryInstruction,
+      ),
     );
   }
 
@@ -73,6 +79,7 @@ function makeOpenAiCompat(
   baseUrl: string,
   apiKey: string,
   model: string,
+  queryInstruction?: string,
 ): EmbedProvider {
   const dims = DIMS[model] ?? 1536;
 
@@ -112,7 +119,15 @@ function makeOpenAiCompat(
     model,
     dims,
     async embedQuery(text) {
-      const results = await embed(text);
+      // Instruction-aware models (e.g. Nemotron-8B) require queries to be prefixed
+      // with a task instruction. Documents are embedded as raw text (no prefix).
+      // This asymmetric encoding aligns query and document vectors into the correct
+      // subspaces for retrieval. Without the prefix, query vectors land in document
+      // space and retrieval quality degrades significantly.
+      const input = queryInstruction
+        ? `Instruct: ${queryInstruction}\nQuery: ${text}`
+        : text;
+      const results = await embed(input);
       return results[0]!;
     },
     async embedBatch(texts) {

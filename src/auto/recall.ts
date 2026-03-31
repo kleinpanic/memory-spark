@@ -330,54 +330,66 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
  *
  * Chunks appearing in BOTH lists get a bonus (evidence from two signals).
  */
+/**
+ * Reciprocal Rank Fusion (RRF) — combines vector and FTS result lists using
+ * rank positions only, avoiding the scale-mismatch problem of mixing cosine
+ * similarity with BM25 scores.
+ *
+ * Formula per document: RRF(d) = Σ 1/(k + rank_i) for each list containing d
+ * where rank_i is 1-indexed.
+ *
+ * Documents found in BOTH lists get the sum of both reciprocal ranks, naturally
+ * promoting dual-evidence matches. Output scores are normalized to [0, 1] so
+ * downstream minScore filters work correctly (top result = 1.0).
+ *
+ * @param vectorResults — results from vector (semantic) search, ordered by relevance
+ * @param ftsResults — results from full-text (BM25) search, ordered by relevance
+ * @param limit — maximum results to return
+ * @param k — RRF smoothing constant (default 60, same as Elasticsearch/Azure)
+ * @see https://plg.uwaterloo.ca/~grcorcor/topicmodels/rrf.pdf
+ */
 export function hybridMerge(
   vectorResults: SearchResult[],
   ftsResults: SearchResult[],
   limit: number,
   k = 60,
 ): SearchResult[] {
-  const merged = new Map<string, { result: SearchResult; score: number; sources: number }>();
+  const merged = new Map<string, { result: SearchResult; rrfScore: number; sources: number }>();
 
-  // Vector results: use original cosine similarity as base score
-  vectorResults.forEach((r, _rank) => {
-    const id = r.chunk.id;
-    merged.set(id, {
+  // Vector results: RRF score from rank position only (1-indexed per the paper)
+  vectorResults.forEach((r, idx) => {
+    merged.set(r.chunk.id, {
       result: r,
-      score: r.score, // preserve cosine similarity
+      rrfScore: 1 / (k + idx + 1),
       sources: 1,
     });
   });
 
-  // FTS results: boost existing vector entries, or add FTS-only entries
-  // with a decaying score based on FTS rank (max ~0.5 for rank 0)
-  ftsResults.forEach((r, rank) => {
+  // FTS results: add RRF score (sums when document found in both lists)
+  ftsResults.forEach((r, idx) => {
     const id = r.chunk.id;
+    const ftsRrf = 1 / (k + idx + 1);
     const existing = merged.get(id);
-    const ftsRankScore = 0.5 / (1 + rank * 0.1); // 0.50, 0.45, 0.42, ...
-
     if (existing) {
-      // Found in both vector AND FTS — dual evidence boost.
-      // Use pure RRF rank component (no flat constant) scaled to be meaningful.
-      // At rank 0: boost = 10/60 = 0.167; at rank 59: boost = 10/119 = 0.084.
-      // This preserves rank discrimination unlike the old 0.1 + ... formula.
-      existing.score += (1 / (k + rank)) * 10;
+      existing.rrfScore += ftsRrf;
       existing.sources = 2;
     } else {
-      // FTS-only: use a moderate score — these lack semantic similarity
       merged.set(id, {
         result: r,
-        score: ftsRankScore,
+        rrfScore: ftsRrf,
         sources: 1,
       });
     }
   });
 
-  // Cap all scores at 1.0 to maintain cosine-similarity semantics.
-  // Downstream filters (minScore) and confidence attributes expect [0, 1].
-  return Array.from(merged.values())
-    .sort((a, b) => b.score - a.score)
-    .slice(0, limit)
-    .map((s) => ({ ...s.result, score: Math.min(1.0, s.score) }));
+  // Sort by RRF score descending, normalize to [0, 1] for downstream minScore filters
+  const sorted = Array.from(merged.values()).sort((a, b) => b.rrfScore - a.rrfScore);
+  const maxRrf = sorted[0]?.rrfScore ?? 1;
+
+  return sorted.slice(0, limit).map((s) => ({
+    ...s.result,
+    score: maxRrf > 0 ? s.rrfScore / maxRrf : 0,
+  }));
 }
 
 /**
