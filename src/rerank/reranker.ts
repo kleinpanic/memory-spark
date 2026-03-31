@@ -103,6 +103,22 @@ function sparkReranker(cfg: RerankConfig): Reranker {
         }
       }
 
+      // Score spread guard: if reranker scores are too compressed, it's not
+      // discriminating — fall back to input ordering to avoid coin-flip reranks.
+      if (results.length >= 2) {
+        const scores = results.map((r) => r.score);
+        const spread = Math.max(...scores) - Math.min(...scores);
+        const minSpread = cfg.spark!.minScoreSpread ?? 0.01;
+        if (spread < minSpread) {
+          if (process.env.MEMORY_SPARK_DEBUG || process.env.DEBUG?.includes("rerank")) {
+            console.debug(
+              `[reranker] spread=${spread.toFixed(4)} < minSpread=${minSpread} — falling back to input order`,
+            );
+          }
+          return pool.slice(0, topN);
+        }
+      }
+
       return results;
     },
 
