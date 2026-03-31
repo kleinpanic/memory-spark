@@ -429,13 +429,23 @@ export function applyTemporalDecay(
 /**
  * Maximum Marginal Relevance — ensures result diversity.
  * Iteratively selects results that are relevant but dissimilar to already-selected.
- * Uses Jaccard similarity on token sets (fast, no vectors needed).
+ * Uses cosine similarity on embedding vectors (semantic diversity).
+ * Falls back to Jaccard similarity on token sets when vectors are unavailable.
  */
 export function mmrRerank(results: SearchResult[], limit: number, lambda: number): SearchResult[] {
   if (results.length <= 1) return results;
 
-  const tokenSets = results.map((r) => tokenize(r.chunk.text));
-  // Precompute index map for O(1) lookup — avoids O(n) indexOf in inner loop
+  // Determine similarity strategy: cosine on vectors if available, else Jaccard on tokens.
+  const hasVectors = results.every((r) => r.vector && r.vector.length > 0);
+  const tokenSets = hasVectors ? undefined : results.map((r) => tokenize(r.chunk.text));
+
+  function similarity(i: number, j: number): number {
+    if (hasVectors) {
+      return cosineSimilarity(results[i]!.vector!, results[j]!.vector!);
+    }
+    return jaccardSimilarity(tokenSets![i]!, tokenSets![j]!);
+  }
+
   const selectedIndices: number[] = [];
   const remaining = new Set(results.map((_, i) => i));
 
@@ -458,10 +468,10 @@ export function mmrRerank(results: SearchResult[], limit: number, lambda: number
     for (const i of remaining) {
       const relevance = results[i]!.score;
 
-      // Max similarity to any already-selected result (O(k) with precomputed indices)
+      // Max similarity to any already-selected result
       let maxSim = 0;
       for (const sIdx of selectedIndices) {
-        const sim = jaccardSimilarity(tokenSets[i]!, tokenSets[sIdx]!);
+        const sim = similarity(i, sIdx);
         if (sim > maxSim) maxSim = sim;
       }
 
@@ -478,6 +488,24 @@ export function mmrRerank(results: SearchResult[], limit: number, lambda: number
   }
 
   return selectedIndices.map((i) => results[i]!);
+}
+
+/**
+ * Cosine similarity between two vectors. Returns value in [-1, 1].
+ * For normalized embeddings (unit vectors), this equals the dot product.
+ */
+export function cosineSimilarity(a: number[], b: number[]): number {
+  if (a.length !== b.length || a.length === 0) return 0;
+  let dot = 0;
+  let normA = 0;
+  let normB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i]! * b[i]!;
+    normA += a[i]! * a[i]!;
+    normB += b[i]! * b[i]!;
+  }
+  const denom = Math.sqrt(normA) * Math.sqrt(normB);
+  return denom === 0 ? 0 : dot / denom;
 }
 
 function tokenize(text: string): Set<string> {
