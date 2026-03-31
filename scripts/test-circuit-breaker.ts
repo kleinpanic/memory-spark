@@ -4,6 +4,7 @@ import type { EmbedProvider } from "../src/embed/provider.js";
 // Mock embed provider that fails N times then succeeds
 function createMockProvider(failCount: number): EmbedProvider {
   let calls = 0;
+  let currentFailures = 0;
   return {
     id: "mock",
     model: "mock-model",
