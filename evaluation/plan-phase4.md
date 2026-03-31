@@ -145,12 +145,25 @@ const final = mmrRerank(reranked, cfg.maxResults, lambda);
 - `tests/unit.test.ts` — MMR, dedup, and config tests
 - `tests/hyde.test.ts` — if HyDE-related tests needed
 
-### 4H: Benchmark Runner Updates
+### 4H: Comprehensive Test Suite + Local CI/CD
 
-- Benchmark configs should test with and without MMR to measure delta
-- Ensure instruction prefix is active during benchmarks
-- Remove sigmoid-based minScore filtering from benchmark FTS path
-- Update `scripts/run-beir-bench.ts` and `evaluation/benchmark-v2.ts`
+**Goal:** Add a thorough test suite covering all Phase 4 changes, then run the full CI/CD pipeline locally to validate everything before any benchmarking.
+
+**New test coverage:**
+- **Instruction prefix integration test:** Full round-trip — query with prefix embeds differently than without
+- **BM25 filtering test:** FTS results pass through to RRF regardless of sigmoid score
+- **Cosine MMR correctness:** Given known vectors, verify MMR selects diverse-but-relevant over redundant
+- **Pipeline ordering test:** Assert call order in recall pipeline (reranker before MMR)
+- **Source dedup edge cases:** Same-source overlap, cross-source vocabulary overlap (should NOT dedup), single-chunk groups
+- **Lambda boundary tests:** 0.0, 0.5, 0.9, 1.0 produce expected rank orderings
+- **Regression tests:** Existing pipeline behavior preserved where not explicitly changed
+
+**Local CI/CD run:**
+- `npx vitest run` — all unit + integration tests pass
+- `npx tsc --noEmit` — no type errors
+- Lint pass if configured
+
+**Note:** Full BEIR re-benchmarking happens AFTER all 8 phases are complete, not here. This step validates code correctness only.
 
 ---
 
@@ -163,7 +176,7 @@ const final = mmrRerank(reranked, cfg.maxResults, lambda);
 4A and 4B are the highest-ROI fixes and independent of MMR changes.  
 4C and 4D are the core MMR fixes.  
 4E and 4F are configuration and polish.  
-4G validates everything. 4H measures the impact.
+4G validates everything. 4H runs the full test suite + local CI to confirm correctness before any benchmarking.
 
 ---
 
@@ -176,8 +189,9 @@ const final = mmrRerank(reranked, cfg.maxResults, lambda);
 - [ ] Lambda configurable via `mmrLambda`, default 0.9
 - [ ] Source-level dedup collapses near-identical chunks before reranker
 - [ ] All existing tests pass + new Phase 4 tests pass
-- [ ] BEIR re-run shows improvement over Phase 1-3 baseline
+- [ ] Full test suite passes locally (`vitest run` + `tsc --noEmit`)
 - [ ] No hardcoded lambda values in production code
+- [ ] BEIR re-benchmark deferred to post-Phase-8 (all phases complete first)
 
 ---
 
