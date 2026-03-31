@@ -258,6 +258,7 @@ async function runTests() {
       model: "stub",
       dims: 4096,
       embedQuery: async () => Array(4096).fill(0),
+      embedDocument: async () => Array(4096).fill(0),
       embedBatch: async (t) => t.map(() => Array(4096).fill(0)),
       probe: async () => false,
     };
