@@ -117,7 +117,7 @@ describe("HyDE Generator", () => {
         {
           message: {
             content:
-              "Now let me write about this.\nOpenClaw is a multi-agent platform running on Linux.",
+              "Now let me write about this.\nOpenClaw is a multi-agent AI orchestration platform running on Linux. It coordinates multiple specialized agents through a gateway daemon for tools, memory, and inter-agent communication.",
           },
         },
       ],
@@ -131,6 +131,81 @@ describe("HyDE Generator", () => {
     const result = await generateHypotheticalDocument("What is OpenClaw?", mockConfig);
     expect(result).toBeTruthy();
     expect(result).not.toMatch(/^Now let me/);
+  });
+
+  // ── Quality Gate Tests (Phase 3C) ─────────────────────────────────
+
+  it("rejects 'I don't know' responses (quality gate)", async () => {
+    const mockResponse = {
+      choices: [{ message: { content: "I don't know the answer to that question. There is not enough information available to provide a response." } }],
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: true, json: () => Promise.resolve(mockResponse),
+    } as unknown as Response);
+
+    const result = await generateHypotheticalDocument("What is the flux capacitor?", mockConfig);
+    expect(result).toBeNull();
+  });
+
+  it("rejects 'cannot determine' responses (quality gate)", async () => {
+    const mockResponse = {
+      choices: [{ message: { content: "We cannot determine the exact configuration from the available information. The system may be running a different version than expected." } }],
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: true, json: () => Promise.resolve(mockResponse),
+    } as unknown as Response);
+
+    const result = await generateHypotheticalDocument("What version is installed?", mockConfig);
+    expect(result).toBeNull();
+  });
+
+  it("rejects 'as an AI' responses (quality gate)", async () => {
+    const mockResponse = {
+      choices: [{ message: { content: "As an AI language model, I don't have access to specific system configurations or real-time data about your setup." } }],
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: true, json: () => Promise.resolve(mockResponse),
+    } as unknown as Response);
+
+    const result = await generateHypotheticalDocument("What is my timezone?", mockConfig);
+    expect(result).toBeNull();
+  });
+
+  it("rejects too-short hypotheticals (< 10 words)", async () => {
+    const mockResponse = {
+      choices: [{ message: { content: "OpenClaw is a platform for agents. That's it." } }],
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: true, json: () => Promise.resolve(mockResponse),
+    } as unknown as Response);
+
+    const result = await generateHypotheticalDocument("What is OpenClaw?", mockConfig);
+    expect(result).toBeNull();
+  });
+
+  it("accepts valid factual hypotheticals (passes quality gate)", async () => {
+    const mockResponse = {
+      choices: [{ message: { content: "Klein's timezone is America/New_York (Eastern Time). The OpenClaw system is configured to use this timezone for all scheduling, cron jobs, and timestamp display." } }],
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: true, json: () => Promise.resolve(mockResponse),
+    } as unknown as Response);
+
+    const result = await generateHypotheticalDocument("What is Klein's timezone?", mockConfig);
+    expect(result).toBeTruthy();
+    expect(result).toContain("America/New_York");
+  });
+
+  it("rejects 'unable to provide' hedging (quality gate)", async () => {
+    const mockResponse = {
+      choices: [{ message: { content: "The system is unable to provide specific configuration details without access to the actual deployment environment and runtime state." } }],
+    };
+    vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
+      ok: true, json: () => Promise.resolve(mockResponse),
+    } as unknown as Response);
+
+    const result = await generateHypotheticalDocument("What port is the gateway on?", mockConfig);
+    expect(result).toBeNull();
   });
 
   it("sends auth header when apiKey is set", async () => {

@@ -110,7 +110,27 @@ export async function generateHypotheticalDocument(
       .replace(/\n{2,}/g, "\n")
       .trim();
 
-    return cleaned.length >= 20 ? cleaned : null;
+    if (cleaned.length < 20) return null;
+
+    // Quality gate — reject generic/unhelpful hypotheticals that would produce
+    // poor document-space embeddings. Fall back to raw query embedding instead.
+    const wordCount = cleaned.split(/\s+/).length;
+    if (wordCount < 10) return null; // Too short to be a useful pseudo-document
+
+    // Reject hedging/refusal patterns — these don't contain factual content
+    const REJECTION_PATTERNS = [
+      /\bi don'?t know\b/i,
+      /\bcannot determine\b/i,
+      /\bnot enough information\b/i,
+      /\bunable to (answer|provide|determine)\b/i,
+      /\bno information (available|provided)\b/i,
+      /\bas an ai\b/i,
+      /\bi'?m not sure\b/i,
+      /\bI cannot\b/i,
+    ];
+    if (REJECTION_PATTERNS.some((p) => p.test(cleaned))) return null;
+
+    return cleaned;
   } catch {
     // Timeout, network error, parse error — all silently fall back
     return null;

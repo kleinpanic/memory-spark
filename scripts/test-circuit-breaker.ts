@@ -8,6 +8,13 @@ function createMockProvider(failCount: number): EmbedProvider {
     id: "mock",
     model: "mock-model",
     dims: 384,
+    embedDocument: async (text: string) => {
+      if (currentFailures < failCount) {
+        currentFailures++;
+        throw new Error("Simulated failure");
+      }
+      return Array(1024).fill(0.1);
+    },
     embedQuery: async (text: string) => {
       calls++;
       if (calls <= failCount) {

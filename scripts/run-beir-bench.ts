@@ -235,18 +235,19 @@ async function runRetrieval(
     // Get query vector
     let queryVector = await embed.embedQuery(q.text);
 
-    // HyDE: generate hypothetical document
+    // HyDE: generate hypothetical document and REPLACE query vector (Gao et al. 2022).
+    // The hypothetical is embedded as a document (no instruction prefix) to project
+    // it into the same vector space as the indexed corpus.
     if (config.useHyde && hydeConfig?.enabled) {
       try {
         const hypothetical = await generateHypotheticalDocument(q.text, hydeConfig);
         if (hypothetical) {
           tel.stages.hyde = { hypotheticalDoc: hypothetical.slice(0, 200) + "..." };
-          const hydeVector = await embed.embedQuery(hypothetical);
-          // Average query and HyDE vectors
-          queryVector = queryVector.map((v, idx) => (v + hydeVector[idx]) / 2);
+          // embedDocument() = no instruction prefix → document space
+          queryVector = await embed.embedDocument(hypothetical);
         }
       } catch {
-        // Fall back to raw query
+        // Fall back to raw query (queryVector already set above)
       }
     }
 

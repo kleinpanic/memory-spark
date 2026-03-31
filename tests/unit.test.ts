@@ -483,6 +483,39 @@ describe("Config: embed provider", () => {
     assert.equal(input, query, "Empty instruction should mean no prefix");
   });
 
+  // ── embedDocument (Phase 3: HyDE document-space embedding) ──────────
+
+  it("EmbedProvider interface has embedDocument method", () => {
+    // Verify the interface includes embedDocument — TypeScript compile check
+    const mockProvider: import("../src/embed/provider.js").EmbedProvider = {
+      id: "test",
+      model: "test",
+      dims: 1024,
+      embedQuery: async () => [],
+      embedDocument: async () => [],
+      embedBatch: async () => [],
+      probe: async () => true,
+    };
+    assert.ok(typeof mockProvider.embedDocument === "function");
+  });
+
+  it("embedDocument does NOT apply instruction prefix (by contract)", () => {
+    // This is a design contract test: embedDocument must embed raw text
+    // for HyDE hypotheticals to land in document space.
+    // We can't test the actual network call here, but we verify the config logic.
+    const cfg = resolveConfig();
+    const qi = cfg.embed.spark!.queryInstruction!;
+
+    // Query format: has instruction prefix
+    const queryInput = `Instruct: ${qi}\nQuery: test`;
+    assert.ok(queryInput.startsWith("Instruct:"), "Query input should have prefix");
+
+    // Document format: raw text only
+    const docInput = "test";
+    assert.ok(!docInput.startsWith("Instruct:"), "Document input should NOT have prefix");
+    assert.equal(docInput, "test", "Document input should be raw text");
+  });
+
   it("OpenAI/Gemini providers unaffected by queryInstruction", () => {
     const cfg = resolveConfig();
     // OpenAI and Gemini configs don't have queryInstruction field

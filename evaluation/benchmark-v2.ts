@@ -261,11 +261,12 @@ async function runRetrieval(
     }
 
     // ── Embedding: HyDE or raw ──
+    // HyDE: embed hypothetical as document (no instruction prefix) per Gao et al. 2022
     let queryVector: number[];
     if (config.useHyde && hydeConfig?.enabled) {
       const hypothetical = await generateHypotheticalDocument(queryText, hydeConfig);
       queryVector = hypothetical
-        ? await embed.embedQuery(hypothetical)
+        ? await embed.embedDocument(hypothetical)
         : await embed.embedQuery(queryText);
     } else {
       queryVector = await embed.embedQuery(queryText);
@@ -427,12 +428,12 @@ async function runProductionRetrieval(
       continue;
     }
 
-    // HyDE embedding (matches production)
+    // HyDE embedding — embed hypothetical as document (no instruction prefix)
     let queryVector: number[];
     if (hydeConfig?.enabled) {
       const hypothetical = await generateHypotheticalDocument(queryText, hydeConfig);
       queryVector = hypothetical
-        ? await embed.embedQuery(hypothetical)
+        ? await embed.embedDocument(hypothetical)
         : await embed.embedQuery(queryText);
     } else {
       queryVector = await embed.embedQuery(queryText);
