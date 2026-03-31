@@ -67,6 +67,9 @@ export interface SearchResult {
   chunk: MemoryChunk;
   score: number;
   snippet: string;
+  /** Embedding vector — used for cosine-based MMR diversity computation.
+   *  Available when chunk.vector is populated from the DB; undefined for FTS-only results. */
+  vector?: number[];
 }
 
 export interface BackendStatus {

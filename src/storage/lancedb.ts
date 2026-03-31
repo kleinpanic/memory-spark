@@ -629,10 +629,16 @@ function rowToSearchResult(row: Record<string, unknown>): SearchResult {
     is_parent: (row.is_parent as boolean | undefined) ?? undefined,
   };
 
+  // Expose embedding vector for cosine-based MMR (Phase 4C).
+  // LanceDB returns the vector column by default in search results.
+  // If missing (FTS-only results), leave undefined — MMR falls back to Jaccard.
+  const vector = chunk.vector?.length ? chunk.vector : undefined;
+
   return {
     chunk,
     score,
     snippet: chunk.text.slice(0, 500),
+    vector,
   };
 }
 

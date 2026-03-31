@@ -17,7 +17,7 @@ import { heuristicClassify } from "../src/classify/heuristic.js";
 import type { MemoryChunk, SearchResult } from "../src/storage/backend.js";
 import { applyTemporalDecay } from "../src/auto/recall.js";
 import { shouldProcessAgent } from "../src/config.js";
-import { hybridMerge, applySourceWeighting, mmrRerank } from "../src/auto/recall.js";
+import { hybridMerge, applySourceWeighting, mmrRerank, cosineSimilarity } from "../src/auto/recall.js";
 import { EmbedCache } from "../src/embed/cache.js";
 import {
   ndcgAtK,
@@ -172,6 +172,88 @@ describe("Auto-Recall Logic", () => {
     const sim13 = jaccard(tokens1, tokens3);
 
     return sim12 > sim13; // Similar texts should have higher similarity
+  });
+
+  // ── Cosine Similarity (Phase 4C) ──────────────────────────────────
+
+  it("cosineSimilarity: identical vectors = 1.0", () => {
+    const v = [1, 2, 3, 4, 5];
+    assert.ok(Math.abs(cosineSimilarity(v, v) - 1.0) < 1e-6);
+  });
+
+  it("cosineSimilarity: orthogonal vectors = 0.0", () => {
+    const a = [1, 0, 0];
+    const b = [0, 1, 0];
+    assert.ok(Math.abs(cosineSimilarity(a, b)) < 1e-6);
+  });
+
+  it("cosineSimilarity: opposite vectors = -1.0", () => {
+    const a = [1, 0, 0];
+    const b = [-1, 0, 0];
+    assert.ok(Math.abs(cosineSimilarity(a, b) + 1.0) < 1e-6);
+  });
+
+  it("cosineSimilarity: empty vectors = 0.0", () => {
+    assert.equal(cosineSimilarity([], []), 0);
+  });
+
+  it("cosineSimilarity: mismatched lengths = 0.0", () => {
+    assert.equal(cosineSimilarity([1, 2], [1, 2, 3]), 0);
+  });
+
+  it("MMR with cosine: keeps relevant-but-different chunks", () => {
+    // Two chunks with different vectors (low cosine similarity) but both high relevance
+    const results: import("../src/storage/backend.js").SearchResult[] = [
+      { chunk: { id: "a", text: "agent config", vector: [1, 0, 0, 0] } as any, score: 0.9, snippet: "", vector: [1, 0, 0, 0] },
+      { chunk: { id: "b", text: "agent memory", vector: [0, 1, 0, 0] } as any, score: 0.85, snippet: "", vector: [0, 1, 0, 0] },
+      { chunk: { id: "c", text: "weather info", vector: [0, 0, 1, 0] } as any, score: 0.5, snippet: "", vector: [0, 0, 1, 0] },
+    ];
+    const ranked = mmrRerank(results, 3, 0.9);
+    // Both high-relevance chunks should be kept because their vectors are orthogonal
+    assert.equal(ranked.length, 3);
+    assert.equal(ranked[0]!.chunk.id, "a"); // highest relevance
+    assert.equal(ranked[1]!.chunk.id, "b"); // different vector, high relevance
+  });
+
+  it("MMR with cosine: penalizes near-duplicate vectors", () => {
+    // Two chunks with nearly identical vectors — MMR should prefer diversity
+    const v1 = [0.9, 0.1, 0, 0];
+    const v2 = [0.91, 0.09, 0, 0]; // almost identical to v1
+    const v3 = [0, 0, 0.8, 0.2]; // very different
+    const results: import("../src/storage/backend.js").SearchResult[] = [
+      { chunk: { id: "a", text: "first", vector: v1 } as any, score: 0.9, snippet: "", vector: v1 },
+      { chunk: { id: "b", text: "duplicate", vector: v2 } as any, score: 0.85, snippet: "", vector: v2 },
+      { chunk: { id: "c", text: "different", vector: v3 } as any, score: 0.8, snippet: "", vector: v3 },
+    ];
+    // With lambda=0.7 (strong diversity), the different vector should rank above the duplicate
+    const ranked = mmrRerank(results, 3, 0.7);
+    assert.equal(ranked[0]!.chunk.id, "a"); // highest relevance always first
+    assert.equal(ranked[1]!.chunk.id, "c"); // different vector preferred over near-duplicate
+    assert.equal(ranked[2]!.chunk.id, "b"); // near-duplicate last
+  });
+
+  it("MMR with lambda=1.0: pure relevance ordering (no diversity)", () => {
+    const results: import("../src/storage/backend.js").SearchResult[] = [
+      { chunk: { id: "a", text: "first", vector: [1, 0] } as any, score: 0.9, snippet: "", vector: [1, 0] },
+      { chunk: { id: "b", text: "second", vector: [1, 0] } as any, score: 0.8, snippet: "", vector: [1, 0] },
+      { chunk: { id: "c", text: "third", vector: [1, 0] } as any, score: 0.7, snippet: "", vector: [1, 0] },
+    ];
+    const ranked = mmrRerank(results, 3, 1.0);
+    // Lambda=1.0 means diversity penalty is 0 → pure relevance order
+    assert.equal(ranked[0]!.chunk.id, "a");
+    assert.equal(ranked[1]!.chunk.id, "b");
+    assert.equal(ranked[2]!.chunk.id, "c");
+  });
+
+  it("MMR falls back to Jaccard when vectors unavailable", () => {
+    // Results without vector field — should not crash, falls back to Jaccard
+    const results: import("../src/storage/backend.js").SearchResult[] = [
+      { chunk: { id: "a", text: "agent configuration and setup" } as any, score: 0.9, snippet: "" },
+      { chunk: { id: "b", text: "agent memory and storage" } as any, score: 0.8, snippet: "" },
+    ];
+    const ranked = mmrRerank(results, 2, 0.9);
+    assert.equal(ranked.length, 2);
+    assert.equal(ranked[0]!.chunk.id, "a"); // highest relevance first
   });
 
   it("Temporal decay formula", () => {
