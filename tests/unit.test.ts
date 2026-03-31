@@ -2392,10 +2392,10 @@ describe("Config Expansion (new tuning knobs)", () => {
     assert.strictEqual(cfg.autoRecall.ftsEnabled, true);
   });
 
-  it("Default fts config: enabled true, sigmoid midpoint 3.0", () => {
+  it("Default fts config: enabled true, sigmoid midpoint 10.0", () => {
     const cfg = resolveConfig();
     assert.strictEqual(cfg.fts?.enabled, true);
-    assert.strictEqual(cfg.fts?.sigmoidMidpoint, 3.0);
+    assert.strictEqual(cfg.fts?.sigmoidMidpoint, 10.0);
   });
 
   it("Default chunk config: 400 max, 50 overlap, 20 min", () => {
