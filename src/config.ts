@@ -161,7 +161,7 @@ export interface AutoRecallConfig {
   /**
    * MMR diversity lambda (0-1). Higher = more relevant, lower = more diverse.
    * 0.0 = max diversity, 1.0 = pure relevance ranking.
-   * Default: 0.7
+   * Default: 0.9 (factual retrieval needs high relevance bias)
    */
   mmrLambda?: number;
   /**
@@ -359,7 +359,7 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
       minScore: 0.75,
       queryMessageCount: 2,
       maxInjectionTokens: 2000,
-      mmrLambda: 0.7,
+      mmrLambda: 0.9,
       temporalDecay: { floor: 0.8, rate: 0.03 },
       dedupOverlapThreshold: 0.4,
       overfetchMultiplier: 4,
