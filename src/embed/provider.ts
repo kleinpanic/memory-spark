@@ -91,6 +91,26 @@ function makeOpenAiCompat(
 ): EmbedProvider {
   const dims = DIMS[model] ?? 1536;
 
+  // Warn if an instruction-aware model is used without a query instruction.
+  // Without the prefix, queries embed into document space → retrieval quality degrades.
+  const INSTRUCTION_AWARE_MODELS = [
+    "llama-embed-nemotron",
+    "e5-instruct",
+    "instructor",
+    "gte-qwen",
+    "nomic-embed",
+  ];
+  if (
+    !queryInstruction &&
+    INSTRUCTION_AWARE_MODELS.some((m) => model.toLowerCase().includes(m))
+  ) {
+    console.warn(
+      `[memory-spark] WARNING: Model "${model}" is instruction-aware but queryInstruction is empty. ` +
+        `Queries will embed as raw text (document space) instead of query space. ` +
+        `Set embed.spark.queryInstruction in config for optimal retrieval quality.`,
+    );
+  }
+
   async function embed(input: string | string[]): Promise<number[][]> {
     let resp: Response;
     try {

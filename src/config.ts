@@ -337,7 +337,7 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
         model: "nvidia/llama-embed-nemotron-8b",
         dimensions: 4096,
         queryInstruction:
-          "Given a web search query, retrieve relevant passages that answer the query.",
+          "Given a question, retrieve relevant passages that answer the query",
       },
       openai: { model: "text-embedding-3-small" },
       gemini: { model: "gemini-embedding-001" },
@@ -471,7 +471,12 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
     },
     fts: {
       enabled: true,
-      sigmoidMidpoint: 3.0,
+      // Sigmoid midpoint controls where BM25 scores map to 0.5.
+      // Most corpora have BM25 scores in the 5-20 range; midpoint 10.0
+      // produces a better spread than 3.0 (which saturates almost everything to >0.98).
+      // Note: FTS minScore filtering is bypassed before RRF merge (rank-based only),
+      // so this mainly affects display/debugging scores.
+      sigmoidMidpoint: 10.0,
     },
     chunk: {
       maxTokens: 400,

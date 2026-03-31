@@ -112,9 +112,12 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
         (cfg.ftsEnabled ?? true)
           ? await backend.ftsSearch(queryText, searchOpts).catch(() => [] as SearchResult[])
           : [];
-      // Filter FTS: exclude sessions source, apply minScore
+      // Filter FTS: exclude sessions source only.
+      // Do NOT apply minScore to FTS results — BM25 scores are sigmoid-normalized
+      // and nearly all map to >0.98, making minScore non-discriminative.
+      // RRF handles FTS ranking by position (rank-only), not score magnitude.
       const ftsResults = rawFtsResults.filter(
-        (r) => r.chunk.source !== "sessions" && r.score >= (minScore ?? 0.1),
+        (r) => r.chunk.source !== "sessions",
       );
       const merged = hybridMerge(vectorResults, ftsResults, limit);
       // Exclude parent chunks from search results — they exist for context
