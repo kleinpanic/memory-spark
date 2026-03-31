@@ -58,7 +58,10 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
       if (hydeConfig?.enabled) {
         const hypothetical = await generateHypotheticalDocument(queryText, hydeConfig);
         if (hypothetical) {
-          queryVector = await embed.embedQuery(hypothetical);
+          // HyDE: embed the hypothetical as a DOCUMENT (no instruction prefix).
+          // The hypothetical is a pseudo-document and must land in document embedding
+          // space, not query space. This is the correct approach per Gao et al. 2022.
+          queryVector = await embed.embedDocument(hypothetical);
         } else {
           // HyDE failed (timeout, too short, etc.) — fall back to raw query
           queryVector = await embed.embedQuery(queryText);

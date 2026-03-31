@@ -10,6 +10,14 @@ export interface EmbedProvider {
   model: string;
   dims: number;
   embedQuery(text: string): Promise<number[]>;
+  /**
+   * Embed a single text as a **document** (no instruction prefix).
+   * Use this for HyDE hypothetical documents — they are pseudo-documents
+   * and must be projected into document embedding space, not query space.
+   *
+   * For models without instruction prefixes, this is identical to embedQuery().
+   */
+  embedDocument(text: string): Promise<number[]>;
   embedBatch(texts: string[]): Promise<number[][]>;
   probe(): Promise<boolean>;
 }
@@ -130,6 +138,12 @@ function makeOpenAiCompat(
       const results = await embed(input);
       return results[0]!;
     },
+    async embedDocument(text) {
+      // Always embed as raw text — no instruction prefix.
+      // Used for HyDE hypothetical documents which must land in document space.
+      const results = await embed(text);
+      return results[0]!;
+    },
     async embedBatch(texts) {
       if (texts.length === 0) return [];
       // Batch in groups of 100 to avoid payload limits
@@ -176,6 +190,21 @@ function makeGemini(model: string, apiKey: string): EmbedProvider {
         }),
       });
       if (!resp.ok) throw new Error(`Gemini embed failed: ${resp.status}`);
+      const data = (await resp.json()) as { embedding: { values: number[] } };
+      return data.embedding.values;
+    },
+    async embedDocument(text) {
+      const url = `${baseUrl}/models/${model}:embedContent?key=${apiKey}`;
+      const resp = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model: `models/${model}`,
+          content: { parts: [{ text }] },
+          taskType: "RETRIEVAL_DOCUMENT",
+        }),
+      });
+      if (!resp.ok) throw new Error(`Gemini embed doc failed: ${resp.status}`);
       const data = (await resp.json()) as { embedding: { values: number[] } };
       return data.embedding.values;
     },
