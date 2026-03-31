@@ -1,6 +1,11 @@
 /**
  * Reranker — Spark 18096 cross-encoder, Cohere /v1/rerank compatible.
  * Falls back to passthrough (no-op) if unavailable.
+ *
+ * Includes query normalization: the Nemotron reranker was trained on
+ * question–answer pairs.  Declarative statements / claims produce
+ * compressed scores with almost no discrimination.  Converting them
+ * to interrogative form restores full score spread.
  */
 
 import type { RerankConfig } from "../config.js";
@@ -43,6 +48,9 @@ function sparkReranker(cfg: RerankConfig): Reranker {
       // Phase 5B: Limit candidate pool to prevent unbounded reranker input
       const pool = candidates.slice(0, MAX_RERANK_CANDIDATES);
 
+      // Normalize declarative queries → questions for better reranker discrimination
+      const normalizedQuery = normalizeQueryForReranker(query);
+
       const documents = pool.map((c) => c.chunk.text);
 
       const t0 = performance.now();
@@ -54,7 +62,7 @@ function sparkReranker(cfg: RerankConfig): Reranker {
         },
         body: JSON.stringify({
           model,
-          query,
+          query: normalizedQuery,
           documents,
           top_n: topN,
           return_documents: false,
@@ -87,9 +95,10 @@ function sparkReranker(cfg: RerankConfig): Reranker {
         const spread = max - min;
         // Debug-level: enable via DEBUG=memory-spark:reranker or similar
         if (process.env.DEBUG?.includes("rerank") || process.env.RERANKER_TELEMETRY) {
+          const normalized = normalizedQuery !== query ? ` (normalized: "${normalizedQuery.slice(0, 60)}…")` : "";
           console.log(
             `[reranker] ${pool.length} candidates → ${results.length} results in ${elapsedMs.toFixed(0)}ms | ` +
-              `scores: min=${min.toFixed(4)} max=${max.toFixed(4)} mean=${mean.toFixed(4)} spread=${spread.toFixed(4)}`,
+              `scores: min=${min.toFixed(4)} max=${max.toFixed(4)} mean=${mean.toFixed(4)} spread=${spread.toFixed(4)}${normalized}`,
           );
         }
       }
@@ -129,4 +138,42 @@ function passthroughReranker(): Reranker {
       return true;
     },
   };
+}
+
+// ── Query Normalizer ─────────────────────────────────────────────────
+//
+// The Nemotron reranker (llama-nemotron-rerank-1b-v2) was fine-tuned on
+// question–answer pairs.  When fed a declarative claim like
+// "0-dimensional biomaterials show inductive properties", scores
+// compress to a ~0.02 gap between relevant and irrelevant docs.
+// Reformatting the same claim as a question restores a 0.77–0.98 gap.
+//
+// This normalizer detects non-question queries and prepends a minimal
+// interrogative prefix.  It's intentionally conservative — production
+// agent queries are already questions; this catches edge cases and
+// BEIR-style claim inputs.
+
+const QUESTION_STARTERS = /^(who|what|which|when|where|why|how|is|are|was|were|do|does|did|can|could|will|would|should|shall|has|have|had|may|might)\b/i;
+const ENDS_WITH_QUESTION = /\?\s*$/;
+
+/**
+ * Returns true if the query already looks like a question.
+ */
+export function isQuestion(query: string): boolean {
+  const trimmed = query.trim();
+  if (ENDS_WITH_QUESTION.test(trimmed)) return true;
+  if (QUESTION_STARTERS.test(trimmed)) return true;
+  return false;
+}
+
+/**
+ * Normalize a query for the cross-encoder reranker.
+ * If it's already a question, return as-is.
+ * If it's a declarative statement / claim, prepend "Is it true that"
+ * to convert it into an interrogative the model can discriminate on.
+ */
+export function normalizeQueryForReranker(query: string): string {
+  if (isQuestion(query)) return query;
+  const trimmed = query.trim().replace(/\.\s*$/, "");
+  return `Is it true that ${trimmed.charAt(0).toLowerCase()}${trimmed.slice(1)}?`;
 }
