@@ -143,6 +143,14 @@ export class EmbedQueue {
     }, text);
   }
 
+  /** Embed text as a document (no instruction prefix). Used for HyDE hypothetical documents. */
+  async embedDocument(text: string): Promise<number[]> {
+    return this.enqueue(async () => {
+      const result = await this.withTimeout(this.provider.embedDocument(text));
+      return result;
+    }, text);
+  }
+
   /** Embed a batch of texts (for indexing). Serialized through queue one batch at a time. */
   async embedBatch(texts: string[]): Promise<number[][]> {
     if (texts.length === 0) return [];
