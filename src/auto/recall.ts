@@ -119,7 +119,11 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
       const ftsResults = rawFtsResults.filter(
         (r) => r.chunk.source !== "sessions",
       );
-      const merged = hybridMerge(vectorResults, ftsResults, limit);
+      const merged = hybridMerge(
+        vectorResults, ftsResults, limit, 60,
+        cfg.hybridVectorWeight ?? 1.0,
+        cfg.hybridFtsWeight ?? 1.0,
+      );
       // Exclude parent chunks from search results — they exist for context
       // expansion only. Children are the precise search targets; after reranking,
       // matched children get expanded to their parent's text for delivery.
@@ -367,22 +371,24 @@ export function hybridMerge(
   ftsResults: SearchResult[],
   limit: number,
   k = 60,
+  vectorWeight = 1.0,
+  ftsWeight = 1.0,
 ): SearchResult[] {
   const merged = new Map<string, { result: SearchResult; rrfScore: number; sources: number }>();
 
-  // Vector results: RRF score from rank position only (1-indexed per the paper)
+  // Vector results: weighted RRF score from rank position only (1-indexed per the paper)
   vectorResults.forEach((r, idx) => {
     merged.set(r.chunk.id, {
       result: r,
-      rrfScore: 1 / (k + idx + 1),
+      rrfScore: vectorWeight * (1 / (k + idx + 1)),
       sources: 1,
     });
   });
 
-  // FTS results: add RRF score (sums when document found in both lists)
+  // FTS results: weighted RRF score (sums when document found in both lists)
   ftsResults.forEach((r, idx) => {
     const id = r.chunk.id;
-    const ftsRrf = 1 / (k + idx + 1);
+    const ftsRrf = ftsWeight * (1 / (k + idx + 1));
     const existing = merged.get(id);
     if (existing) {
       existing.rrfScore += ftsRrf;
@@ -399,6 +405,13 @@ export function hybridMerge(
   // Sort by RRF score descending, normalize to [0, 1] for downstream minScore filters
   const sorted = Array.from(merged.values()).sort((a, b) => b.rrfScore - a.rrfScore);
   const maxRrf = sorted[0]?.rrfScore ?? 1;
+
+  if (process.env.MEMORY_SPARK_DEBUG) {
+    const dualEvidence = sorted.filter((s) => s.sources === 2).length;
+    console.debug(
+      `[hybridMerge] total=${sorted.length} dualEvidence=${dualEvidence} vectorWeight=${vectorWeight} ftsWeight=${ftsWeight}`,
+    );
+  }
 
   return sorted.slice(0, limit).map((s) => ({
     ...s.result,
@@ -513,8 +526,20 @@ export function mmrRerank(results: SearchResult[], limit: number, lambda: number
   if (results.length <= 1) return results;
 
   // Determine similarity strategy: cosine on vectors if available, else Jaccard on tokens.
-  const hasVectors = results.every((r) => r.vector && r.vector.length > 0);
+  // Defense-in-depth: Arrow Vector objects pass .length > 0 but vec[0] is undefined.
+  // Require typeof check to ensure we have actual JS number arrays before cosine path.
+  const hasVectors = results.every(
+    (r) => r.vector && r.vector.length > 0 && typeof r.vector[0] === "number",
+  );
   const tokenSets = hasVectors ? undefined : results.map((r) => tokenize(r.chunk.text));
+
+  if (process.env.MEMORY_SPARK_DEBUG) {
+    const strategy = hasVectors ? "cosine" : "jaccard";
+    const vecType = results[0]?.vector?.constructor?.name ?? "none";
+    console.debug(
+      `[mmrRerank] strategy=${strategy} vectorType=${vecType} candidates=${results.length} limit=${limit} lambda=${lambda}`,
+    );
+  }
 
   function similarity(i: number, j: number): number {
     if (hasVectors) {

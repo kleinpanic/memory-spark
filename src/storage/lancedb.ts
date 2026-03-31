@@ -18,6 +18,30 @@ import type {
 } from "./backend.js";
 import { resolvePool } from "./pool.js";
 
+/**
+ * Convert a LanceDB vector column value to a plain JS number[].
+ * LanceDB returns Apache Arrow Vector objects — bracket indexing (vec[0])
+ * returns undefined, breaking all downstream cosine computations.
+ * This normalizes Arrow Vector / TypedArray / plain array → number[].
+ */
+function toJsNumberArray(vec: unknown): number[] {
+  if (!vec) return [];
+  if (Array.isArray(vec)) return vec;
+  // Arrow Vector and TypedArray both have .toArray()
+  if (typeof (vec as { toArray?: unknown }).toArray === "function") {
+    return Array.from(
+      (vec as { toArray: () => ArrayLike<number> }).toArray(),
+    );
+  }
+  // Generic iterable fallback
+  if (
+    typeof (vec as Iterable<number>)[Symbol.iterator] === "function"
+  ) {
+    return Array.from(vec as Iterable<number>);
+  }
+  return [];
+}
+
 const TABLE_NAME = "memory_chunks";
 
 /**
@@ -615,7 +639,7 @@ function rowToSearchResult(row: Record<string, unknown>): SearchResult {
     start_line: (row.start_line as number) ?? 0,
     end_line: (row.end_line as number) ?? 0,
     text: (row.text as string) ?? "",
-    vector: (row.vector as number[]) ?? [],
+    vector: toJsNumberArray(row.vector),
     updated_at: (row.updated_at as string) ?? "",
     category: row.category as string | undefined,
     entities: row.entities as string | undefined,

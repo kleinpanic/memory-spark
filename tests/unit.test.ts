@@ -2821,3 +2821,186 @@ describe("Reranker query normalizer", () => {
     });
   });
 });
+
+// ══════════════════════════════════════════════════════════════════════════════
+// Phase 7: Pipeline Bug Remediation Tests
+// ══════════════════════════════════════════════════════════════════════════════
+
+describe("Phase 7: Arrow Vector Handling", () => {
+  // Import the lancedb module's toJsNumberArray indirectly via SearchResult behavior.
+  // We test the observable behavior: mmrRerank should work correctly even when
+  // vectors look like Arrow objects (have .length but bracket index returns undefined).
+
+  function makeResultWithVector(
+    id: string,
+    score: number,
+    vector?: number[],
+  ): SearchResult {
+    return {
+      chunk: {
+        id,
+        path: "test.md",
+        source: "memory" as const,
+        agent_id: "test",
+        start_line: 0,
+        end_line: 10,
+        text: `Chunk ${id} with some unique text content for testing diversity`,
+        vector: vector ?? [],
+        updated_at: new Date().toISOString(),
+      },
+      score,
+      snippet: `Chunk ${id}`,
+      vector,
+    };
+  }
+
+  it("mmrRerank: rejects Arrow-like vectors where vec[0] is undefined", () => {
+    // Simulate Arrow Vector: has .length but bracket indexing returns undefined
+    const fakeArrowVec = Object.create(null);
+    Object.defineProperty(fakeArrowVec, "length", { value: 4096 });
+    fakeArrowVec.toArray = () => new Float32Array(4096);
+    // Verify our fake behaves like Arrow: bracket indexing broken
+    assert.strictEqual(fakeArrowVec[0], undefined);
+    assert.strictEqual(fakeArrowVec.length, 4096);
+
+    const results: SearchResult[] = [
+      { ...makeResultWithVector("a", 0.9), vector: fakeArrowVec },
+      { ...makeResultWithVector("b", 0.8), vector: fakeArrowVec },
+      { ...makeResultWithVector("c", 0.7), vector: fakeArrowVec },
+    ];
+    // MMR should fall back to Jaccard (since typeof vec[0] !== "number")
+    const reranked = mmrRerank(results, 3, 0.7);
+    assert.strictEqual(reranked.length, 3);
+    // Verify no NaN scores leaked through
+    for (const r of reranked) {
+      assert.ok(!Number.isNaN(r.score), `NaN score detected for ${r.chunk.id}`);
+    }
+  });
+
+  it("mmrRerank: accepts proper number[] vectors for cosine path", () => {
+    const vecA = [1, 0, 0, 0];
+    const vecB = [0, 1, 0, 0]; // orthogonal to A
+    const vecC = [0.99, 0.01, 0, 0]; // near-duplicate of A
+    const results: SearchResult[] = [
+      makeResultWithVector("a", 0.95, vecA),
+      makeResultWithVector("b", 0.90, vecB),
+      makeResultWithVector("c", 0.85, vecC),
+    ];
+    // With λ=0.5 (equal weight relevance vs diversity), should prefer diverse
+    const reranked = mmrRerank(results, 2, 0.5);
+    assert.strictEqual(reranked[0]!.chunk.id, "a"); // highest score
+    assert.strictEqual(reranked[1]!.chunk.id, "b"); // orthogonal > near-dup
+  });
+
+  it("mmrRerank: with lambda=1.0 preserves pure relevance order", () => {
+    const vecA = [1, 0, 0, 0];
+    const vecB = [0.99, 0.01, 0, 0]; // near-dup of A
+    const vecC = [0, 1, 0, 0]; // orthogonal
+    const results: SearchResult[] = [
+      makeResultWithVector("a", 0.95, vecA),
+      makeResultWithVector("b", 0.90, vecB),
+      makeResultWithVector("c", 0.85, vecC),
+    ];
+    const reranked = mmrRerank(results, 3, 1.0);
+    // lambda=1.0 means no diversity penalty — order by score only
+    assert.strictEqual(reranked[0]!.chunk.id, "a");
+    assert.strictEqual(reranked[1]!.chunk.id, "b");
+    assert.strictEqual(reranked[2]!.chunk.id, "c");
+  });
+});
+
+describe("Phase 7: Weighted RRF", () => {
+  function makeResult(id: string, score: number): SearchResult {
+    return {
+      chunk: {
+        id,
+        path: "test.md",
+        source: "memory" as const,
+        agent_id: "test",
+        start_line: 0,
+        end_line: 10,
+        text: `Chunk ${id}`,
+        vector: [],
+        updated_at: new Date().toISOString(),
+      },
+      score,
+      snippet: `Chunk ${id}`,
+    };
+  }
+
+  it("default weights (1.0, 1.0) match original behavior", () => {
+    const vec = [makeResult("v1", 0.9), makeResult("v2", 0.8)];
+    const fts = [makeResult("f1", 0.7), makeResult("v2", 0.6)]; // v2 in both
+    const original = hybridMerge(vec, fts, 10, 60);
+    const weighted = hybridMerge(vec, fts, 10, 60, 1.0, 1.0);
+    assert.deepStrictEqual(
+      weighted.map((r) => r.chunk.id),
+      original.map((r) => r.chunk.id),
+    );
+  });
+
+  it("vectorWeight=2.0 boosts vector-first docs", () => {
+    const vec = [makeResult("v1", 0.9), makeResult("v2", 0.8)];
+    const fts = [makeResult("f1", 0.9), makeResult("f2", 0.8)];
+    const merged = hybridMerge(vec, fts, 4, 60, 2.0, 0.5);
+    assert.strictEqual(merged[0]!.chunk.id, "v1");
+  });
+
+  it("ftsWeight=0.0 gives FTS-only docs zero RRF score", () => {
+    const vec = [makeResult("v1", 0.9)];
+    const fts = [makeResult("f1", 0.9), makeResult("f2", 0.8)];
+    const merged = hybridMerge(vec, fts, 3, 60, 1.0, 0.0);
+    assert.strictEqual(merged[0]!.chunk.id, "v1");
+    // FTS-only docs should have score=0 (or be filtered by normalization)
+    const ftsOnly = merged.filter((r) => r.chunk.id.startsWith("f"));
+    for (const r of ftsOnly) {
+      assert.strictEqual(r.score, 0, `FTS-only doc ${r.chunk.id} should have score 0`);
+    }
+  });
+
+  it("dual-evidence docs get boosted by both sources", () => {
+    const vec = [makeResult("shared", 0.9), makeResult("v-only", 0.85)];
+    const fts = [makeResult("shared", 0.9), makeResult("f-only", 0.85)];
+    const merged = hybridMerge(vec, fts, 3, 60, 1.0, 1.0);
+    // "shared" should be #1 because its RRF score is summed from both lists
+    assert.strictEqual(merged[0]!.chunk.id, "shared");
+  });
+
+  it("swapping weights swaps ranking bias", () => {
+    const vec = [makeResult("v1", 0.9)];
+    const fts = [makeResult("f1", 0.9)];
+    const vectorBiased = hybridMerge(vec, fts, 2, 60, 2.0, 1.0);
+    const ftsBiased = hybridMerge(vec, fts, 2, 60, 1.0, 2.0);
+    assert.strictEqual(vectorBiased[0]!.chunk.id, "v1");
+    assert.strictEqual(ftsBiased[0]!.chunk.id, "f1");
+  });
+});
+
+describe("Phase 7: cosineSimilarity edge cases", () => {
+  it("handles high-dimensional vectors (4096d)", () => {
+    const a = Array.from({ length: 4096 }, () => Math.random() - 0.5);
+    const b = [...a]; // identical copy
+    const sim = cosineSimilarity(a, b);
+    assert.ok(Math.abs(sim - 1.0) < 1e-10, `Expected ~1.0, got ${sim}`);
+  });
+
+  it("handles normalized unit vectors (dot product = cosine)", () => {
+    const a = [0.6, 0.8]; // unit vector (0.36 + 0.64 = 1.0)
+    const b = [0.8, 0.6]; // unit vector
+    const sim = cosineSimilarity(a, b);
+    // dot product = 0.48 + 0.48 = 0.96
+    assert.ok(Math.abs(sim - 0.96) < 0.01, `Expected ~0.96, got ${sim}`);
+  });
+
+  it("returns 0 for zero vectors", () => {
+    assert.strictEqual(cosineSimilarity([0, 0, 0], [1, 2, 3]), 0);
+  });
+
+  it("returns 0 for empty vectors", () => {
+    assert.strictEqual(cosineSimilarity([], []), 0);
+  });
+
+  it("returns 0 for mismatched dimensions", () => {
+    assert.strictEqual(cosineSimilarity([1, 2], [1, 2, 3]), 0);
+  });
+});

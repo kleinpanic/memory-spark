@@ -27,7 +27,7 @@ export interface HydeConfig {
   maxTokens: number;
   /** Temperature for generation. Default: 0.3 (low to stay factual per Gao et al. 2022) */
   temperature: number;
-  /** Timeout for the LLM call in ms. Default: 10000 */
+  /** Timeout for the LLM call in ms. Default: 15000 */
   timeoutMs: number;
   /** Bearer token for auth (optional) */
   apiKey?: string;
@@ -67,6 +67,28 @@ export async function generateHypotheticalDocument(
   if (!config.enabled) return null;
   if (query.length < 10) return null; // Too short to generate meaningful hypothetical
 
+  const maxAttempts = 2; // Single retry on failure
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const result = await attemptHydeGeneration(query, config, attempt);
+    if (result !== null) return result;
+    // Brief delay before retry (exponential: 500ms, 1000ms)
+    if (attempt < maxAttempts) {
+      await new Promise((r) => setTimeout(r, attempt * 500));
+    }
+  }
+
+  if (process.env.MEMORY_SPARK_DEBUG) {
+    console.debug(`[hyde] all ${maxAttempts} attempts failed for query: "${query.slice(0, 60)}…"`);
+  }
+  return null;
+}
+
+async function attemptHydeGeneration(
+  query: string,
+  config: HydeConfig,
+  attempt: number,
+): Promise<string | null> {
+  const t0 = performance.now();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
 
@@ -128,11 +150,24 @@ export async function generateHypotheticalDocument(
       /\bi'?m not sure\b/i,
       /\bI cannot\b/i,
     ];
-    if (REJECTION_PATTERNS.some((p) => p.test(cleaned))) return null;
+    if (REJECTION_PATTERNS.some((p) => p.test(cleaned))) {
+      if (process.env.MEMORY_SPARK_DEBUG) {
+        console.debug(`[hyde] attempt=${attempt} rejected=refusal_pattern latencyMs=${(performance.now() - t0).toFixed(0)}`);
+      }
+      return null;
+    }
 
+    if (process.env.MEMORY_SPARK_DEBUG) {
+      console.debug(
+        `[hyde] attempt=${attempt} activated=true latencyMs=${(performance.now() - t0).toFixed(0)} docLength=${cleaned.length} words=${wordCount}`,
+      );
+    }
     return cleaned;
   } catch {
-    // Timeout, network error, parse error — all silently fall back
+    // Timeout, network error, parse error — silently fall back
+    if (process.env.MEMORY_SPARK_DEBUG) {
+      console.debug(`[hyde] attempt=${attempt} failed=true latencyMs=${(performance.now() - t0).toFixed(0)}`);
+    }
     return null;
   } finally {
     clearTimeout(timeout);
