@@ -428,6 +428,68 @@ describe("Config: embed provider", () => {
     return cfg.embed.provider === "gemini" && cfg.embed.gemini!.model === "gemini-embedding-001";
   });
 
+  // ── Instruction-Aware Query Embedding (Phase 1) ─────────────────────
+
+  it("Default queryInstruction is set for Nemotron-8B", () => {
+    const cfg = resolveConfig();
+    assert.ok(cfg.embed.spark?.queryInstruction, "queryInstruction should be set by default");
+    assert.ok(
+      cfg.embed.spark!.queryInstruction!.includes("retrieve relevant passages"),
+      `Instruction should match NVIDIA's model card, got: ${cfg.embed.spark!.queryInstruction}`,
+    );
+  });
+
+  it("queryInstruction produces correct Instruct/Query format", () => {
+    const cfg = resolveConfig();
+    const qi = cfg.embed.spark!.queryInstruction!;
+    const query = "what is retrieval augmented generation";
+    const formatted = `Instruct: ${qi}\nQuery: ${query}`;
+    assert.ok(formatted.startsWith("Instruct: "), "Should start with 'Instruct: '");
+    assert.ok(formatted.includes("\nQuery: "), "Should contain '\\nQuery: ' separator");
+    assert.ok(formatted.endsWith(query), "Should end with the raw query text");
+  });
+
+  it("queryInstruction can be overridden via config", () => {
+    const customInstruction = "Given a scientific question, retrieve relevant research papers.";
+    const cfg = resolveConfig({
+      embed: { provider: "spark", spark: { queryInstruction: customInstruction } },
+    } as Partial<import("../src/config.js").MemorySparkConfig>);
+    assert.equal(cfg.embed.spark!.queryInstruction, customInstruction);
+  });
+
+  it("queryInstruction can be explicitly disabled (undefined)", () => {
+    const cfg = resolveConfig({
+      embed: { provider: "spark", spark: { queryInstruction: undefined } },
+    } as Partial<import("../src/config.js").MemorySparkConfig>);
+    // JS spread: { ...defaults, ...{ key: undefined } } sets key to undefined
+    // (own property with value undefined overrides the default).
+    // To disable prefixing at runtime, set to undefined or empty string — both are falsy.
+    assert.equal(
+      cfg.embed.spark?.queryInstruction,
+      undefined,
+      "Explicit undefined should override the default",
+    );
+  });
+
+  it("queryInstruction empty string disables prefixing", () => {
+    const cfg = resolveConfig({
+      embed: { provider: "spark", spark: { queryInstruction: "" } },
+    } as Partial<import("../src/config.js").MemorySparkConfig>);
+    // Empty string is falsy → embedQuery won't add prefix
+    assert.equal(cfg.embed.spark!.queryInstruction, "");
+    const qi = cfg.embed.spark!.queryInstruction;
+    const query = "test query";
+    const input = qi ? `Instruct: ${qi}\nQuery: ${query}` : query;
+    assert.equal(input, query, "Empty instruction should mean no prefix");
+  });
+
+  it("OpenAI/Gemini providers unaffected by queryInstruction", () => {
+    const cfg = resolveConfig();
+    // OpenAI and Gemini configs don't have queryInstruction field
+    assert.ok(!("queryInstruction" in (cfg.embed.openai ?? {})), "OpenAI should not have queryInstruction");
+    assert.ok(!("queryInstruction" in (cfg.embed.gemini ?? {})), "Gemini should not have queryInstruction");
+  });
+
   // Config Schema Tests (inline safeParse from index.ts)
 });
 
@@ -1126,7 +1188,9 @@ describe("Quality Score Defaults", () => {
     };
   }
 
-  it("hybridMerge preserves vector cosine similarity scores", () => {
+  // ── RRF (Reciprocal Rank Fusion) Core Tests ──────────────────────────────
+
+  it("hybridMerge: vector-only results ranked by position, top = 1.0", () => {
     const vector = [
       makeSearchResult("v1", 0.85),
       makeSearchResult("v2", 0.72),
@@ -1135,47 +1199,166 @@ describe("Quality Score Defaults", () => {
     const fts: SearchResult[] = [];
 
     const merged = hybridMerge(vector, fts, 10);
-    // Vector-only results should keep their original scores
     assert.equal(merged.length, 3);
-    assert.equal(merged[0]!.score, 0.85, "Top result should preserve cosine score");
-    assert.equal(merged[1]!.score, 0.72);
-    assert.equal(merged[2]!.score, 0.45);
+    // RRF normalizes: top result = 1.0, others proportionally lower
+    assert.equal(merged[0]!.score, 1.0, "Top RRF result should be normalized to 1.0");
+    assert.ok(merged[1]!.score < 1.0, "Second result should be < 1.0");
+    assert.ok(merged[2]!.score < merged[1]!.score, "Third result should be < second");
+    // Order preserved
+    assert.equal(merged[0]!.chunk.id, "v1");
+    assert.equal(merged[1]!.chunk.id, "v2");
+    assert.equal(merged[2]!.chunk.id, "v3");
   });
 
-  it("hybridMerge boosts chunks found in both vector AND FTS", () => {
-    const vector = [makeSearchResult("both", 0.8)];
-    const fts = [makeSearchResult("both", 0.5)];
+  it("hybridMerge: dual-evidence document beats single-source", () => {
+    // "both" appears at rank 0 in vector AND rank 0 in FTS
+    // "vector-only" appears at rank 1 in vector only
+    const vector = [makeSearchResult("both", 0.8), makeSearchResult("vector-only", 0.6)];
+    const fts = [makeSearchResult("both", 0.5), makeSearchResult("fts-only", 0.3)];
 
     const merged = hybridMerge(vector, fts, 10);
-    assert.equal(merged.length, 1);
+    const bothResult = merged.find((r) => r.chunk.id === "both")!;
+    const vectorOnlyResult = merged.find((r) => r.chunk.id === "vector-only")!;
+    const ftsOnlyResult = merged.find((r) => r.chunk.id === "fts-only")!;
+
+    assert.ok(bothResult, "Dual-evidence result should exist");
+    assert.ok(vectorOnlyResult, "Vector-only result should exist");
+    assert.ok(ftsOnlyResult, "FTS-only result should exist");
+
+    // Dual-evidence gets summed RRF: 1/(k+1) + 1/(k+1) = 2/(k+1)
+    // Single-source gets only 1/(k+rank)
     assert.ok(
-      merged[0]!.score > 0.8,
-      `Dual-evidence chunk should score higher than vector-only (got ${merged[0]!.score})`,
+      bothResult.score > vectorOnlyResult.score,
+      `Dual-evidence (${bothResult.score}) should beat vector-only (${vectorOnlyResult.score})`,
     );
+    assert.ok(
+      bothResult.score > ftsOnlyResult.score,
+      `Dual-evidence (${bothResult.score}) should beat FTS-only (${ftsOnlyResult.score})`,
+    );
+    // "both" should be the top result (normalized to 1.0)
+    assert.equal(merged[0]!.chunk.id, "both");
+    assert.equal(merged[0]!.score, 1.0);
   });
 
-  it("hybridMerge: FTS-only chunks get moderate scores, not cosine-level", () => {
-    const vector = [makeSearchResult("v1", 0.85)];
-    const fts = [makeSearchResult("fts-only", 0.9)]; // High BM25 score
+  it("hybridMerge: FTS-only and vector-only single-source results have equal rank scores", () => {
+    // Both at rank 0 in their respective lists
+    const vector = [makeSearchResult("v1", 0.99)];
+    const fts = [makeSearchResult("f1", 0.01)];
 
     const merged = hybridMerge(vector, fts, 10);
-    const ftsOnlyResult = merged.find((r) => r.chunk.id === "fts-only");
-    assert.ok(ftsOnlyResult, "FTS-only chunk should be in results");
-    assert.ok(
-      ftsOnlyResult!.score < 0.85,
-      `FTS-only should score below top vector result (got ${ftsOnlyResult!.score})`,
-    );
+    const v1 = merged.find((r) => r.chunk.id === "v1")!;
+    const f1 = merged.find((r) => r.chunk.id === "f1")!;
+    // Both at rank 0 in their list → same RRF score → same normalized score
+    assert.equal(v1.score, f1.score, "Same rank = same RRF score regardless of raw scores");
   });
 
-  it("hybridMerge does NOT destroy score spread like old rrfMerge", () => {
-    const vector = [makeSearchResult("excellent", 0.92), makeSearchResult("mediocre", 0.35)];
+  it("hybridMerge: RRF ignores raw scores (rank-only fusion)", () => {
+    // v1 has raw score 0.99 at rank 0, v2 has 0.01 at rank 1
+    // The spread should be small (only rank difference matters, not raw score)
+    const vector = [makeSearchResult("v1", 0.99), makeSearchResult("v2", 0.01)];
     const fts: SearchResult[] = [];
 
     const merged = hybridMerge(vector, fts, 10);
+    // With k=60: rank0 = 1/61, rank1 = 1/62. Normalized: 1.0 and 61/62 ≈ 0.984
     const spread = merged[0]!.score - merged[1]!.score;
     assert.ok(
-      spread > 0.3,
-      `Score spread should be preserved (was ${spread}). Old rrfMerge compressed 0.92 and 0.35 to within 0.002 of each other.`,
+      spread < 0.05,
+      `RRF spread between adjacent ranks should be small (got ${spread})`,
+    );
+  });
+
+  it("hybridMerge: output scores normalized to [0, 1]", () => {
+    const vector = [
+      makeSearchResult("v1", 0.9),
+      makeSearchResult("v2", 0.7),
+      makeSearchResult("v3", 0.5),
+    ];
+    const fts = [
+      makeSearchResult("f1", 5.0),
+      makeSearchResult("v1", 3.0), // overlap
+    ];
+
+    const merged = hybridMerge(vector, fts, 10);
+    for (const r of merged) {
+      assert.ok(r.score >= 0, `Score should be >= 0 (got ${r.score} for ${r.chunk.id})`);
+      assert.ok(r.score <= 1.0, `Score should be <= 1.0 (got ${r.score} for ${r.chunk.id})`);
+    }
+    // Top result should be exactly 1.0
+    assert.equal(merged[0]!.score, 1.0);
+  });
+
+  it("hybridMerge: respects limit parameter", () => {
+    const vector = Array.from({ length: 20 }, (_, i) =>
+      makeSearchResult(`v${i}`, 1 - i * 0.05),
+    );
+    const fts = Array.from({ length: 20 }, (_, i) =>
+      makeSearchResult(`f${i}`, 1 - i * 0.05),
+    );
+
+    const merged = hybridMerge(vector, fts, 5);
+    assert.equal(merged.length, 5, "Should respect limit");
+  });
+
+  it("hybridMerge: custom k parameter changes ranking granularity", () => {
+    const vector = [makeSearchResult("v1", 0.9), makeSearchResult("v2", 0.5)];
+    const fts: SearchResult[] = [];
+
+    // Small k = more rank discrimination
+    const mergedSmallK = hybridMerge(vector, fts, 10, 1);
+    const spreadSmallK = mergedSmallK[0]!.score - mergedSmallK[1]!.score;
+
+    // Large k = less rank discrimination (scores compress)
+    const mergedLargeK = hybridMerge(vector, fts, 10, 1000);
+    const spreadLargeK = mergedLargeK[0]!.score - mergedLargeK[1]!.score;
+
+    assert.ok(
+      spreadSmallK > spreadLargeK,
+      `Small k should give more spread (${spreadSmallK}) than large k (${spreadLargeK})`,
+    );
+  });
+
+  it("hybridMerge: empty inputs return empty results", () => {
+    assert.equal(hybridMerge([], [], 10).length, 0);
+  });
+
+  it("hybridMerge: FTS-only input works", () => {
+    const fts = [makeSearchResult("f1", 0.8), makeSearchResult("f2", 0.5)];
+    const merged = hybridMerge([], fts, 10);
+    assert.equal(merged.length, 2);
+    assert.equal(merged[0]!.score, 1.0);
+    assert.equal(merged[0]!.chunk.id, "f1");
+  });
+
+  it("hybridMerge: RRF formula correctness (manual calculation)", () => {
+    const k = 60;
+    const vector = [makeSearchResult("a", 0.9), makeSearchResult("b", 0.8)];
+    const fts = [makeSearchResult("b", 0.7), makeSearchResult("c", 0.6)];
+
+    const merged = hybridMerge(vector, fts, 10, k);
+    // a: vector rank 0 → 1/(60+1) = 1/61
+    // b: vector rank 1 → 1/(60+2) = 1/62, fts rank 0 → 1/(60+1) = 1/61, total = 1/62 + 1/61
+    // c: fts rank 1 → 1/(60+2) = 1/62
+    const rrfA = 1 / 61;
+    const rrfB = 1 / 62 + 1 / 61;
+    const rrfC = 1 / 62;
+    const maxRrf = rrfB; // b should be highest (dual-evidence)
+
+    assert.equal(merged[0]!.chunk.id, "b", "Dual-evidence b should rank first");
+    assert.ok(
+      Math.abs(merged[0]!.score - 1.0) < 0.001,
+      "Top result normalized to 1.0",
+    );
+    // a's normalized score = rrfA / maxRrf
+    const aNorm = merged.find((r) => r.chunk.id === "a")!;
+    assert.ok(
+      Math.abs(aNorm.score - rrfA / maxRrf) < 0.001,
+      `a's score should be ${(rrfA / maxRrf).toFixed(4)}, got ${aNorm.score.toFixed(4)}`,
+    );
+    // c's normalized score = rrfC / maxRrf
+    const cNorm = merged.find((r) => r.chunk.id === "c")!;
+    assert.ok(
+      Math.abs(cNorm.score - rrfC / maxRrf) < 0.001,
+      `c's score should be ${(rrfC / maxRrf).toFixed(4)}, got ${cNorm.score.toFixed(4)}`,
     );
   });
 

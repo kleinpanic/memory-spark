@@ -31,7 +31,25 @@ export interface SparkEndpoints {
 
 export interface EmbedConfig {
   provider: EmbedProviderId;
-  spark?: { baseUrl: string; apiKey?: string; model: string; dimensions?: number };
+  spark?: {
+    baseUrl: string;
+    apiKey?: string;
+    model: string;
+    dimensions?: number;
+    /**
+     * Instruction prefix for query embeddings (instruction-aware models).
+     * When set, queries are formatted as: "Instruct: {queryInstruction}\nQuery: {text}"
+     * Documents are always embedded as raw text (no prefix).
+     *
+     * Required for nvidia/llama-embed-nemotron-8b which uses asymmetric encoding:
+     * query vectors and document vectors occupy different subspaces, aligned by
+     * the instruction prefix during training.
+     *
+     * Set to undefined or omit for models that don't use instruction prefixes.
+     * @see https://huggingface.co/nvidia/llama-embed-nemotron-8b
+     */
+    queryInstruction?: string;
+  };
   openai?: { apiKey?: string; model: string };
   gemini?: { model: string };
 }
@@ -318,6 +336,8 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
         apiKey: sparkToken,
         model: "nvidia/llama-embed-nemotron-8b",
         dimensions: 4096,
+        queryInstruction:
+          "Given a web search query, retrieve relevant passages that answer the query.",
       },
       openai: { model: "text-embedding-3-small" },
       gemini: { model: "gemini-embedding-001" },
