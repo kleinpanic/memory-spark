@@ -98,7 +98,7 @@ const CONFIGS: RetrievalConfig[] = [
     useReranker: false,
     useMmr: false,
     useHyde: false,
-    mmrLambda: 0.7,
+    mmrLambda: 0.9,
     maxResults: 10,
   },
   {
@@ -109,7 +109,7 @@ const CONFIGS: RetrievalConfig[] = [
     useReranker: false,
     useMmr: false,
     useHyde: false,
-    mmrLambda: 0.7,
+    mmrLambda: 0.9,
     maxResults: 10,
   },
   {
@@ -120,7 +120,7 @@ const CONFIGS: RetrievalConfig[] = [
     useReranker: false,
     useMmr: false,
     useHyde: false,
-    mmrLambda: 0.7,
+    mmrLambda: 0.9,
     maxResults: 10,
   },
   {
@@ -131,7 +131,7 @@ const CONFIGS: RetrievalConfig[] = [
     useReranker: true,
     useMmr: false,
     useHyde: false,
-    mmrLambda: 0.7,
+    mmrLambda: 0.9,
     maxResults: 10,
   },
   {
@@ -142,7 +142,7 @@ const CONFIGS: RetrievalConfig[] = [
     useReranker: false,
     useMmr: true,
     useHyde: false,
-    mmrLambda: 0.7,
+    mmrLambda: 0.9,
     maxResults: 10,
   },
   {
@@ -153,7 +153,7 @@ const CONFIGS: RetrievalConfig[] = [
     useReranker: false,
     useMmr: false,
     useHyde: true,
-    mmrLambda: 0.7,
+    mmrLambda: 0.9,
     maxResults: 10,
   },
   {
@@ -164,7 +164,7 @@ const CONFIGS: RetrievalConfig[] = [
     useReranker: true,
     useMmr: true,
     useHyde: false,
-    mmrLambda: 0.7,
+    mmrLambda: 0.9,
     maxResults: 10,
   },
 ];
@@ -210,6 +210,7 @@ async function runRetrieval(
   reranker: Awaited<ReturnType<typeof createReranker>> | null,
   hydeConfig: HydeConfig | undefined,
   config: RetrievalConfig,
+  dataset: string,
 ): Promise<{ results: Results; telemetry: QueryTelemetry[] }> {
   const results: Results = {};
   const telemetry: QueryTelemetry[] = [];
@@ -233,7 +234,16 @@ async function runRetrieval(
     }
 
     // Get query vector
-    let queryVector = await embed.embedQuery(q.text);
+    let queryVector: number[];
+    try {
+      queryVector = await embed.embedQuery(q.text);
+    } catch (e) {
+      if (i < 3) console.error(`\n[WARN] embedQuery error on query ${q._id}: ${e}`);
+      tel.latencyMs = Date.now() - startTime;
+      telemetry.push(tel);
+      results[q._id] = {};
+      continue;
+    }
 
     // HyDE: generate hypothetical document and REPLACE query vector (Gao et al. 2022).
     // The hypothetical is embedded as a document (no instruction prefix) to project
@@ -258,8 +268,8 @@ async function runRetrieval(
     // Vector search
     if (config.useVector) {
       vectorResults = await backend
-        .vectorSearch(queryVector, { query: q.text, maxResults: k * 4, minScore: 0.0 })
-        .catch(() => []);
+        .vectorSearch(queryVector, { query: q.text, maxResults: k * 4, minScore: 0.0, pathContains: `beir/${dataset}/` })
+        .catch((e) => { if (i === 0) console.error(`\n[WARN] vectorSearch error on query ${q._id}: ${e}`); return []; });
       if (vectorResults.length > 0) {
         tel.stages.vector = {
           count: vectorResults.length,
@@ -272,7 +282,7 @@ async function runRetrieval(
     // FTS search
     if (config.useFts) {
       ftsResults = await backend
-        .ftsSearch(q.text, { query: q.text, maxResults: k * 4 })
+        .ftsSearch(q.text, { query: q.text, maxResults: k * 4, pathContains: `beir/${dataset}/` })
         .catch(() => []);
       if (ftsResults.length > 0) {
         tel.stages.fts = {
@@ -406,6 +416,7 @@ async function main() {
       reranker,
       hydeConfig,
       config,
+      datasetArg,
     );
 
     const metrics = evaluateBEIR(qrels, results, [10]);
