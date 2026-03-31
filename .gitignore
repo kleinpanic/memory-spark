@@ -13,6 +13,16 @@ lancedb/
 *.lance
 dims-lock.json
 
+# Test/benchmark data (generated, not committed)
+test-data/
+evaluation/beir-datasets/
+evaluation/results/*.json
+bench-data/
+
+# Coverage
+coverage/
+.nyc_output/
+
 # Editor / OS
 .DS_Store
 *.log
@@ -22,22 +32,5 @@ dims-lock.json
 .vscode/
 .idea/
 
-
-# Eval results (regenerated, not committed)
-*-results.json
-
-# Coverage
-coverage/
-.nyc_output/
-test-data/
-evaluation/beir-datasets/
-
-# Agent working notes — not for tracking
-CURRENT-STATE.md
-HEY-OPENCLAW-STOP-BEING-RETARDED.md
+# Agent working notes
 memory/
-bench-data/README.md
-
-# Working notes — not for tracking
-PLAN.md
-CURRENT-STATE-ASSESSMENT.md

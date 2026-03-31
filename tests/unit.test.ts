@@ -2752,3 +2752,72 @@ describe("TableManager Port Verification", () => {
     assert.deepStrictEqual(referenceSearch.pools, ["reference_library", "reference_code"]);
   });
 });
+
+// ── Reranker Query Normalizer ──────────────────────────────────────────
+import { isQuestion, normalizeQueryForReranker } from "../src/rerank/reranker.js";
+
+describe("Reranker query normalizer", () => {
+  describe("isQuestion()", () => {
+    const questions = [
+      "What are the inductive properties of biomaterials?",
+      "How does protein folding work?",
+      "Is it true that X causes Y?",
+      "Do 0-dimensional biomaterials show inductive properties?",
+      "Can stem cells differentiate into neurons?",
+      "Who discovered CRISPR?",
+      "Where is the hippocampus located?",
+      "Why does the immune system attack self-antigens?",
+      "something something?",  // ends with ?
+    ];
+    for (const q of questions) {
+      it(`detects question: "${q.slice(0, 50)}…"`, () => {
+        assert.strictEqual(isQuestion(q), true);
+      });
+    }
+
+    const statements = [
+      "0-dimensional biomaterials show inductive properties.",
+      "Protein folding is essential for cell function.",
+      "The hippocampus plays a role in memory formation.",
+      "CRISPR enables genome editing.",
+      "Stem cells can differentiate into many cell types",
+      "Exposure to UV radiation increases skin cancer risk",
+    ];
+    for (const s of statements) {
+      it(`detects statement: "${s.slice(0, 50)}…"`, () => {
+        assert.strictEqual(isQuestion(s), false);
+      });
+    }
+  });
+
+  describe("normalizeQueryForReranker()", () => {
+    it("passes questions through unchanged", () => {
+      const q = "What is the role of biomaterials?";
+      assert.strictEqual(normalizeQueryForReranker(q), q);
+    });
+
+    it("converts claims to interrogative form", () => {
+      assert.strictEqual(
+        normalizeQueryForReranker("0-dimensional biomaterials show inductive properties."),
+        "Is it true that 0-dimensional biomaterials show inductive properties?",
+      );
+    });
+
+    it("handles claims without trailing period", () => {
+      assert.strictEqual(
+        normalizeQueryForReranker("Stem cells can differentiate"),
+        "Is it true that stem cells can differentiate?",
+      );
+    });
+
+    it("lowercases the first character of the claim", () => {
+      const result = normalizeQueryForReranker("The hippocampus is important.");
+      assert.strictEqual(result, "Is it true that the hippocampus is important?");
+    });
+
+    it("does not double-wrap questions", () => {
+      const q = "Is protein important for muscle growth?";
+      assert.strictEqual(normalizeQueryForReranker(q), q);
+    });
+  });
+});
