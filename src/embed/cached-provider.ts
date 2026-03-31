@@ -8,6 +8,7 @@ import { EmbedCache, type EmbedCacheConfig } from "./cache.js";
 /** Minimal embed interface (covers both EmbedProvider and EmbedQueue) */
 export interface EmbedLike {
   embedQuery(text: string): Promise<number[]>;
+  embedDocument(text: string): Promise<number[]>;
   embedBatch(texts: string[]): Promise<number[][]>;
 }
 
@@ -33,6 +34,11 @@ export function withCache(inner: EmbedLike, cfg?: Partial<EmbedCacheConfig>): Ca
       const vector = await inner.embedQuery(text);
       cache.set(text, vector);
       return vector;
+    },
+
+    async embedDocument(text: string): Promise<number[]> {
+      // Document embeddings bypass cache — used for HyDE hypothetical docs
+      return inner.embedDocument(text);
     },
 
     async embedBatch(texts: string[]): Promise<number[][]> {

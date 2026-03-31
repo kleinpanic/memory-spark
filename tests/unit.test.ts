@@ -295,6 +295,28 @@ describe("Auto-Recall Logic", () => {
     assert.equal(deduped.length, 1);
   });
 
+  // ── Phase 4 Integration Tests ───────────────────────────────────────
+
+  it("BM25 sigmoid midpoint default is 10.0", () => {
+    const cfg = resolveConfig({});
+    assert.strictEqual(cfg.fts?.sigmoidMidpoint, 10.0);
+  });
+
+  it("BM25 sigmoid with midpoint 10: score distribution is reasonable", () => {
+    // With midpoint=10, a BM25 score of 10 should map to 0.5
+    // BM25 score of 20 should be well above 0.5 but not saturated
+    const sigmoid = (score: number, mid: number) => 1 / (1 + Math.exp(-(score - mid)));
+    assert.ok(Math.abs(sigmoid(10, 10) - 0.5) < 0.01, "Score=midpoint should map to 0.5");
+    assert.ok(sigmoid(20, 10) > 0.9, "Score=2x midpoint should be high");
+    assert.ok(sigmoid(5, 10) < 0.1, "Score=0.5x midpoint should be low");
+    // Contrast with old midpoint=3: all scores >5 would be >0.88
+    assert.ok(sigmoid(5, 3) > 0.88, "Old midpoint=3 saturates at score 5");
+  });
+
+  it("deduplicateSources: empty input returns empty", () => {
+    assert.deepStrictEqual(deduplicateSources([]), []);
+  });
+
   it("Temporal decay formula", () => {
     // Score should decay with age: score *= 0.5^(ageDays / halfLifeDays)
     const score = 1.0;
