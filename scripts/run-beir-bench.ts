@@ -382,7 +382,12 @@ async function main() {
   await backend.open();
 
   const provider = await createEmbedProvider(cfg.embed);
+  console.log(`[INFO] Embed provider: ${provider.id} / ${provider.model} / dims=${provider.dims ?? "unknown"}`);
   const embed = new EmbedQueue(provider, { concurrency: 1, maxRetries: 2, timeoutMs: 30000 });
+
+  // Sanity check: verify embedding dimensions match DB
+  const testVec = await embed.embedQuery("test query");
+  console.log(`[INFO] Test embed dimensions: ${testVec.length}`);
 
   const reranker = cfg.rerank.enabled ? await createReranker(cfg.rerank) : null;
   console.log(`[INFO] Reranker: ${reranker ? "enabled" : "disabled"}`);

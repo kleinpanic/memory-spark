@@ -67,8 +67,14 @@ export async function createEmbedProvider(cfg: EmbedConfig): Promise<EmbedProvid
     const provider = factory();
     try {
       const ok = await provider.probe();
+      if (process.env.MEMORY_SPARK_DEBUG) {
+        console.debug(`[embed] probe ${provider.id}/${provider.model}: ${ok ? "OK" : "FAIL"}`);
+      }
       if (ok) return provider;
-    } catch {
+    } catch (err) {
+      if (process.env.MEMORY_SPARK_DEBUG) {
+        console.debug(`[embed] probe ${provider.id}/${provider.model}: ERROR - ${err instanceof Error ? err.message : String(err)}`);
+      }
       // Try next
     }
   }
@@ -176,12 +182,19 @@ function makeOpenAiCompat(
       return results;
     },
     async probe() {
-      try {
-        const vectors = await embed("probe");
-        return vectors.length === 1 && vectors[0]!.length > 0;
-      } catch {
-        return false;
+      // Retry once to handle transient failures (cold starts, brief 502s)
+      for (let attempt = 1; attempt <= 2; attempt++) {
+        try {
+          const vectors = await embed("probe");
+          return vectors.length === 1 && vectors[0]!.length > 0;
+        } catch (err) {
+          if (process.env.MEMORY_SPARK_DEBUG) {
+            console.debug(`[embed] ${id} probe attempt ${attempt} error: ${err instanceof Error ? err.message : String(err)}`);
+          }
+          if (attempt < 2) await new Promise((r) => setTimeout(r, 1000));
+        }
       }
+      return false;
     },
   };
 }
