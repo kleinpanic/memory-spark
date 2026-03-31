@@ -56,7 +56,14 @@ export interface EmbedConfig {
 
 export interface RerankConfig {
   enabled: boolean;
-  spark?: { baseUrl: string; apiKey?: string; model: string };
+  spark?: {
+    baseUrl: string;
+    apiKey?: string;
+    model: string;
+    /** Minimum score spread (max - min) for reranker results to be trusted.
+     *  If spread is below this, fall back to input ordering. Default: 0.01 */
+    minScoreSpread?: number;
+  };
   topN: number;
 }
 
@@ -164,6 +171,10 @@ export interface AutoRecallConfig {
    * Default: 0.9 (factual retrieval needs high relevance bias)
    */
   mmrLambda?: number;
+  /** Weighted RRF: vector results weight. Default 1.0. Higher = bias toward semantic search. */
+  hybridVectorWeight?: number;
+  /** Weighted RRF: FTS results weight. Default 1.0. Lower = reduce BM25 noise in hybrid merge. */
+  hybridFtsWeight?: number;
   /**
    * Temporal decay configuration.
    * Formula: floor + (1 - floor) * exp(-rate * ageDays)
@@ -466,7 +477,7 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
       model: "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
       maxTokens: 150,
       temperature: 0.7,
-      timeoutMs: 10000,
+      timeoutMs: 15000,
       apiKey: sparkToken,
     },
     fts: {
