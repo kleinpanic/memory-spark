@@ -368,7 +368,11 @@ async function main() {
   console.log("═══════════════════════════════════════════\n");
 
   // Config for testDbBEIR
-  const lancedbDir = process.env.BEIR_LANCEDB_DIR || "/home/node/.openclaw/data/testDbBEIR/lancedb";
+  // Default: detect if running in Docker (/home/node) or on host
+  const defaultDir = process.env.HOME === "/home/node"
+    ? "/home/node/.openclaw/data/testDbBEIR/lancedb"
+    : `${process.env.HOME}/.openclaw/data/testDbBEIR/lancedb`;
+  const lancedbDir = process.env.BEIR_LANCEDB_DIR || defaultDir;
   console.log(`[INFO] Using lancedbDir: ${lancedbDir}`);
 
   const cfg = resolveConfig({ lancedbDir } as Parameters<typeof resolveConfig>[0]);
