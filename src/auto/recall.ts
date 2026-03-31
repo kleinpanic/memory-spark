@@ -173,10 +173,14 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     // Temporal decay: boost recent memories (configurable floor + rate)
     applyTemporalDecay(merged, cfg.temporalDecay);
 
+    // Source-level dedup: collapse near-identical chunks from the same source
+    // before the reranker, so it doesn't waste slots on overlapping content.
+    const deduped = deduplicateSources(merged);
+
     // Cross-encoder rerank FIRST — reranker is the most accurate relevance signal.
     // Give it a large candidate set so it can identify the best documents.
     // Then MMR trims the reranked output for diversity.
-    const reranked = await reranker.rerank(queryText, merged, cfg.maxResults * 2);
+    const reranked = await reranker.rerank(queryText, deduped, cfg.maxResults * 2);
 
     // MMR diversity re-ranking on reranker-approved candidates.
     // This prevents MMR from discarding documents the reranker would have rescued.
@@ -428,6 +432,75 @@ export function applyTemporalDecay(
     const decay = floor + (1 - floor) * Math.exp(-rate * ageDays);
     r.score *= decay;
   }
+}
+
+/**
+ * Source-level deduplication: collapse near-identical chunks from the same source.
+ * Groups results by parent_id (or path if no parent). Within each group,
+ * if two chunks have Jaccard token overlap > 0.85, keep only the higher-scoring one.
+ * Cross-source chunks are never deduped (different sources = different context).
+ *
+ * Jaccard on tokens IS the right metric here (unlike MMR) — we're checking for
+ * near-identical text, not semantic similarity.
+ */
+export function deduplicateSources(results: SearchResult[]): SearchResult[] {
+  if (results.length <= 1) return results;
+
+  // Group by source key: parent_id if available, else path
+  const groups = new Map<string, SearchResult[]>();
+  for (const r of results) {
+    const key = r.chunk.parent_id ?? r.chunk.path ?? r.chunk.id;
+    const group = groups.get(key);
+    if (group) group.push(r);
+    else groups.set(key, [r]);
+  }
+
+  const kept: SearchResult[] = [];
+  for (const group of groups.values()) {
+    if (group.length <= 1) {
+      kept.push(...group);
+      continue;
+    }
+
+    // Sort by score descending within group
+    group.sort((a, b) => b.score - a.score);
+
+    // Greedy dedup: keep a chunk unless it's >85% token overlap with an already-kept chunk
+    const keptInGroup: SearchResult[] = [];
+    const keptTokens: Set<string>[] = [];
+
+    for (const r of group) {
+      const tokens = new Set(
+        (r.chunk.text.match(/\b\w{3,}\b/g) ?? []).map((w) => w.toLowerCase()),
+      );
+      let isDuplicate = false;
+      for (const existingTokens of keptTokens) {
+        const sim = jaccardSimilaritySet(tokens, existingTokens);
+        if (sim > 0.85) {
+          isDuplicate = true;
+          break;
+        }
+      }
+      if (!isDuplicate) {
+        keptInGroup.push(r);
+        keptTokens.push(tokens);
+      }
+    }
+    kept.push(...keptInGroup);
+  }
+
+  return kept;
+}
+
+// Standalone Jaccard for source dedup (not exported — internal utility)
+function jaccardSimilaritySet(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 && b.size === 0) return 1;
+  let intersection = 0;
+  for (const token of a) {
+    if (b.has(token)) intersection++;
+  }
+  const union = a.size + b.size - intersection;
+  return union === 0 ? 0 : intersection / union;
 }
 
 /**

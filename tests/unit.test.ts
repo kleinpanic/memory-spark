@@ -17,7 +17,7 @@ import { heuristicClassify } from "../src/classify/heuristic.js";
 import type { MemoryChunk, SearchResult } from "../src/storage/backend.js";
 import { applyTemporalDecay } from "../src/auto/recall.js";
 import { shouldProcessAgent } from "../src/config.js";
-import { hybridMerge, applySourceWeighting, mmrRerank, cosineSimilarity } from "../src/auto/recall.js";
+import { hybridMerge, applySourceWeighting, mmrRerank, cosineSimilarity, deduplicateSources } from "../src/auto/recall.js";
 import { EmbedCache } from "../src/embed/cache.js";
 import {
   ndcgAtK,
@@ -254,6 +254,45 @@ describe("Auto-Recall Logic", () => {
     const ranked = mmrRerank(results, 2, 0.9);
     assert.equal(ranked.length, 2);
     assert.equal(ranked[0]!.chunk.id, "a"); // highest relevance first
+  });
+
+  // ── Source Deduplication (Phase 4F) ─────────────────────────────────
+
+  it("deduplicateSources: collapses overlapping chunks from same parent", () => {
+    const results: import("../src/storage/backend.js").SearchResult[] = [
+      { chunk: { id: "a", text: "the agent configuration system handles model routing and fallbacks for all providers in the cluster", parent_id: "p1", path: "/mem.md" } as any, score: 0.9, snippet: "" },
+      { chunk: { id: "b", text: "the agent configuration system handles model routing and fallbacks for all providers in the production cluster", parent_id: "p1", path: "/mem.md" } as any, score: 0.7, snippet: "" },
+    ];
+    const deduped = deduplicateSources(results);
+    assert.equal(deduped.length, 1, "Near-identical chunks from same parent should collapse");
+    assert.equal(deduped[0]!.chunk.id, "a", "Higher-scoring chunk should be kept");
+  });
+
+  it("deduplicateSources: preserves chunks from different sources", () => {
+    const results: import("../src/storage/backend.js").SearchResult[] = [
+      { chunk: { id: "a", text: "the agent configuration system handles model routing", path: "/config.md" } as any, score: 0.9, snippet: "" },
+      { chunk: { id: "b", text: "the agent configuration system handles model routing", path: "/setup.md" } as any, score: 0.7, snippet: "" },
+    ];
+    const deduped = deduplicateSources(results);
+    // Same text but different sources → both kept (different paths = different groups)
+    assert.equal(deduped.length, 2, "Chunks from different sources should both be kept");
+  });
+
+  it("deduplicateSources: preserves distinct chunks from same parent", () => {
+    const results: import("../src/storage/backend.js").SearchResult[] = [
+      { chunk: { id: "a", text: "the agent runs on user debian server", parent_id: "p1", path: "/infra.md" } as any, score: 0.9, snippet: "" },
+      { chunk: { id: "b", text: "model costs are tracked per session via codexbar", parent_id: "p1", path: "/infra.md" } as any, score: 0.7, snippet: "" },
+    ];
+    const deduped = deduplicateSources(results);
+    assert.equal(deduped.length, 2, "Distinct chunks from same parent should both be kept");
+  });
+
+  it("deduplicateSources: single-chunk groups pass through", () => {
+    const results: import("../src/storage/backend.js").SearchResult[] = [
+      { chunk: { id: "a", text: "hello world", path: "/a.md" } as any, score: 0.9, snippet: "" },
+    ];
+    const deduped = deduplicateSources(results);
+    assert.equal(deduped.length, 1);
   });
 
   it("Temporal decay formula", () => {
@@ -2449,9 +2488,9 @@ describe("Backend Consolidation (multi-table → single-table)", () => {
 });
 
 describe("Config Expansion (new tuning knobs)", () => {
-  it("Default mmrLambda is 0.7", () => {
+  it("Default mmrLambda is 0.9", () => {
     const cfg = resolveConfig();
-    assert.strictEqual(cfg.autoRecall.mmrLambda, 0.7);
+    assert.strictEqual(cfg.autoRecall.mmrLambda, 0.9);
   });
 
   it("Default temporalDecay floor is 0.8, rate is 0.03", () => {
