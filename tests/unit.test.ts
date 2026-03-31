@@ -17,7 +17,7 @@ import { heuristicClassify } from "../src/classify/heuristic.js";
 import type { MemoryChunk, SearchResult } from "../src/storage/backend.js";
 import { applyTemporalDecay } from "../src/auto/recall.js";
 import { shouldProcessAgent } from "../src/config.js";
-import { hybridMerge, applySourceWeighting } from "../src/auto/recall.js";
+import { hybridMerge, applySourceWeighting, mmrRerank } from "../src/auto/recall.js";
 import { EmbedCache } from "../src/embed/cache.js";
 import {
   ndcgAtK,
@@ -1360,6 +1360,196 @@ describe("Quality Score Defaults", () => {
       Math.abs(cNorm.score - rrfC / maxRrf) < 0.001,
       `c's score should be ${(rrfC / maxRrf).toFixed(4)}, got ${cNorm.score.toFixed(4)}`,
     );
+  });
+
+  // ── RRF Pipeline Integration Tests ───────────────────────────────────
+
+  it("hybridMerge: single result normalizes to 1.0", () => {
+    const merged = hybridMerge([makeSearchResult("only", 0.3)], [], 10);
+    assert.equal(merged.length, 1);
+    assert.equal(merged[0]!.score, 1.0, "Single result must be 1.0");
+  });
+
+  it("hybridMerge: large result sets (100+) normalize correctly", () => {
+    const vector = Array.from({ length: 100 }, (_, i) =>
+      makeSearchResult(`v${i}`, 1 - i * 0.01),
+    );
+    const fts = Array.from({ length: 100 }, (_, i) =>
+      makeSearchResult(`f${i}`, 1 - i * 0.01),
+    );
+    const merged = hybridMerge(vector, fts, 200);
+    // Top = 1.0, bottom > 0
+    assert.equal(merged[0]!.score, 1.0);
+    assert.ok(merged[merged.length - 1]!.score > 0, "Bottom score should be > 0");
+    // All scores in [0, 1]
+    assert.ok(merged.every((r) => r.score >= 0 && r.score <= 1.0));
+    // 200 unique IDs
+    assert.equal(merged.length, 200);
+  });
+
+  it("hybridMerge: same doc at different ranks sums correctly", () => {
+    const k = 60;
+    // "overlap" at vector rank 2, FTS rank 5
+    const vector = [
+      makeSearchResult("v0", 0.9),
+      makeSearchResult("v1", 0.8),
+      makeSearchResult("overlap", 0.7),
+    ];
+    const fts = [
+      makeSearchResult("f0", 0.9),
+      makeSearchResult("f1", 0.8),
+      makeSearchResult("f2", 0.7),
+      makeSearchResult("f3", 0.6),
+      makeSearchResult("f4", 0.5),
+      makeSearchResult("overlap", 0.4),
+    ];
+    const merged = hybridMerge(vector, fts, 20, k);
+    const overlap = merged.find((r) => r.chunk.id === "overlap")!;
+    // RRF: 1/(60+3) + 1/(60+6) = 1/63 + 1/66
+    const expectedRrf = 1 / 63 + 1 / 66;
+    // Find max RRF for normalization
+    // v0: 1/61, f0: 1/61, v1: 1/62, f1: 1/62, overlap: 1/63+1/66, f2: 1/63, f3: 1/64, f4: 1/65
+    // No overlap in v0/f0 so max single = 1/61. But overlap has 1/63+1/66 ≈ 0.0310
+    // v0: 1/61 ≈ 0.01639 — overlap sum ≈ 0.0310 is higher!
+    assert.ok(
+      overlap.score > merged.find((r) => r.chunk.id === "v0")!.score,
+      "Dual-evidence overlap should beat single-source v0 even at worse ranks",
+    );
+  });
+
+  it("RRF → sourceWeighting pipeline: source weights apply to normalized scores", () => {
+    const vector = [
+      makeSearchResult("mistakes-doc", 0.5, "memory", "MISTAKES.md"),
+      makeSearchResult("regular-doc", 0.9, "memory", "notes.md"),
+    ];
+    const merged = hybridMerge(vector, [], 10);
+    // After RRF: mistakes-doc = 1.0 (rank 0), regular-doc < 1.0 (rank 1)
+    assert.equal(merged[0]!.chunk.id, "mistakes-doc");
+    assert.equal(merged[0]!.score, 1.0);
+
+    // Apply source weighting
+    applySourceWeighting(merged);
+    // MISTAKES.md gets 1.6x pattern boost → 1.0 * 1.6 = 1.6 → capped at 1.0
+    assert.equal(merged[0]!.score, 1.0, "Capped at 1.0 after boost");
+    // regular-doc: normalized RRF * 1.0 (no path boost)
+    assert.ok(merged[1]!.score < 1.0);
+  });
+
+  it("RRF → temporalDecay pipeline: decay applies to normalized scores", () => {
+    const now = new Date();
+    const old = makeSearchResult("old-doc", 0.9, "memory", "old.md");
+    old.chunk.updated_at = new Date(now.getTime() - 90 * 86400000).toISOString();
+    const recent = makeSearchResult("new-doc", 0.5, "memory", "new.md");
+    recent.chunk.updated_at = now.toISOString();
+
+    const merged = hybridMerge([old, recent], [], 10);
+    // old-doc at rank 0 = 1.0, new-doc at rank 1 < 1.0
+    assert.equal(merged[0]!.chunk.id, "old-doc");
+
+    applyTemporalDecay(merged);
+    // old-doc (90 days): 1.0 * (0.8 + 0.2 * exp(-0.03*90)) ≈ 1.0 * 0.813 = 0.813
+    // new-doc (0 days): score * 1.0 = stays same
+    assert.ok(
+      merged[0]!.score < 0.9,
+      `90-day-old doc should decay below 0.9 (got ${merged[0]!.score})`,
+    );
+    assert.ok(merged[0]!.score > 0.8, `But still above 0.8 floor (got ${merged[0]!.score})`);
+  });
+
+  it("RRF → sourceWeighting → temporalDecay → MMR full pipeline", () => {
+    const now = new Date();
+    // Simulate realistic production scenario
+    const vector = [
+      makeSearchResult("relevant-mistake", 0.95, "memory", "MISTAKES.md"),
+      makeSearchResult("relevant-memory", 0.90, "memory", "MEMORY.md"),
+      makeSearchResult("relevant-capture", 0.85, "capture", "capture/meta/2026-03-30"),
+      makeSearchResult("session-noise", 0.80, "sessions", "sessions/chat.jsonl"),
+      makeSearchResult("old-fact", 0.70, "memory", "notes.md"),
+    ];
+    // Set timestamps
+    vector[0]!.chunk.updated_at = now.toISOString(); // Recent mistake
+    vector[1]!.chunk.updated_at = new Date(now.getTime() - 7 * 86400000).toISOString(); // 7 days
+    vector[2]!.chunk.updated_at = now.toISOString(); // Recent capture
+    vector[3]!.chunk.updated_at = now.toISOString(); // Recent session
+    vector[4]!.chunk.updated_at = new Date(now.getTime() - 180 * 86400000).toISOString(); // 6 months
+
+    const fts = [
+      makeSearchResult("relevant-mistake", 0.99, "memory", "MISTAKES.md"), // Also in FTS
+      makeSearchResult("fts-only", 0.80, "memory", "docs.md"),
+    ];
+    fts[0]!.chunk.updated_at = now.toISOString();
+    fts[1]!.chunk.updated_at = new Date(now.getTime() - 30 * 86400000).toISOString();
+
+    // Step 1: RRF merge
+    const merged = hybridMerge(vector, fts, 20);
+    assert.equal(merged[0]!.chunk.id, "relevant-mistake", "Dual-evidence mistake should rank first");
+    assert.equal(merged[0]!.score, 1.0, "Top RRF result = 1.0");
+
+    // Step 2: Source weighting
+    applySourceWeighting(merged);
+    const sessionResult = merged.find((r) => r.chunk.id === "session-noise")!;
+    assert.ok(sessionResult.score < 0.5, `Sessions should be heavily penalized (got ${sessionResult.score})`);
+
+    // Step 3: Temporal decay
+    applyTemporalDecay(merged);
+    const oldFact = merged.find((r) => r.chunk.id === "old-fact")!;
+    assert.ok(oldFact.score < 0.8, `6-month-old fact should decay significantly (got ${oldFact.score})`);
+
+    // Step 4: MMR diversity
+    const diverse = mmrRerank(merged, 3, 0.7);
+    assert.equal(diverse.length, 3, "MMR should return requested limit");
+    assert.ok(diverse[0]!.score >= diverse[1]!.score, "MMR should maintain score ordering");
+  });
+
+  it("hybridMerge: overlapping IDs at various rank combinations", () => {
+    const k = 60;
+    // Test that rank summing works for various rank combinations
+    const vector = [
+      makeSearchResult("top-both", 0.9),     // rank 0 in vector
+      makeSearchResult("mid-both", 0.7),     // rank 1 in vector
+      makeSearchResult("vector-only", 0.5),  // rank 2 in vector
+    ];
+    const fts = [
+      makeSearchResult("mid-both", 0.8),     // rank 0 in FTS (higher FTS rank than vector)
+      makeSearchResult("fts-only", 0.6),     // rank 1 in FTS
+      makeSearchResult("top-both", 0.4),     // rank 2 in FTS (lower FTS rank)
+    ];
+
+    const merged = hybridMerge(vector, fts, 10, k);
+
+    // top-both: vector rank 0 → 1/61, FTS rank 2 → 1/63, total = 1/61 + 1/63
+    // mid-both: vector rank 1 → 1/62, FTS rank 0 → 1/61, total = 1/62 + 1/61
+    // top-both and mid-both have same combined ranks (0+2 vs 1+0), but different RRF scores
+    const topBoth = merged.find((r) => r.chunk.id === "top-both")!;
+    const midBoth = merged.find((r) => r.chunk.id === "mid-both")!;
+
+    const rrfTopBoth = 1/61 + 1/63;
+    const rrfMidBoth = 1/62 + 1/61;
+    // mid-both has slightly higher RRF (1/61 + 1/62 > 1/61 + 1/63)
+    assert.ok(
+      midBoth.score > topBoth.score,
+      `mid-both (FTS rank 0) should beat top-both (FTS rank 2): ${midBoth.score} > ${topBoth.score}`,
+    );
+  });
+
+  it("hybridMerge: minScore compatibility — downstream filter works with RRF scores", () => {
+    const vector = Array.from({ length: 10 }, (_, i) =>
+      makeSearchResult(`v${i}`, 1 - i * 0.1),
+    );
+    const merged = hybridMerge(vector, [], 10);
+
+    // Simulate production minScore filter (applied AFTER merge in some code paths)
+    const minScore = 0.75;
+    const filtered = merged.filter((r) => r.score >= minScore);
+
+    // With k=60 and 10 results: rank 0 = 1.0, rank 9 = 61/70 ≈ 0.871
+    // All should pass 0.75 threshold
+    assert.ok(
+      filtered.length >= 8,
+      `Most results should pass minScore 0.75 with 10 results (got ${filtered.length})`,
+    );
+    // Top result always passes
+    assert.equal(filtered[0]!.score, 1.0);
   });
 
   it("applySourceWeighting penalizes sessions source", () => {
