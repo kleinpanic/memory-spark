@@ -173,12 +173,16 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     // Temporal decay: boost recent memories (configurable floor + rate)
     applyTemporalDecay(merged, cfg.temporalDecay);
 
-    // MMR diversity re-ranking
-    const diverse = mmrRerank(merged, cfg.maxResults * 2, cfg.mmrLambda ?? 0.7);
+    // Cross-encoder rerank FIRST — reranker is the most accurate relevance signal.
+    // Give it a large candidate set so it can identify the best documents.
+    // Then MMR trims the reranked output for diversity.
+    const reranked = await reranker.rerank(queryText, merged, cfg.maxResults * 2);
 
-    // Cross-encoder rerank
-    const reranked = await reranker.rerank(queryText, diverse, cfg.maxResults);
-    if (reranked.length === 0) return undefined;
+    // MMR diversity re-ranking on reranker-approved candidates.
+    // This prevents MMR from discarding documents the reranker would have rescued.
+    // (Pipeline ordering fix: retrieve → rerank → MMR per NVIDIA RAG Blueprint)
+    const diverse = mmrRerank(reranked, cfg.maxResults, cfg.mmrLambda ?? 0.9);
+    if (diverse.length === 0) return undefined;
 
     // ── Parent-Child Context Expansion ───────────────────────────────────
     //
@@ -190,7 +194,7 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     // Dedup: if multiple children share a parent, include parent only once.
     //
     const parentIds = new Set<string>();
-    for (const r of reranked) {
+    for (const r of diverse) {
       if (r.chunk.parent_id && !r.chunk.is_parent) {
         parentIds.add(r.chunk.parent_id);
       }
@@ -202,7 +206,7 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
         const parentMap = new Map(parentChunks.map((p) => [p.id, p]));
 
         // Replace child text with parent text (keeping child's score and metadata)
-        for (const r of reranked) {
+        for (const r of diverse) {
           if (r.chunk.parent_id && !r.chunk.is_parent) {
             const parent = parentMap.get(r.chunk.parent_id);
             if (parent) {
@@ -217,22 +221,22 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
         // the highest-scoring one. Use the expanded parent_id as the dedup key
         // (it's "expanded:<parentId>") — far more reliable than text prefix matching.
         const seenParents = new Set<string>();
-        const dedupedReranked: SearchResult[] = [];
-        for (const r of reranked) {
+        const dedupedResults: SearchResult[] = [];
+        for (const r of diverse) {
           const expandedTag = r.chunk.parent_id;
           if (expandedTag?.startsWith("expanded:")) {
             if (!seenParents.has(expandedTag)) {
               seenParents.add(expandedTag);
-              dedupedReranked.push(r);
+              dedupedResults.push(r);
             }
             // else skip — a higher-scoring sibling already claimed this parent
           } else {
             // Non-expanded chunks (flat or failed lookup) pass through
-            dedupedReranked.push(r);
+            dedupedResults.push(r);
           }
         }
         // Use deduplicated results for the rest of the pipeline
-        reranked.splice(0, reranked.length, ...dedupedReranked);
+        diverse.splice(0, diverse.length, ...dedupedResults);
       } catch {
         // Parent lookup failed — continue with child text (graceful degradation)
       }
@@ -266,7 +270,7 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     }
 
     const dedupThreshold = cfg.dedupOverlapThreshold ?? 0.4;
-    const deduplicated = reranked.filter((r) => {
+    const deduplicated = diverse.filter((r) => {
       const chunkTokens = new Set(
         (r.chunk.text.match(/\b\w{4,}\b/g) ?? []).map((w) => w.toLowerCase()),
       );
