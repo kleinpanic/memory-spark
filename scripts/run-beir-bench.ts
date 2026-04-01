@@ -486,6 +486,9 @@ async function runRetrieval(
           // to use the benchmark-specific alpha override)
           const normalizedQuery = candidates[0] ? q.text : "";
           const pool = candidates.slice(0, 30); // MAX_RERANK_CANDIDATES
+          // Request scores for ALL pool candidates (not just top-k).
+          // Blending needs the full pool so it can promote vector-strong
+          // documents that the reranker would have excluded from top-k.
           const resp = await fetch(`${rerankCfg!.baseUrl}/rerank`, {
             method: "POST",
             headers: {
@@ -496,7 +499,7 @@ async function runRetrieval(
               model: rerankCfg!.model,
               query: normalizedQuery,
               documents: pool.map((c) => c.chunk.text),
-              top_n: k,
+              top_n: pool.length, // Score ALL candidates, let blending select top-k
               return_documents: false,
             }),
           });
@@ -504,7 +507,8 @@ async function runRetrieval(
             const data = (await resp.json()) as {
               results: Array<{ index: number; relevance_score: number }>;
             };
-            candidates = blendScores(pool, data.results, config.scoreBlendAlpha);
+            const allBlended = blendScores(pool, data.results, config.scoreBlendAlpha);
+            candidates = allBlended.slice(0, k); // Take top-k after blending
           }
           // On error, fall through with unmodified candidates
         } else {
