@@ -767,15 +767,8 @@ function tokenize(text: string): Set<string> {
   return new Set(text.toLowerCase().match(/\b\w{3,}\b/g) ?? []);
 }
 
-function jaccardSimilarity(a: Set<string>, b: Set<string>): number {
-  if (a.size === 0 && b.size === 0) return 1;
-  let intersection = 0;
-  for (const token of a) {
-    if (b.has(token)) intersection++;
-  }
-  const union = a.size + b.size - intersection;
-  return union === 0 ? 0 : intersection / union;
-}
+// Reuse the standalone Jaccard defined earlier
+const jaccardSimilarity = jaccardSimilaritySet;
 
 /**
  * Clean query text — strip Discord metadata, timestamps, and injected blocks
