@@ -73,7 +73,9 @@ export async function createEmbedProvider(cfg: EmbedConfig): Promise<EmbedProvid
       if (ok) return provider;
     } catch (err) {
       if (process.env.MEMORY_SPARK_DEBUG) {
-        console.debug(`[embed] probe ${provider.id}/${provider.model}: ERROR - ${err instanceof Error ? err.message : String(err)}`);
+        console.debug(
+          `[embed] probe ${provider.id}/${provider.model}: ERROR - ${err instanceof Error ? err.message : String(err)}`,
+        );
       }
       // Try next
     }
@@ -106,10 +108,7 @@ function makeOpenAiCompat(
     "gte-qwen",
     "nomic-embed",
   ];
-  if (
-    !queryInstruction &&
-    INSTRUCTION_AWARE_MODELS.some((m) => model.toLowerCase().includes(m))
-  ) {
+  if (!queryInstruction && INSTRUCTION_AWARE_MODELS.some((m) => model.toLowerCase().includes(m))) {
     console.warn(
       `[memory-spark] WARNING: Model "${model}" is instruction-aware but queryInstruction is empty. ` +
         `Queries will embed as raw text (document space) instead of query space. ` +
@@ -158,9 +157,7 @@ function makeOpenAiCompat(
       // This asymmetric encoding aligns query and document vectors into the correct
       // subspaces for retrieval. Without the prefix, query vectors land in document
       // space and retrieval quality degrades significantly.
-      const input = queryInstruction
-        ? `Instruct: ${queryInstruction}\nQuery: ${text}`
-        : text;
+      const input = queryInstruction ? `Instruct: ${queryInstruction}\nQuery: ${text}` : text;
       const results = await embed(input);
       return results[0]!;
     },
@@ -189,7 +186,9 @@ function makeOpenAiCompat(
           return vectors.length === 1 && vectors[0]!.length > 0;
         } catch (err) {
           if (process.env.MEMORY_SPARK_DEBUG) {
-            console.debug(`[embed] ${id} probe attempt ${attempt} error: ${err instanceof Error ? err.message : String(err)}`);
+            console.debug(
+              `[embed] ${id} probe attempt ${attempt} error: ${err instanceof Error ? err.message : String(err)}`,
+            );
           }
           if (attempt < 2) await new Promise((r) => setTimeout(r, 1000));
         }

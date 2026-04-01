@@ -29,14 +29,10 @@ function toJsNumberArray(vec: unknown): number[] {
   if (Array.isArray(vec)) return vec;
   // Arrow Vector and TypedArray both have .toArray()
   if (typeof (vec as { toArray?: unknown }).toArray === "function") {
-    return Array.from(
-      (vec as { toArray: () => ArrayLike<number> }).toArray(),
-    );
+    return Array.from((vec as { toArray: () => ArrayLike<number> }).toArray());
   }
   // Generic iterable fallback
-  if (
-    typeof (vec as Iterable<number>)[Symbol.iterator] === "function"
-  ) {
+  if (typeof (vec as Iterable<number>)[Symbol.iterator] === "function") {
     return Array.from(vec as Iterable<number>);
   }
   return [];
