@@ -34,7 +34,7 @@ import { resolveConfig, type HydeConfig } from "../src/config.js";
 import { createEmbedProvider } from "../src/embed/provider.js";
 import { EmbedQueue } from "../src/embed/queue.js";
 import { generateHypotheticalDocument } from "../src/hyde/generator.js";
-import { createReranker, blendScores } from "../src/rerank/reranker.js";
+import { createReranker } from "../src/rerank/reranker.js";
 import type { SearchResult } from "../src/storage/backend.js";
 import { LanceDBBackend } from "../src/storage/lancedb.js";
 
@@ -390,7 +390,6 @@ async function runRetrieval(
   hydeConfig: HydeConfig | undefined,
   config: RetrievalConfig,
   dataset: string,
-  rerankCfg?: { baseUrl: string; apiKey?: string; model: string },
 ): Promise<{ results: Results; telemetry: QueryTelemetry[] }> {
   const results: Results = {};
   const telemetry: QueryTelemetry[] = [];
@@ -566,40 +565,15 @@ async function runRetrieval(
       if (!skipReranker) {
         const beforeOrder = candidates.slice(0, 5).map((c) => c.chunk.id);
 
-        // Phase 9A: Score blending — if alpha > 0, blend original + reranker scores
-        if (config.scoreBlendAlpha && config.scoreBlendAlpha > 0) {
-          // Manual rerank call with blending (bypass the reranker's internal blending
-          // to use the benchmark-specific alpha override)
-          const normalizedQuery = candidates[0] ? q.text : "";
-          const pool = candidates.slice(0, 30); // MAX_RERANK_CANDIDATES
-          // Request scores for ALL pool candidates (not just top-k).
-          // Blending needs the full pool so it can promote vector-strong
-          // documents that the reranker would have excluded from top-k.
-          const resp = await fetch(`${rerankCfg!.baseUrl}/rerank`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${rerankCfg!.apiKey ?? "none"}`,
-            },
-            body: JSON.stringify({
-              model: rerankCfg!.model,
-              query: normalizedQuery,
-              documents: pool.map((c) => c.chunk.text),
-              top_n: pool.length, // Score ALL candidates, let blending select top-k
-              return_documents: false,
-            }),
-          });
-          if (resp.ok) {
-            const data = (await resp.json()) as {
-              results: Array<{ index: number; relevance_score: number }>;
-            };
-            const allBlended = blendScores(pool, data.results, config.scoreBlendAlpha);
-            candidates = allBlended.slice(0, k); // Take top-k after blending
-          }
-          // On error, fall through with unmodified candidates
-        } else {
-          candidates = await reranker.rerank(q.text, candidates, k);
-        }
+        // Phase 10B: Unified reranker path — ALL configs go through reranker.rerank().
+        // The alphaOverride lets the benchmark control blend weight per-config without
+        // duplicating normalization, telemetry, or error handling.
+        candidates = await reranker.rerank(
+          q.text,
+          candidates,
+          k,
+          config.scoreBlendAlpha != null ? { alphaOverride: config.scoreBlendAlpha } : undefined,
+        );
 
         const afterOrder = candidates.slice(0, 5).map((c) => c.chunk.id);
         const reorderCount = beforeOrder.filter((id, idx) => id !== afterOrder[idx]).length;
@@ -727,7 +701,6 @@ async function main() {
       hydeConfig,
       config,
       datasetArg,
-      cfg.rerank.spark ? { baseUrl: cfg.rerank.spark.baseUrl, apiKey: cfg.rerank.spark.apiKey, model: cfg.rerank.spark.model } : undefined,
     );
 
     const metrics = evaluateBEIR(qrels, results, [10]);

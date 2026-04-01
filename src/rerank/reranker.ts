@@ -11,8 +11,13 @@
 import type { RerankConfig } from "../config.js";
 import type { SearchResult } from "../storage/backend.js";
 
+export interface RerankOptions {
+  /** Override the blend alpha for this call (0 = pure reranker, 1 = ignore reranker). */
+  alphaOverride?: number;
+}
+
 export interface Reranker {
-  rerank(query: string, candidates: SearchResult[], topN?: number): Promise<SearchResult[]>;
+  rerank(query: string, candidates: SearchResult[], topN?: number, options?: RerankOptions): Promise<SearchResult[]>;
   probe(): Promise<boolean>;
 }
 
@@ -43,8 +48,11 @@ function sparkReranker(cfg: RerankConfig): Reranker {
   const blendAlpha = cfg.scoreBlendAlpha ?? 0;
 
   return {
-    async rerank(query, candidates, topN = 5) {
+    async rerank(query, candidates, topN = 5, options?: RerankOptions) {
       if (candidates.length === 0) return [];
+
+      // Phase 10B: per-call alpha override for benchmark flexibility
+      const effectiveAlpha = options?.alphaOverride ?? blendAlpha;
 
       // Phase 5B: Limit candidate pool to prevent unbounded reranker input
       const pool = candidates.slice(0, MAX_RERANK_CANDIDATES);
@@ -68,13 +76,18 @@ function sparkReranker(cfg: RerankConfig): Reranker {
           // When blending (alpha > 0), score ALL candidates so the blend
           // can promote vector-strong docs the reranker would have excluded.
           // Without blending, respect the original topN to save latency.
-          top_n: blendAlpha > 0 ? pool.length : topN,
+          top_n: effectiveAlpha > 0 ? pool.length : topN,
           return_documents: false,
         }),
       });
 
       if (!resp.ok) {
-        // Fallback to passthrough on error
+        // Phase 10B: Always log reranker errors (not gated behind VERBOSE)
+        const body = await resp.text().catch(() => "");
+        console.error(
+          `[reranker] ERROR: ${resp.status} ${resp.statusText} — falling back to input order` +
+          (body ? ` | body: ${body.slice(0, 200)}` : ""),
+        );
         return pool.slice(0, topN);
       }
 
@@ -97,9 +110,9 @@ function sparkReranker(cfg: RerankConfig): Reranker {
       // α = 0.5: Equal weight between original and reranker
       //
       // When blending, we scored all candidates. Now take top-N.
-      const results = blendAlpha > 0
-        ? blendScores(pool, data.results, blendAlpha).slice(0, topN)
-        : blendScores(pool, data.results, blendAlpha);
+      const results = effectiveAlpha > 0
+        ? blendScores(pool, data.results, effectiveAlpha).slice(0, topN)
+        : blendScores(pool, data.results, effectiveAlpha);
 
       // Phase 10A: Telemetry — log both sigmoid and logit-space metrics
       const elapsedMs = performance.now() - t0;
@@ -116,7 +129,7 @@ function sparkReranker(cfg: RerankConfig): Reranker {
         const logitMax = Math.max(...logits);
         const logitSpread = logitMax - logitMin;
         const normalizedTag = wasNormalized ? " [normalized→interrogative]" : "";
-        const blendStr = blendAlpha > 0 ? ` blend=α${blendAlpha}` : " blend=none";
+        const blendStr = effectiveAlpha > 0 ? ` blend=α${effectiveAlpha}` : " blend=none";
 
         // Always-on summary: one line per query
         console.log(
@@ -195,7 +208,7 @@ function sparkReranker(cfg: RerankConfig): Reranker {
 
 function passthroughReranker(): Reranker {
   return {
-    async rerank(_query, candidates, topN = 5) {
+    async rerank(_query, candidates, topN = 5, _options?: RerankOptions) {
       return candidates.slice(0, topN);
     },
     async probe() {
