@@ -53,15 +53,17 @@ log() { echo "[$(ts)] $*" | tee -a "$LOGFILE"; }
 
 sms() {
   local msg="$1"
-  rm -f /tmp/.openclaw-sms-cooldown
   log "SMS: $msg"
   [[ -x "$SMS" ]] && bash "$SMS" "$msg" >> "$LOGFILE" 2>&1 || true
 }
 
+# Alias for future multi-channel support
+notify() { sms "$1"; }
+
 die() {
   log "FATAL: $1"
   echo "FAILED: $1" > "$STATEFILE"
-  sms "(OpenClaw) BEIR Pipeline FAILED: $1"
+  notify "❌ BEIR Pipeline FAILED: $1"
   exit 1
 }
 
@@ -100,7 +102,7 @@ on_exit() {
     log "║  Time:      $(ts)"
     log "╚══════════════════════════════════════════════╝"
     sync
-    sms "(OpenClaw) BEIR Pipeline CRASHED (exit ${EC}${SIGNAL_NAME}). Phase: ${_CURRENT_PHASE}. Check: tmux attach -t BEIR-pipeline"
+    notify "💥 BEIR Pipeline CRASHED (exit ${EC}${SIGNAL_NAME}). Phase: ${_CURRENT_PHASE}. Check: tmux attach -t BEIR-pipeline"
   fi
 }
 
@@ -182,7 +184,7 @@ log ""
 log "✅ Indexing complete (${INDEX_DURATION}m)"
 echo "DONE: indexing ${INDEX_DURATION}m" > "$STATEFILE"
 
-sms "(OpenClaw) BEIR indexing done! ${TOTAL_DOCS} docs in ${INDEX_DURATION}m. Running A-G benchmarks now..."
+notify "📊 BEIR indexing done! ${TOTAL_DOCS} docs in ${INDEX_DURATION}m. Running A-G benchmarks now..."
 
 # ── Phase 3: Benchmark A-G ───────────────────────────────────────────────
 
@@ -213,7 +215,7 @@ for ds in $DATASETS; do
     log "  NDCG@10: $NDCG"
     log "  MRR@10:  $MRR"
     
-    sms "(OpenClaw) BEIR $ds done. NDCG=$NDCG MRR=$MRR"
+    notify "✅ BEIR $ds done — NDCG@10=$NDCG MRR@10=$MRR"
   fi
 done
 
@@ -273,7 +275,7 @@ log "╚════════════════════════
 echo "DONE: all phases complete" > "$STATEFILE"
 sync
 
-sms "(OpenClaw) BEIR Pipeline COMPLETE! SciFact=${SCIFACT_NDCG} NFCorpus=${NFCORPUS_NDCG} FiQA=${FIQA_NDCG}. Report: $REPORT"
+notify "🏁 BEIR Pipeline COMPLETE! SciFact=${SCIFACT_NDCG} NFCorpus=${NFCORPUS_NDCG} FiQA=${FIQA_NDCG}. Report: $REPORT"
 
 log ""
 log "Press Ctrl+C to exit, or detach with Ctrl+B D"

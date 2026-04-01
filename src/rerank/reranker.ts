@@ -170,8 +170,12 @@ function passthroughReranker(): Reranker {
 // agent queries are already questions; this catches edge cases and
 // BEIR-style claim inputs.
 
-const QUESTION_STARTERS =
-  /^(who|what|which|when|where|why|how|is|are|was|were|do|does|did|can|could|will|would|should|shall|has|have|had|may|might)\b/i;
+const QUESTION_STARTERS = new Set([
+  "who","what","which","when","where","why","how",
+  "is","are","was","were","do","does","did",
+  "can","could","will","would","should","shall",
+  "has","have","had","may","might",
+]);
 const ENDS_WITH_QUESTION = /\?\s*$/;
 
 /**
@@ -180,7 +184,8 @@ const ENDS_WITH_QUESTION = /\?\s*$/;
 export function isQuestion(query: string): boolean {
   const trimmed = query.trim();
   if (ENDS_WITH_QUESTION.test(trimmed)) return true;
-  if (QUESTION_STARTERS.test(trimmed)) return true;
+  const firstWord = trimmed.split(/\s/, 1)[0]?.toLowerCase();
+  if (firstWord && QUESTION_STARTERS.has(firstWord)) return true;
   return false;
 }
 
