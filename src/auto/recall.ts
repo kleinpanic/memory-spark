@@ -10,6 +10,7 @@ import type { EmbedLike } from "../embed/cached-provider.js";
 import type { EmbedProvider } from "../embed/provider.js";
 import type { EmbedQueue } from "../embed/queue.js";
 import { generateHypotheticalDocument } from "../hyde/generator.js";
+import { expandQuery, QUERY_EXPANSION_DEFAULTS, type QueryExpansionConfig } from "../query/expander.js";
 import type { Reranker } from "../rerank/reranker.js";
 import { looksLikePromptInjection, formatRecalledMemories } from "../security.js";
 import type { StorageBackend, SearchResult } from "../storage/backend.js";
@@ -100,6 +101,34 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     const fetchN = cfg.maxResults * (cfg.overfetchMultiplier ?? 4);
     const lowThreshold = Math.max((cfg.minScore ?? 0.1) * 0.7, 0.05);
 
+    // ── Phase 11B: Multi-Query Expansion ─────────────────────────────────
+    // Generate query reformulations and embed them for multi-vector search.
+    // Done ONCE here, then passed to poolSearch for all pool searches.
+    let allQueryVectors: number[][] = [queryVector];
+    const mqConfig = cfg.queryExpansion;
+    if (mqConfig?.enabled) {
+      const resolvedMqConfig: QueryExpansionConfig = {
+        ...QUERY_EXPANSION_DEFAULTS,
+        ...mqConfig,
+      };
+      const t0mq = performance.now();
+      const queries = await expandQuery(queryText, resolvedMqConfig);
+      if (queries.length > 1) {
+        // Embed reformulations in parallel (skip first — it's the original, already embedded)
+        const extraVectors = await Promise.all(
+          queries.slice(1).map((mq) => embed.embedQuery(mq).catch(() => null)),
+        );
+        const validExtra = extraVectors.filter((v): v is number[] => v !== null);
+        allQueryVectors = [queryVector, ...validExtra];
+        console.log(
+          `[recall] multi-query: ${queries.length} queries, ${allQueryVectors.length} vectors in ${Math.round(performance.now() - t0mq)}ms`,
+        );
+        if (verbose) {
+          for (const mq of queries.slice(1)) console.log(`[recall]   reformulation: "${mq.slice(0, 100)}"`);
+        }
+      }
+    }
+
     // Helper: hybrid search within specific pool(s)
     const poolSearch = async (
       pools: string[],
@@ -114,9 +143,31 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
         agentId: filterAgentId,
         pools,
       };
-      const vectorResults = await backend
-        .vectorSearch(queryVector, searchOpts)
-        .catch(() => [] as SearchResult[]);
+
+      // Multi-vector search: search each query vector and union by chunk ID
+      let vectorResults: SearchResult[];
+      if (allQueryVectors.length > 1) {
+        const allVecResults = await Promise.all(
+          allQueryVectors.map((vec) =>
+            backend.vectorSearch(vec, searchOpts).catch(() => [] as SearchResult[]),
+          ),
+        );
+        // Union: dedupe by chunk ID, keep highest score
+        const best = new Map<string, SearchResult>();
+        for (const resultSet of allVecResults) {
+          for (const r of resultSet) {
+            const existing = best.get(r.chunk.id);
+            if (!existing || r.score > existing.score) {
+              best.set(r.chunk.id, r);
+            }
+          }
+        }
+        vectorResults = [...best.values()].sort((a, b) => b.score - a.score);
+      } else {
+        vectorResults = await backend
+          .vectorSearch(queryVector, searchOpts)
+          .catch(() => [] as SearchResult[]);
+      }
       const rawFtsResults =
         (cfg.ftsEnabled ?? true)
           ? await backend.ftsSearch(queryText, searchOpts).catch(() => [] as SearchResult[])

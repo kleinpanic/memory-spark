@@ -215,6 +215,21 @@ export interface AutoRecallConfig {
    * Default: true
    */
   ftsEnabled?: boolean;
+  /**
+   * Multi-query expansion configuration.
+   * Generates LLM reformulations to break retrieval ceilings.
+   * When enabled, multiple query vectors are searched in parallel and results are unioned.
+   */
+  queryExpansion?: {
+    enabled: boolean;
+    llmUrl?: string;
+    model?: string;
+    numReformulations?: number;
+    maxTokens?: number;
+    temperature?: number;
+    timeoutMs?: number;
+    apiKey?: string;
+  };
 }
 
 export interface AutoCaptureConfig {
