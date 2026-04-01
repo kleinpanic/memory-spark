@@ -778,6 +778,29 @@ const memorySpark = {
               }
             }
 
+            // ── Pool & Agent Breakdown ──
+            if (lanceStats) {
+              const stats = await lanceStats;
+              if (stats.poolBreakdown && Object.keys(stats.poolBreakdown).length > 0) {
+                statsText += `\nChunks by pool:\n`;
+                for (const [pool, count] of Object.entries(stats.poolBreakdown).sort((a, b) => b[1] - a[1])) {
+                  statsText += `  ${count.toString().padStart(6)} — ${pool}\n`;
+                }
+              }
+              if (stats.agentBreakdown && Object.keys(stats.agentBreakdown).length > 0) {
+                statsText += `\nChunks by agent:\n`;
+                for (const [agent, count] of Object.entries(stats.agentBreakdown).sort((a, b) => b[1] - a[1])) {
+                  statsText += `  ${count.toString().padStart(6)} — ${agent}\n`;
+                }
+              }
+            }
+
+            // ── Reranker Gate Config ──
+            statsText += `\nReranker Gate:\n`;
+            statsText += `  Mode: ${cfg.rerank.rerankerGate ?? "hard"}\n`;
+            statsText += `  Blend: ${cfg.rerank.blendMode ?? "rrf"}\n`;
+            statsText += `  Thresholds: [${cfg.rerank.rerankerGateLowThreshold ?? 0.02}, ${cfg.rerank.rerankerGateThreshold ?? 0.08}]\n`;
+
             // ── Config Summary ──
             statsText += `\nConfig:\n`;
             statsText += `  AutoRecall: ${cfg.autoRecall.enabled ? cfg.autoRecall.agents.join(",") : "off"}\n`;

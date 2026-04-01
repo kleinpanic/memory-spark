@@ -610,6 +610,8 @@ export class LanceDBBackend implements StorageBackend {
     totalChunks: number;
     indices: Array<{ name: string; indexType: string; columns: string[] }>;
     topPaths: Array<{ path: string; chunkCount: number }>;
+    poolBreakdown?: Record<string, number>;
+    agentBreakdown?: Record<string, number>;
   }> {
     if (!this.table) return { totalChunks: 0, indices: [], topPaths: [] };
     try {
@@ -625,7 +627,45 @@ export class LanceDBBackend implements StorageBackend {
         .sort((a, b) => b.chunkCount - a.chunkCount)
         .slice(0, 10)
         .map((p) => ({ path: p.path, chunkCount: p.chunkCount }));
-      return { totalChunks, indices, topPaths };
+
+      // Pool-level breakdown (if schema supports it)
+      let poolBreakdown: Record<string, number> | undefined;
+      let agentBreakdown: Record<string, number> | undefined;
+      if (this.schemaHasNewColumns) {
+        try {
+          const pools = ["agent_memory", "agent_tools", "agent_mistakes", "shared_knowledge", "shared_mistakes", "shared_rules", "reference"];
+          const poolCounts = await Promise.all(
+            pools.map(async (pool) => {
+              const pf = filter ? `${filter} AND pool = '${pool}'` : `pool = '${pool}'`;
+              return { pool, count: await this.table!.countRows(pf).catch(() => 0) };
+            }),
+          );
+          poolBreakdown = {};
+          for (const { pool, count } of poolCounts) {
+            if (count > 0) poolBreakdown[pool] = count;
+          }
+        } catch { /* non-fatal */ }
+
+        // Agent-level breakdown
+        if (!agentId) {
+          try {
+            const allPaths = await this.listPaths();
+            const agents = new Set(allPaths.map((p) => p.agentId));
+            const agentCounts = await Promise.all(
+              [...agents].map(async (aid) => ({
+                agent: aid,
+                count: await this.table!.countRows(`agent_id = '${escapeSql(aid)}'`).catch(() => 0),
+              })),
+            );
+            agentBreakdown = {};
+            for (const { agent, count } of agentCounts) {
+              if (count > 0) agentBreakdown[agent] = count;
+            }
+          } catch { /* non-fatal */ }
+        }
+      }
+
+      return { totalChunks, indices, topPaths, poolBreakdown, agentBreakdown };
     } catch {
       return { totalChunks: 0, indices: [], topPaths: [] };
     }
