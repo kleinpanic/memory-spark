@@ -254,9 +254,14 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     const deduped = deduplicateSources(merged);
     console.log(`[recall] after source dedup: ${deduped.length} candidates (removed ${merged.length - deduped.length})`);
 
-    // Cross-encoder rerank FIRST — reranker is the most accurate relevance signal.
+    // Cross-encoder rerank — the reranker is the most accurate relevance signal.
     // Give it a large candidate set so it can identify the best documents.
     // Then MMR trims the reranked output for diversity.
+    //
+    // Phase 12: The reranker now includes a dynamic gate (GATE-A default).
+    // When top-5 vector spread > 0.08 (confident) or < 0.02 (tied set),
+    // the gate skips reranking entirely and returns vector order.
+    // Gate telemetry is logged inside sparkReranker — look for "[reranker] GATE SKIP".
     const reranked = await reranker.rerank(queryText, deduped, cfg.maxResults * 2);
     console.log(`[recall] after rerank: ${reranked.length} candidates`);
 
