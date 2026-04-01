@@ -1216,6 +1216,387 @@ const memorySpark = {
           },
         };
 
+        // ── Phase C: New tools (v0.4.0) ──────────────────────────────────
+
+        const recallDebugTool = {
+          name: "memory_recall_debug",
+          description:
+            "Show the full recall pipeline trace for a query — what the agent sees behind the scenes. " +
+            "Shows vector scores, hybrid merge, reranker gate decision, MMR diversity, and final token budget. " +
+            "Use to understand why certain memories were or weren't recalled.",
+          label: "Recall Debug",
+          parameters: Type.Object({
+            query: Type.String({ description: "Query to trace through the recall pipeline" }),
+            maxResults: Type.Optional(
+              Type.Number({ description: "Max results to trace", minimum: 1, maximum: 50 }),
+            ),
+          }),
+          execute: async (
+            _toolCallId: string,
+            params: { query: string; maxResults?: number },
+          ) => {
+            const s = await getState(cfg, api.logger);
+            const maxR = params.maxResults ?? 10;
+
+            // Run vector search
+            const queryVector = await s.embed.embedQuery(params.query);
+            const vectorResults = await s.backend
+              .vectorSearch(queryVector, {
+                query: params.query,
+                maxResults: maxR * 4,
+                minScore: 0.05,
+                agentId,
+              })
+              .catch(() => [] as import("./src/storage/backend.js").SearchResult[]);
+
+            // Run FTS search
+            const ftsResults = await s.backend
+              .ftsSearch(params.query, {
+                query: params.query,
+                maxResults: maxR * 4,
+                minScore: 0.05,
+                agentId,
+              })
+              .catch(() => [] as import("./src/storage/backend.js").SearchResult[]);
+
+            // Hybrid merge
+            const { hybridMerge } = await import("./src/auto/recall.js");
+            const merged = hybridMerge(vectorResults, ftsResults, maxR * 2);
+
+            // Reranker (includes gate)
+            const reranked = await s.reranker.rerank(params.query, merged, maxR);
+
+            const trace = {
+              query: params.query,
+              stages: {
+                vector: {
+                  count: vectorResults.length,
+                  topScores: vectorResults.slice(0, 5).map((r) => ({
+                    score: Number(r.score.toFixed(4)),
+                    path: r.chunk.path,
+                    pool: r.chunk.pool,
+                  })),
+                },
+                fts: {
+                  count: ftsResults.length,
+                  topScores: ftsResults.slice(0, 5).map((r) => ({
+                    score: Number(r.score.toFixed(4)),
+                    path: r.chunk.path,
+                  })),
+                },
+                hybrid: {
+                  count: merged.length,
+                  topScores: merged.slice(0, 5).map((r) => ({
+                    score: Number(r.score.toFixed(4)),
+                    path: r.chunk.path,
+                  })),
+                },
+                reranked: {
+                  count: reranked.length,
+                  topScores: reranked.slice(0, 5).map((r) => ({
+                    score: Number(r.score.toFixed(4)),
+                    path: r.chunk.path,
+                    text: r.chunk.text.slice(0, 100),
+                  })),
+                },
+              },
+              config: {
+                gateMode: cfg.rerank.rerankerGate ?? "hard",
+                gateThreshold: cfg.rerank.rerankerGateThreshold ?? 0.08,
+                gateLowThreshold: cfg.rerank.rerankerGateLowThreshold ?? 0.02,
+                blendMode: cfg.rerank.blendMode ?? "rrf",
+              },
+            };
+
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: JSON.stringify(trace, null, 2),
+                },
+              ],
+              details: { stages: 4 },
+            };
+          },
+        };
+
+        const bulkIngestTool = {
+          name: "memory_bulk_ingest",
+          description:
+            "Ingest multiple documents or notes into memory in a single batch. " +
+            "More efficient than calling memory_store repeatedly. " +
+            "Each item needs text content; path, source, and tags are optional.",
+          label: "Bulk Ingest",
+          parameters: Type.Object({
+            items: Type.Array(
+              Type.Object({
+                text: Type.String({ description: "Content to store" }),
+                path: Type.Optional(
+                  Type.String({ description: "Virtual path for the memory" }),
+                ),
+                source: Type.Optional(
+                  Type.String({ description: "Source identifier (default: capture)" }),
+                ),
+                tags: Type.Optional(
+                  Type.Array(Type.String(), { description: "Tags for categorization" }),
+                ),
+              }),
+              { minItems: 1, maxItems: 100 },
+            ),
+          }),
+          execute: async (
+            _toolCallId: string,
+            params: {
+              items: Array<{
+                text: string;
+                path?: string;
+                source?: string;
+                tags?: string[];
+              }>;
+            },
+          ) => {
+            const s = await getState(cfg, api.logger);
+            const results: Array<{ index: number; status: string; id?: string; error?: string }> =
+              [];
+
+            for (let i = 0; i < params.items.length; i++) {
+              const item = params.items[i]!;
+              try {
+                const vector = await s.queue.embedDocument(item.text);
+                const chunk = {
+                  id: `capture-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 8)}`,
+                  text: item.text,
+                  path: item.path ?? `capture/bulk-${Date.now()}`,
+                  source: (item.source ?? "capture") as "memory" | "ingest" | "capture" | "sessions",
+                  agent_id: agentId,
+                  pool: "agent_memory",
+                  updated_at: new Date().toISOString(),
+                  content_type: "knowledge" as const,
+                  tags: item.tags,
+                  start_line: 0,
+                  end_line: 0,
+                };
+                // Attach the vector to the chunk for LanceDB storage
+                const chunkWithVector = { ...chunk, vector };
+                await s.backend.upsert([chunkWithVector]);
+                results.push({ index: i, status: "ok", id: chunk.id });
+              } catch (err) {
+                results.push({
+                  index: i,
+                  status: "error",
+                  error: err instanceof Error ? err.message : String(err),
+                });
+              }
+            }
+
+            const ok = results.filter((r) => r.status === "ok").length;
+            const failed = results.filter((r) => r.status === "error").length;
+            return {
+              content: [
+                {
+                  type: "text" as const,
+                  text: `Bulk ingest complete: ${ok} stored, ${failed} failed.\n${
+                    failed > 0
+                      ? results
+                          .filter((r) => r.status === "error")
+                          .map((r) => `  Item ${r.index}: ${r.error}`)
+                          .join("\n")
+                      : ""
+                  }`,
+                },
+              ],
+              details: { stored: ok, failed },
+            };
+          },
+        };
+
+        const temporalTool = {
+          name: "memory_temporal",
+          description:
+            "Search memories within a specific time window. " +
+            'Use when you need to find what was learned recently or during a specific period. Example: "what did I learn last week?"',
+          label: "Temporal Search",
+          parameters: Type.Object({
+            query: Type.String({ description: "Search query" }),
+            after: Type.Optional(
+              Type.String({
+                description: "ISO date — only return memories after this date",
+              }),
+            ),
+            before: Type.Optional(
+              Type.String({
+                description: "ISO date — only return memories before this date",
+              }),
+            ),
+            maxResults: Type.Optional(
+              Type.Number({ description: "Max results", minimum: 1, maximum: 50 }),
+            ),
+          }),
+          execute: async (
+            _toolCallId: string,
+            params: { query: string; after?: string; before?: string; maxResults?: number },
+          ) => {
+            const s = await getState(cfg, api.logger);
+            const maxR = params.maxResults ?? 10;
+            const queryVector = await s.embed.embedQuery(params.query);
+
+            // Vector search with time filter
+            const results = await s.backend
+              .vectorSearch(queryVector, {
+                query: params.query,
+                maxResults: maxR * 2,
+                minScore: 0.1,
+                agentId,
+              })
+              .catch(() => [] as import("./src/storage/backend.js").SearchResult[]);
+
+            // Apply temporal filter
+            const filtered = results.filter((r) => {
+              const ts = r.chunk.updated_at ? new Date(r.chunk.updated_at).getTime() : 0;
+              if (params.after && ts < new Date(params.after).getTime()) return false;
+              if (params.before && ts > new Date(params.before).getTime()) return false;
+              return true;
+            });
+
+            if (filtered.length === 0) {
+              return {
+                content: [
+                  {
+                    type: "text" as const,
+                    text: `No memories found${params.after ? ` after ${params.after}` : ""}${params.before ? ` before ${params.before}` : ""}.`,
+                  },
+                ],
+                details: {},
+              };
+            }
+
+            const text = filtered
+              .slice(0, maxR)
+              .map(
+                (r, i) =>
+                  `${i + 1}. [${r.chunk.path}] (score: ${r.score.toFixed(2)}, date: ${r.chunk.updated_at ?? "unknown"}) ${r.chunk.text.slice(0, 200)}`,
+              )
+              .join("\n\n");
+
+            return {
+              content: [{ type: "text" as const, text }],
+              details: { resultCount: filtered.length },
+            };
+          },
+        };
+
+        const relatedTool = {
+          name: "memory_related",
+          description:
+            "Given a memory chunk ID, find semantically similar memories (neighborhood search). " +
+            'Use to explore: "what else do I know about this topic?"',
+          label: "Related Memories",
+          parameters: Type.Object({
+            chunkId: Type.String({ description: "ID of the memory chunk to find neighbors for" }),
+            maxResults: Type.Optional(
+              Type.Number({ description: "Max related results", minimum: 1, maximum: 20 }),
+            ),
+          }),
+          execute: async (
+            _toolCallId: string,
+            params: { chunkId: string; maxResults?: number },
+          ) => {
+            const s = await getState(cfg, api.logger);
+            const maxR = params.maxResults ?? 5;
+
+            // Get the source chunk
+            const chunks = await s.backend.getByIds([params.chunkId]);
+            if (chunks.length === 0) {
+              return {
+                content: [
+                  { type: "text" as const, text: `Chunk ${params.chunkId} not found.` },
+                ],
+                details: {},
+              };
+            }
+
+            const sourceChunk = chunks[0]!;
+            // Embed the source chunk's text and search for neighbors
+            const vector = await s.embed.embedDocument(sourceChunk.text);
+            const neighbors = await s.backend
+              .vectorSearch(vector, {
+                query: sourceChunk.text.slice(0, 200),
+                maxResults: maxR + 1, // +1 to exclude self
+                minScore: 0.3,
+              })
+              .catch(() => [] as import("./src/storage/backend.js").SearchResult[]);
+
+            // Filter out the source chunk itself
+            const related = neighbors.filter((r) => r.chunk.id !== params.chunkId).slice(0, maxR);
+
+            if (related.length === 0) {
+              return {
+                content: [
+                  { type: "text" as const, text: "No related memories found." },
+                ],
+                details: {},
+              };
+            }
+
+            const text = related
+              .map(
+                (r, i) =>
+                  `${i + 1}. [${r.chunk.path}] (similarity: ${r.score.toFixed(2)}) ${r.chunk.text.slice(0, 200)}`,
+              )
+              .join("\n\n");
+
+            return {
+              content: [{ type: "text" as const, text }],
+              details: {
+                sourceChunk: sourceChunk.path,
+                relatedCount: related.length,
+              },
+            };
+          },
+        };
+
+        const gateStatusTool = {
+          name: "memory_gate_status",
+          description:
+            "Show the current reranker gate configuration and mode. " +
+            "The gate controls when the cross-encoder reranker fires vs when vector-only results are trusted.",
+          label: "Gate Status",
+          parameters: Type.Object({}),
+          execute: async () => {
+            const gateMode = cfg.rerank.rerankerGate ?? "hard";
+            const threshold = cfg.rerank.rerankerGateThreshold ?? 0.08;
+            const lowThreshold = cfg.rerank.rerankerGateLowThreshold ?? 0.02;
+            const blendMode = cfg.rerank.blendMode ?? "rrf";
+            const rrfK = cfg.rerank.rrfK ?? 60;
+
+            const explanation =
+              gateMode === "hard"
+                ? `Hard gate: reranker is SKIPPED when top-5 vector spread > ${threshold} (vector is confident) ` +
+                  `or < ${lowThreshold} (tied set — reranker would be gambling). ` +
+                  `Only fires in the productive [${lowThreshold}, ${threshold}] range.`
+                : gateMode === "soft"
+                  ? `Soft gate: vector weight is dynamically scaled based on score spread. ` +
+                    `High spread → trust vector. Low spread → let reranker help.`
+                  : "Gate disabled — reranker fires on every query.";
+
+            const text = [
+              `**Reranker Gate Configuration**`,
+              `Mode: ${gateMode}`,
+              `Threshold (high): ${threshold}`,
+              `Threshold (low): ${lowThreshold}`,
+              `Blend mode: ${blendMode}`,
+              `RRF k: ${rrfK}`,
+              ``,
+              explanation,
+            ].join("\n");
+
+            return {
+              content: [{ type: "text" as const, text }],
+              details: { gateMode, blendMode },
+            };
+          },
+        };
+
         // SDK boundary cast — OpenClaw's AnyAgentTool uses `any` internally
         return [
           searchTool,
@@ -1231,6 +1612,11 @@ const memorySpark = {
           mistakesStoreTool,
           rulesStoreTool,
           rulesSearchTool,
+          recallDebugTool,
+          bulkIngestTool,
+          temporalTool,
+          relatedTool,
+          gateStatusTool,
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
         ] as any;
       },
@@ -1249,6 +1635,11 @@ const memorySpark = {
           "memory_mistakes_store",
           "memory_rules_store",
           "memory_rules_search",
+          "memory_recall_debug",
+          "memory_bulk_ingest",
+          "memory_temporal",
+          "memory_related",
+          "memory_gate_status",
         ],
       },
     );
