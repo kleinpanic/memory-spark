@@ -346,6 +346,57 @@ const CONFIGS: RetrievalConfig[] = [
     maxResults: 10,
     scoreBlendAlpha: 0.3,
   },
+  // ── Phase 11A: Alpha Sweep ────────────────────────────────────────────────
+  // Find optimal blending weight between vector scores and logit-recovered
+  // reranker scores. Q (α=0.5) is current best at 0.7863 NDCG@10.
+  {
+    id: "U",
+    label: "Vector → Logit Blend (α=0.4)",
+    useVector: true,
+    useFts: false,
+    useReranker: true,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    scoreBlendAlpha: 0.4,
+  },
+  {
+    id: "V",
+    label: "Vector → Logit Blend (α=0.6)",
+    useVector: true,
+    useFts: false,
+    useReranker: true,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    scoreBlendAlpha: 0.6,
+  },
+  {
+    id: "W",
+    label: "Vector → Logit Blend (α=0.7)",
+    useVector: true,
+    useFts: false,
+    useReranker: true,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    scoreBlendAlpha: 0.7,
+  },
+  {
+    id: "X",
+    label: "Vector → Logit Blend (α=0.8)",
+    useVector: true,
+    useFts: false,
+    useReranker: true,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    scoreBlendAlpha: 0.8,
+  },
 ];
 
 // ── Functions ───────────────────────────────────────────────────────────────
