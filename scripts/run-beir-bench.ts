@@ -28,6 +28,7 @@ import path from "node:path";
 import {
   hybridMerge,
   mmrRerank,
+  prepareRerankerFusion,
 } from "../src/auto/recall.js";
 import { resolveConfig, type HydeConfig } from "../src/config.js";
 import { createEmbedProvider } from "../src/embed/provider.js";
@@ -55,8 +56,12 @@ interface RetrievalConfig {
   useReranker: boolean;
   useMmr: boolean;
   useHyde: boolean;
-  mmrLambda: number;
+  mmrLambda: number | "adaptive";
   maxResults: number;
+  /** Phase 8: Use overlap-aware adaptive RRF weights instead of static */
+  adaptiveRrf?: boolean;
+  /** Phase 8: Use reranker-as-fusioner (pass union to reranker, skip RRF) */
+  rerankerFusion?: boolean;
 }
 
 interface QueryTelemetry {
@@ -166,6 +171,65 @@ const CONFIGS: RetrievalConfig[] = [
     useHyde: false,
     mmrLambda: 0.9,
     maxResults: 10,
+  },
+  // ── Phase 8: Adaptive Pipeline Configs ──────────────────────────────────
+  {
+    id: "H",
+    label: "Vector → Reranker (no RRF)",
+    useVector: true,
+    useFts: false,
+    useReranker: true,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+  },
+  {
+    id: "I",
+    label: "Adaptive Hybrid (overlap-aware RRF)",
+    useVector: true,
+    useFts: true,
+    useReranker: false,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    adaptiveRrf: true,
+  },
+  {
+    id: "J",
+    label: "Reranker-as-Fusioner (union → rerank)",
+    useVector: true,
+    useFts: true,
+    useReranker: true,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    rerankerFusion: true,
+  },
+  {
+    id: "K",
+    label: "Vector → Adaptive MMR",
+    useVector: true,
+    useFts: false,
+    useReranker: false,
+    useMmr: true,
+    useHyde: false,
+    mmrLambda: "adaptive",
+    maxResults: 10,
+  },
+  {
+    id: "L",
+    label: "Full Adaptive (overlap RRF → Reranker → Adaptive MMR)",
+    useVector: true,
+    useFts: true,
+    useReranker: true,
+    useMmr: true,
+    useHyde: false,
+    mmrLambda: "adaptive",
+    maxResults: 10,
+    adaptiveRrf: true,
   },
 ];
 
@@ -293,10 +357,28 @@ async function runRetrieval(
       }
     }
 
-    // Hybrid merge — fuse vector and FTS with proper separation
+    // ── Fusion stage: Hybrid merge or Reranker-as-Fusioner ────────────────
     let candidates: SearchResult[];
-    if (config.useVector && config.useFts && vectorResults.length > 0 && ftsResults.length > 0) {
-      candidates = hybridMerge(vectorResults, ftsResults, k * 2);
+
+    if (config.rerankerFusion && reranker && vectorResults.length > 0 && ftsResults.length > 0) {
+      // Phase 8 Fix 2: Reranker-as-Fusioner — skip RRF entirely,
+      // pass raw union to cross-encoder and let it score independently
+      const fusionPool = prepareRerankerFusion(vectorResults, ftsResults, k * 4);
+      candidates = await reranker.rerank(q.text, fusionPool, k);
+      tel.stages.hybrid = {
+        count: fusionPool.length,
+        top1Id: candidates[0]?.chunk.id ?? "",
+        top1Score: candidates[0]?.score ?? 0,
+      };
+      tel.stages.reranker = {
+        top1Id: candidates[0]?.chunk.id ?? "",
+        top1Score: candidates[0]?.score ?? 0,
+        reorderCount: -1, // N/A for fusion mode
+      };
+    } else if (config.useVector && config.useFts && vectorResults.length > 0 && ftsResults.length > 0) {
+      // Hybrid merge — adaptive or static RRF
+      const mode = config.adaptiveRrf ? "adaptive" : "static";
+      candidates = hybridMerge(vectorResults, ftsResults, k * 2, 60, 1.0, 1.0, mode);
       if (candidates.length > 0) {
         tel.stages.hybrid = {
           count: candidates.length,
@@ -315,8 +397,8 @@ async function runRetrieval(
       });
     }
 
-    // Reranker
-    if (config.useReranker && reranker && candidates.length > 0) {
+    // ── Reranker (standard path, skip if rerankerFusion already handled it) ─
+    if (config.useReranker && reranker && candidates.length > 0 && !config.rerankerFusion) {
       const beforeOrder = candidates.slice(0, 5).map((c) => c.chunk.id);
       candidates = await reranker.rerank(q.text, candidates, k);
       const afterOrder = candidates.slice(0, 5).map((c) => c.chunk.id);
@@ -328,7 +410,7 @@ async function runRetrieval(
       };
     }
 
-    // MMR diversity
+    // ── MMR diversity (supports adaptive lambda) ─────────────────────────
     if (config.useMmr && candidates.length > 0) {
       const beforeCount = candidates.length;
       candidates = mmrRerank(candidates, k, config.mmrLambda);
