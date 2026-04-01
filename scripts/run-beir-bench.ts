@@ -37,6 +37,7 @@ import { generateHypotheticalDocument } from "../src/hyde/generator.js";
 import { createReranker } from "../src/rerank/reranker.js";
 import type { SearchResult } from "../src/storage/backend.js";
 import { LanceDBBackend } from "../src/storage/lancedb.js";
+import { expandQuery, QUERY_EXPANSION_DEFAULTS, type QueryExpansionConfig } from "../src/query/expander.js";
 
 import { evaluateBEIR, type Qrels, type Results } from "../evaluation/metrics.js";
 
@@ -68,6 +69,10 @@ interface RetrievalConfig {
   conditionalRerank?: boolean;
   /** Phase 9B: Spread threshold for confident vector results (skip reranker if spread > this) */
   confidenceThreshold?: number;
+  /** Phase 11B: Use multi-query expansion (generate LLM reformulations) */
+  useMultiQuery?: boolean;
+  /** Phase 11B: Number of reformulations to generate (default: 3) */
+  multiQueryN?: number;
 }
 
 interface QueryTelemetry {
@@ -81,6 +86,14 @@ interface QueryTelemetry {
     reranker?: { top1Id: string; top1Score: number; reorderCount: number };
     mmr?: { removedNearDuplicates: number };
     hyde?: { hypotheticalDoc: string };
+    multiQuery?: {
+      numQueries: number;
+      reformulations: string[];
+      perQueryHits: number[];
+      unionSize: number;
+      expandMs: number;
+      totalMs: number;
+    };
   };
   finalResults: Array<{ id: string; score: number; text: string }>;
   latencyMs: number;
@@ -397,6 +410,66 @@ const CONFIGS: RetrievalConfig[] = [
     maxResults: 10,
     scoreBlendAlpha: 0.8,
   },
+  // ── Phase 11B: Multi-Query Expansion ──────────────────────────────────────
+  // Generate LLM reformulations → parallel embed + search → union → rerank.
+  // Attacks the 11% retrieval ceiling where relevant docs are invisible to single queries.
+  {
+    id: "MQ-A",
+    label: "Multi-Query (3) → Vector-Only",
+    useVector: true,
+    useFts: false,
+    useReranker: false,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    useMultiQuery: true,
+    multiQueryN: 3,
+  },
+  {
+    id: "MQ-B",
+    label: "Multi-Query (3) → Logit Blend (α=0.4)",
+    useVector: true,
+    useFts: false,
+    useReranker: true,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    useMultiQuery: true,
+    multiQueryN: 3,
+    scoreBlendAlpha: 0.4,
+  },
+  {
+    id: "MQ-C",
+    label: "Multi-Query (3) → Logit Blend (α=0.5)",
+    useVector: true,
+    useFts: false,
+    useReranker: true,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    useMultiQuery: true,
+    multiQueryN: 3,
+    scoreBlendAlpha: 0.5,
+  },
+  {
+    id: "MQ-D",
+    label: "Multi-Query (3) → Conditional Logit Blend (α=0.4)",
+    useVector: true,
+    useFts: false,
+    useReranker: true,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    useMultiQuery: true,
+    multiQueryN: 3,
+    scoreBlendAlpha: 0.4,
+    conditionalRerank: true,
+    confidenceThreshold: 0.15,
+  },
 ];
 
 // ── Functions ───────────────────────────────────────────────────────────────
@@ -439,6 +512,7 @@ async function runRetrieval(
   embed: EmbedQueue,
   reranker: Awaited<ReturnType<typeof createReranker>> | null,
   hydeConfig: HydeConfig | undefined,
+  expansionConfig: QueryExpansionConfig | undefined,
   config: RetrievalConfig,
   dataset: string,
 ): Promise<{ results: Results; telemetry: QueryTelemetry[] }> {
@@ -513,12 +587,76 @@ async function runRetrieval(
     let vectorResults: SearchResult[] = [];
     let ftsResults: SearchResult[] = [];
 
-    // Vector search
+    // Vector search (with optional multi-query expansion)
     if (config.useVector) {
       const t0vec = Date.now();
-      vectorResults = await backend
-        .vectorSearch(queryVector, { query: q.text, maxResults: k * 4, minScore: 0.0, pathContains: `beir/${dataset}/` })
-        .catch((e) => { if (i === 0) console.error(`\n[WARN] vectorSearch error on query ${q._id}: ${e}`); return []; });
+
+      if (config.useMultiQuery && expansionConfig) {
+        // ── Phase 11B: Multi-Query Expansion ──────────────────────────────
+        // Generate reformulations → embed each → search each → union results.
+        // Parallel embeds + searches, but SEQUENTIAL LLM call (avoid OOM on Spark).
+        const t0expand = Date.now();
+        const queries = await expandQuery(q.text, expansionConfig);
+        const expandMs = Date.now() - t0expand;
+
+        if (verbose) {
+          console.log(`[bench]   multi-query: ${queries.length} queries (${expandMs}ms for expansion)`);
+          for (const mq of queries) console.log(`[bench]     → "${mq.slice(0, 100)}"`);
+        }
+
+        // Embed all queries in parallel (embeds are cheap, ~200ms each)
+        const t0emb = Date.now();
+        const queryVectors = await Promise.all(
+          queries.map((mq) => embed.embedQuery(mq).catch(() => null)),
+        );
+        const validVectors = queryVectors.filter((v): v is number[] => v !== null);
+        if (verbose) {
+          console.log(`[bench]   multi-query embed: ${validVectors.length}/${queries.length} vectors in ${Date.now() - t0emb}ms`);
+        }
+
+        // Search each vector in parallel (searches are independent)
+        const searchOpts = { query: q.text, maxResults: k * 4, minScore: 0.0, pathContains: `beir/${dataset}/` };
+        const allResults = await Promise.all(
+          validVectors.map((vec) =>
+            backend.vectorSearch(vec, searchOpts).catch(() => [] as SearchResult[]),
+          ),
+        );
+
+        // Union: dedupe by chunk ID, keep highest score
+        const best = new Map<string, SearchResult>();
+        for (const resultSet of allResults) {
+          for (const r of resultSet) {
+            const existing = best.get(r.chunk.id);
+            if (!existing || r.score > existing.score) {
+              best.set(r.chunk.id, r);
+            }
+          }
+        }
+        vectorResults = [...best.values()].sort((a, b) => b.score - a.score);
+
+        const perQueryHits = allResults.map((r) => r.length);
+        tel.stages.multiQuery = {
+          numQueries: queries.length,
+          reformulations: queries.slice(1).map((r) => r.slice(0, 80)),
+          perQueryHits,
+          unionSize: vectorResults.length,
+          expandMs,
+          totalMs: Date.now() - t0vec,
+        };
+
+        if (verbose) {
+          console.log(
+            `[bench]   multi-query union: ${vectorResults.length} unique docs ` +
+            `(per-query: [${perQueryHits.join(", ")}]) in ${Date.now() - t0vec}ms total`,
+          );
+        }
+      } else {
+        // Standard single-query vector search
+        vectorResults = await backend
+          .vectorSearch(queryVector, { query: q.text, maxResults: k * 4, minScore: 0.0, pathContains: `beir/${dataset}/` })
+          .catch((e) => { if (i === 0) console.error(`\n[WARN] vectorSearch error on query ${q._id}: ${e}`); return []; });
+      }
+
       if (vectorResults.length > 0) {
         tel.stages.vector = {
           count: vectorResults.length,
@@ -723,6 +861,13 @@ async function main() {
   const hydeConfig = (cliHyde || cfg.hyde?.enabled) ? cfg.hyde : undefined;
   console.log(`[INFO] HyDE: ${hydeConfig?.enabled ? "enabled" : "disabled"} (cli-forced: ${cliHyde})`);
 
+  // Multi-query expansion config — uses same Spark vLLM as HyDE.
+  const expansionConfig: QueryExpansionConfig = {
+    ...QUERY_EXPANSION_DEFAULTS,
+    apiKey: process.env.SPARK_BEARER_TOKEN,
+  };
+  console.log(`[INFO] Multi-Query Expansion: available (per-config useMultiQuery controls activation)`);
+
   // Load dataset
   console.log(`[INFO] Loading ${datasetArg} queries and qrels...`);
   const queries = await loadQueries(datasetArg);
@@ -750,6 +895,7 @@ async function main() {
       embed,
       reranker,
       hydeConfig,
+      config.useMultiQuery ? expansionConfig : undefined,
       config,
       datasetArg,
     );
