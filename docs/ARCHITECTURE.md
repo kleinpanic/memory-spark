@@ -1,8 +1,8 @@
-# memory-spark v1.0 Architecture
+# memory-spark v0.4.0 Architecture
 
-**Status:** Planning → Implementation  
+**Status:** Production  
 **Authors:** KleinClaw-Meta (Opus 4.6) + Dev (Codex 5.4)  
-**Last Updated:** 2026-03-27
+**Last Updated:** 2026-04-01
 
 ## Design Principles
 
@@ -89,56 +89,96 @@ The `pool` column provides logical data isolation within the single table. All f
 
 ---
 
-## 2. Retrieval Pipeline (Revised)
+## 2. Retrieval Pipeline (v0.4.0)
 
 ```
-Query → Clean → Embed → [Per-Agent Search] → [Shared Search] → Merge → 
-  → Source Weight → Temporal Decay → MMR Diversity → Cross-Encoder Rerank → Budget Trim → Inject
+Query → Clean → HyDE (optional) → Multi-Query Expand → Embed
+  → Per-Pool Search (Vector + FTS) → RRF Hybrid Merge
+  → Source Weighting → Temporal Decay → Source Dedup
+  → Dynamic Reranker Gate → Cross-Encoder Rerank → RRF Blend
+  → MMR Diversity → Parent-Child Expansion → LCM Dedup
+  → Security Filter → Token Budget → <relevant-memories> XML
 ```
 
 ### Stage Details
 
 1. **Query Cleaning** (`cleanQueryText`)
-   - Strip oc-tasks blocks, system prefixes, media paths
-   - Normalize whitespace, remove markdown formatting artifacts
-   - Extract intent keywords for FTS boost
+   - Strip Discord metadata, oc-tasks blocks, system prefixes, media paths
+   - Remove LCM summary blocks and `<relevant-memories>` (prevent recursive recall)
+   - Normalize whitespace, collapse excessive newlines
 
-2. **Parallel Table Search** (per-agent + shared)
-   - Agent memory: Vector + FTS on `agent_{id}_memory`
-   - Agent tools: Vector on `agent_{id}_tools` (for tool-context queries)
-   - Shared knowledge: Vector + FTS on `shared_knowledge`
-   - Shared mistakes: Vector + FTS on `shared_mistakes`
-   - NO reference tables searched (unless tool call)
+2. **HyDE — Hypothetical Document Embeddings** (optional)
+   - Generate a hypothetical answer document via LLM
+   - Embed as a DOCUMENT (no instruction prefix) → lands in document subspace
+   - Bridges the question↔answer semantic gap
+   - Quality gate: reject refusals, too-short responses
+   - Fallback: raw query embedding on failure/timeout
 
-3. **Hybrid Merge** (`hybridMerge`)
-   - Preserve raw cosine similarity scores from vector search
-   - Normalize FTS BM25 scores via calibrated sigmoid
-   - Dual-source bonus: +0.15 for results appearing in both Vector and FTS
-   - Cross-table dedup by content hash
+3. **Multi-Query Expansion** (Phase 11B)
+   - Generate 3 LLM reformulations of the query
+   - Embed each reformulation in parallel
+   - All query vectors used in subsequent vector search (union by chunk ID)
 
-4. **Source Weighting**
-   - Agent own memory: 1.0x (baseline)
-   - Shared knowledge: 0.8x
-   - Shared mistakes: 1.6x
-   - Agent tools: 1.3x
-   - Configurable per-agent via `autoRecall.weights`
+4. **Per-Pool Search** (5 pools searched in parallel)
+   - agent_memory + agent_tools (filtered by agent_id)
+   - agent_mistakes (filtered, 1.6× boost)
+   - shared_mistakes (cross-agent, 1.6× boost)
+   - shared_knowledge (cross-agent, 0.8× weight)
+   - shared_rules (cross-agent)
+   - Each pool: Vector search + FTS search → RRF merge
 
-5. **Temporal Decay**
-   - Formula: `0.8 + 0.2 * exp(-0.03 * ageDays)`
-   - 80% floor: old knowledge is never fully suppressed
-   - NaN-safe: invalid timestamps skip decay (score preserved)
+5. **RRF Hybrid Merge** (`hybridMerge`)
+   - Reciprocal Rank Fusion: `score(d) = Σ weight / (k + rank)`
+   - Scale-invariant — no normalization of BM25 or cosine scores
+   - Configurable k (default 60), vector/FTS weights
+   - Dual-source documents get natural rank-sum boost
 
-6. **MMR Diversity** (λ=0.7)
-   - Maximal Marginal Relevance to avoid redundant chunks
-   - Ensures diverse coverage across topics
+6. **Source Weighting** (`applySourceWeighting`)
+   - Captures: 1.5×, Mistakes: 1.6×, Sessions: 0.5×, Archive: 0.4×
+   - Path-specific weights (MEMORY.md 1.4×, TOOLS.md 1.3×, etc.)
+   - Configurable via `autoRecall.weights`
 
-7. **Cross-Encoder Rerank** (Nemotron Rerank 1B v2)
-   - Top-20 candidates → reranked by relevance to original query
-   - Runs on Spark GPU when available, graceful degradation to skip
+7. **Temporal Decay** (`applyTemporalDecay`)
+   - Formula: `floor + (1 - floor) × exp(-rate × ageDays)`
+   - Default: floor=0.8, rate=0.03 → gentle decay, 80% floor
+   - NaN-safe: invalid timestamps skip decay
 
-8. **Token Budget Trim**
-   - `maxInjectionTokens` (default: 2000) limits total injection
-   - Greedy fill: highest-scored chunks first until budget exhausted
+8. **Source Dedup** (`deduplicateSources`)
+   - Within same source: Jaccard token overlap > 0.85 = deduplicate
+   - Cross-source chunks never deduped
+
+9. **Dynamic Reranker Gate** (Phase 12, `computeRerankerGate`)
+   - Compute top-5 vector score spread (max − min)
+   - **Hard gate** (default): skip reranker if spread > 0.08 (confident) or < 0.02 (tied)
+   - **Soft gate**: dynamically scale vector weight from spread
+   - Benchmark: 78% queries skip reranking with no NDCG loss
+
+10. **Cross-Encoder Rerank** (`nvidia/llama-nemotron-rerank-1b-v2`)
+    - Fires only when gate passes (spread 0.02–0.08)
+    - Rescores all candidates against original query text
+    - Automatic query normalization (declarative → interrogative)
+
+11. **RRF Blend** (Phase 12)
+    - Fuses original vector ranks with reranker ranks via RRF
+    - Configurable vector/reranker weights and k
+    - Scale-invariant — avoids the min-max normalization problems of score blending
+
+12. **MMR Diversity** (`mmrRerank`, λ=0.9)
+    - Cosine similarity on embedding vectors (semantic diversity)
+    - Fallback: Jaccard on token sets when vectors unavailable
+    - Defense-in-depth: validates vector type before cosine path
+
+13. **Parent-Child Expansion**
+    - Child chunks retrieved precisely → replaced with parent text for context
+    - Dedup: multiple children from same parent → keep highest-scoring
+
+14. **LCM Dedup**
+    - Skip chunks that overlap >40% with recent conversation messages
+    - Skip chunks that overlap with LCM summary content already in context
+
+15. **Security Filter** + **Token Budget**
+    - Prompt injection detection (regex patterns)
+    - Greedy fill: highest-scored chunks first until `maxInjectionTokens` budget exhausted
 
 ---
 

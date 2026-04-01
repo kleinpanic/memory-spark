@@ -1,6 +1,6 @@
 {
   "name": "memory-spark",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Autonomous Spark-powered memory plugin for OpenClaw",
   "type": "module",
   "main": "dist/index.js",
