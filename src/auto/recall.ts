@@ -366,6 +366,34 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
  * @param k — RRF smoothing constant (default 60, same as Elasticsearch/Azure)
  * @see https://plg.uwaterloo.ca/~grcorcor/topicmodels/rrf.pdf
  */
+/**
+ * Compute overlap ratio between two result sets (by document ID).
+ * Returns a value in [0, 1] representing how many of the top-K vector
+ * results also appear anywhere in the FTS results.
+ */
+export function computeOverlap(vectorResults: SearchResult[], ftsResults: SearchResult[], topK = 10): number {
+  const vecIds = new Set(vectorResults.slice(0, topK).map((r) => r.chunk.id));
+  const ftsIds = new Set(ftsResults.map((r) => r.chunk.id));
+  if (vecIds.size === 0) return 0;
+  let overlap = 0;
+  for (const id of vecIds) {
+    if (ftsIds.has(id)) overlap++;
+  }
+  return overlap / vecIds.size;
+}
+
+/**
+ * Overlap-Aware Adaptive Hybrid Merge (Phase 8 Fix 1).
+ *
+ * Instead of static RRF weights, dynamically adjusts vector vs FTS influence
+ * based on how much the two retrieval systems agree at query time.
+ *
+ * - High overlap (>0.6): Standard RRF — both systems agree, dual evidence is meaningful.
+ * - Medium overlap (0.3–0.6): Vector-biased RRF — trust vector more, FTS supplements.
+ * - Low overlap (<0.3): Vector-primary — FTS-only docs heavily demoted, only dual-evidence FTS promoted.
+ *
+ * When mode="static", falls back to original fixed-weight behavior for backward compat.
+ */
 export function hybridMerge(
   vectorResults: SearchResult[],
   ftsResults: SearchResult[],
@@ -373,14 +401,45 @@ export function hybridMerge(
   k = 60,
   vectorWeight = 1.0,
   ftsWeight = 1.0,
+  mode: "adaptive" | "static" = "static",
 ): SearchResult[] {
+  // Compute overlap to determine fusion strategy
+  const overlapRatio = computeOverlap(vectorResults, ftsResults);
+
+  // Adaptive weight selection based on overlap
+  let effectiveVecWeight = vectorWeight;
+  let effectiveFtsWeight = ftsWeight;
+  let strategy: string;
+
+  if (mode === "adaptive") {
+    if (overlapRatio > 0.6) {
+      // High agreement — standard RRF, both systems see the same docs
+      effectiveVecWeight = 1.0;
+      effectiveFtsWeight = 1.0;
+      strategy = "high-overlap-balanced";
+    } else if (overlapRatio > 0.3) {
+      // Medium agreement — vector primary, FTS supplements
+      effectiveVecWeight = 1.5;
+      effectiveFtsWeight = 0.5;
+      strategy = "medium-overlap-vec-biased";
+    } else {
+      // Low agreement — vector dominant, FTS barely contributes
+      // FTS-only docs get heavily penalized; only dual-evidence docs benefit
+      effectiveVecWeight = 2.0;
+      effectiveFtsWeight = 0.3;
+      strategy = "low-overlap-vec-primary";
+    }
+  } else {
+    strategy = "static";
+  }
+
   const merged = new Map<string, { result: SearchResult; rrfScore: number; sources: number }>();
 
   // Vector results: weighted RRF score from rank position only (1-indexed per the paper)
   vectorResults.forEach((r, idx) => {
     merged.set(r.chunk.id, {
       result: r,
-      rrfScore: vectorWeight * (1 / (k + idx + 1)),
+      rrfScore: effectiveVecWeight * (1 / (k + idx + 1)),
       sources: 1,
     });
   });
@@ -388,7 +447,7 @@ export function hybridMerge(
   // FTS results: weighted RRF score (sums when document found in both lists)
   ftsResults.forEach((r, idx) => {
     const id = r.chunk.id;
-    const ftsRrf = ftsWeight * (1 / (k + idx + 1));
+    const ftsRrf = effectiveFtsWeight * (1 / (k + idx + 1));
     const existing = merged.get(id);
     if (existing) {
       existing.rrfScore += ftsRrf;
@@ -409,7 +468,7 @@ export function hybridMerge(
   if (process.env.MEMORY_SPARK_DEBUG) {
     const dualEvidence = sorted.filter((s) => s.sources === 2).length;
     console.debug(
-      `[hybridMerge] total=${sorted.length} dualEvidence=${dualEvidence} vectorWeight=${vectorWeight} ftsWeight=${ftsWeight}`,
+      `[hybridMerge] strategy=${strategy} overlap=${overlapRatio.toFixed(2)} total=${sorted.length} dualEvidence=${dualEvidence} vecW=${effectiveVecWeight} ftsW=${effectiveFtsWeight}`,
     );
   }
 
@@ -417,6 +476,48 @@ export function hybridMerge(
     ...s.result,
     score: maxRrf > 0 ? s.rrfScore / maxRrf : 0,
   }));
+}
+
+/**
+ * Reranker-as-Fusioner (Phase 8 Fix 2).
+ *
+ * Instead of RRF → Reranker (reranker cleans up RRF mess), this takes the
+ * raw union of vector and FTS results and lets the cross-encoder score
+ * each (query, doc) pair independently. The reranker IS the fusion step.
+ *
+ * This follows the NVIDIA RAG Blueprint: retrieve broadly, rerank precisely.
+ */
+export function prepareRerankerFusion(
+  vectorResults: SearchResult[],
+  ftsResults: SearchResult[],
+  limit: number,
+): SearchResult[] {
+  // Deduplicate by ID, keeping the version with the higher original score
+  const seen = new Map<string, SearchResult>();
+  for (const r of vectorResults) {
+    seen.set(r.chunk.id, r);
+  }
+  for (const r of ftsResults) {
+    const existing = seen.get(r.chunk.id);
+    if (!existing || r.score > existing.score) {
+      seen.set(r.chunk.id, r);
+    }
+  }
+
+  // Sort by original score descending (this ordering doesn't matter much
+  // since the reranker will rescore everything, but limits candidate count)
+  const candidates = Array.from(seen.values()).sort((a, b) => b.score - a.score);
+
+  if (process.env.MEMORY_SPARK_DEBUG) {
+    const vecOnly = vectorResults.filter((r) => !ftsResults.some((f) => f.chunk.id === r.chunk.id)).length;
+    const ftsOnly = ftsResults.filter((r) => !vectorResults.some((v) => v.chunk.id === r.chunk.id)).length;
+    const both = candidates.length - vecOnly - ftsOnly;
+    console.debug(
+      `[rerankerFusion] candidates=${candidates.length} vecOnly=${vecOnly} ftsOnly=${ftsOnly} both=${both}`,
+    );
+  }
+
+  return candidates.slice(0, limit);
 }
 
 /**
@@ -522,8 +623,57 @@ function jaccardSimilaritySet(a: Set<string>, b: Set<string>): number {
  * Uses cosine similarity on embedding vectors (semantic diversity).
  * Falls back to Jaccard similarity on token sets when vectors are unavailable.
  */
-export function mmrRerank(results: SearchResult[], limit: number, lambda: number): SearchResult[] {
+/**
+ * Compute adaptive MMR lambda based on the score distribution (Phase 8 Fix 3).
+ *
+ * Wide spread → ranking is confident → high lambda (trust relevance, ~0.95)
+ * Medium spread → moderate confidence → balanced lambda (~0.85)
+ * Tight cluster → ranker can't distinguish → lower lambda (~0.7, diversity helps)
+ *
+ * Returns computed lambda and the spread for telemetry.
+ */
+export function computeAdaptiveLambda(
+  results: SearchResult[],
+  opts?: { highSpreadThreshold?: number; lowSpreadThreshold?: number; highLambda?: number; midLambda?: number; lowLambda?: number },
+): { lambda: number; spread: number; tier: "wide" | "medium" | "tight" } {
+  if (results.length <= 1) return { lambda: 0.9, spread: 0, tier: "wide" };
+
+  const scores = results.map((r) => r.score);
+  const maxScore = Math.max(...scores);
+  const minScore = Math.min(...scores);
+  const spread = maxScore - minScore;
+
+  const highThresh = opts?.highSpreadThreshold ?? 0.3;
+  const lowThresh = opts?.lowSpreadThreshold ?? 0.1;
+
+  if (spread > highThresh) {
+    return { lambda: opts?.highLambda ?? 0.95, spread, tier: "wide" };
+  } else if (spread > lowThresh) {
+    return { lambda: opts?.midLambda ?? 0.85, spread, tier: "medium" };
+  } else {
+    return { lambda: opts?.lowLambda ?? 0.7, spread, tier: "tight" };
+  }
+}
+
+/**
+ * MMR reranking with optional adaptive lambda (Phase 8).
+ *
+ * When lambda is a number, uses fixed lambda (backward compat).
+ * When lambda is "adaptive", computes lambda from score distribution.
+ */
+export function mmrRerank(results: SearchResult[], limit: number, lambda: number | "adaptive"): SearchResult[] {
   if (results.length <= 1) return results;
+
+  // Resolve lambda — adaptive or fixed
+  let effectiveLambda: number;
+  let adaptiveInfo: { spread: number; tier: string } | undefined;
+  if (lambda === "adaptive") {
+    const computed = computeAdaptiveLambda(results);
+    effectiveLambda = computed.lambda;
+    adaptiveInfo = { spread: computed.spread, tier: computed.tier };
+  } else {
+    effectiveLambda = lambda;
+  }
 
   // Determine similarity strategy: cosine on vectors if available, else Jaccard on tokens.
   // Defense-in-depth: Arrow Vector objects pass .length > 0 but vec[0] is undefined.
@@ -536,8 +686,11 @@ export function mmrRerank(results: SearchResult[], limit: number, lambda: number
   if (process.env.MEMORY_SPARK_DEBUG) {
     const strategy = hasVectors ? "cosine" : "jaccard";
     const vecType = results[0]?.vector?.constructor?.name ?? "none";
+    const lambdaStr = adaptiveInfo
+      ? `adaptive(λ=${effectiveLambda} spread=${adaptiveInfo.spread.toFixed(3)} tier=${adaptiveInfo.tier})`
+      : `fixed(λ=${effectiveLambda})`;
     console.debug(
-      `[mmrRerank] strategy=${strategy} vectorType=${vecType} candidates=${results.length} limit=${limit} lambda=${lambda}`,
+      `[mmrRerank] strategy=${strategy} vectorType=${vecType} candidates=${results.length} limit=${limit} ${lambdaStr}`,
     );
   }
 
@@ -577,7 +730,7 @@ export function mmrRerank(results: SearchResult[], limit: number, lambda: number
         if (sim > maxSim) maxSim = sim;
       }
 
-      const mmrScore = lambda * relevance - (1 - lambda) * maxSim;
+      const mmrScore = effectiveLambda * relevance - (1 - effectiveLambda) * maxSim;
       if (mmrScore > bestMmrScore) {
         bestMmrScore = mmrScore;
         bestMmrIdx = i;

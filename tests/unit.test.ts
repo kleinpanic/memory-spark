@@ -17,7 +17,7 @@ import { heuristicClassify } from "../src/classify/heuristic.js";
 import type { MemoryChunk, SearchResult } from "../src/storage/backend.js";
 import { applyTemporalDecay } from "../src/auto/recall.js";
 import { shouldProcessAgent } from "../src/config.js";
-import { hybridMerge, applySourceWeighting, mmrRerank, cosineSimilarity, deduplicateSources } from "../src/auto/recall.js";
+import { hybridMerge, applySourceWeighting, mmrRerank, cosineSimilarity, deduplicateSources, computeOverlap, computeAdaptiveLambda, prepareRerankerFusion } from "../src/auto/recall.js";
 import { EmbedCache } from "../src/embed/cache.js";
 import {
   ndcgAtK,
@@ -3002,5 +3002,167 @@ describe("Phase 7: cosineSimilarity edge cases", () => {
 
   it("returns 0 for mismatched dimensions", () => {
     assert.strictEqual(cosineSimilarity([1, 2], [1, 2, 3]), 0);
+  });
+});
+
+// ── Phase 8: Adaptive Pipeline Tests ─────────────────────────────────────────
+
+function makeResult(id: string, score: number, vector?: number[]): any {
+  return {
+    chunk: { id, text: `text for ${id}`, metadata: {}, createdAt: new Date(), updatedAt: new Date(), source: "test", pool: "default" },
+    score,
+    vector: vector ?? undefined,
+  };
+}
+
+describe("Phase 8: computeOverlap", () => {
+  it("returns 1.0 for identical result sets", () => {
+    const vec = [makeResult("a", 0.9), makeResult("b", 0.8), makeResult("c", 0.7)];
+    const fts = [makeResult("a", 0.5), makeResult("b", 0.4), makeResult("c", 0.3)];
+    assert.strictEqual(computeOverlap(vec, fts, 3), 1.0);
+  });
+
+  it("returns 0.0 for completely disjoint result sets", () => {
+    const vec = [makeResult("a", 0.9), makeResult("b", 0.8)];
+    const fts = [makeResult("x", 0.5), makeResult("y", 0.4)];
+    assert.strictEqual(computeOverlap(vec, fts, 2), 0.0);
+  });
+
+  it("returns correct ratio for partial overlap", () => {
+    const vec = [makeResult("a", 0.9), makeResult("b", 0.8), makeResult("c", 0.7), makeResult("d", 0.6)];
+    const fts = [makeResult("a", 0.5), makeResult("x", 0.4), makeResult("y", 0.3), makeResult("b", 0.2)];
+    // 2 of 4 vector docs (a, b) appear in FTS
+    assert.strictEqual(computeOverlap(vec, fts, 4), 0.5);
+  });
+
+  it("only checks top-K vector docs", () => {
+    const vec = [makeResult("a", 0.9), makeResult("b", 0.8), makeResult("c", 0.7)];
+    const fts = [makeResult("c", 0.5)]; // c is only in vector position 3
+    // topK=2: only checks a, b → 0/2 overlap
+    assert.strictEqual(computeOverlap(vec, fts, 2), 0.0);
+    // topK=3: checks a, b, c → 1/3 overlap
+    const ratio = computeOverlap(vec, fts, 3);
+    assert.ok(Math.abs(ratio - 1/3) < 0.001);
+  });
+
+  it("returns 0 for empty vector results", () => {
+    assert.strictEqual(computeOverlap([], [makeResult("a", 0.5)], 10), 0.0);
+  });
+});
+
+describe("Phase 8: Adaptive Hybrid Merge (overlap-aware RRF)", () => {
+  it("adaptive mode adjusts weights based on overlap — high overlap uses balanced weights", () => {
+    // Create results where ALL vector docs appear in FTS (100% overlap)
+    const vec = [makeResult("a", 0.9), makeResult("b", 0.8)];
+    const fts = [makeResult("a", 0.5), makeResult("b", 0.4)];
+    const resultAdaptive = hybridMerge(vec, fts, 4, 60, 1.0, 1.0, "adaptive");
+    const resultStatic = hybridMerge(vec, fts, 4, 60, 1.0, 1.0, "static");
+    // High overlap → adaptive should behave like static (equal weights)
+    assert.strictEqual(resultAdaptive[0]!.chunk.id, resultStatic[0]!.chunk.id);
+  });
+
+  it("adaptive mode with low overlap preserves vector ranking", () => {
+    // 0% overlap: vector docs not in FTS at all
+    const vec = [makeResult("v1", 0.9), makeResult("v2", 0.8), makeResult("v3", 0.7)];
+    const fts = [makeResult("f1", 0.95), makeResult("f2", 0.85), makeResult("f3", 0.75)];
+    
+    const staticResult = hybridMerge(vec, fts, 3, 60, 1.0, 1.0, "static");
+    const adaptiveResult = hybridMerge(vec, fts, 3, 60, 1.0, 1.0, "adaptive");
+    
+    // Static RRF with equal weights: rank 1 from each gets equal RRF
+    // Adaptive with low overlap: vector gets 2.0 weight, FTS gets 0.3
+    // So adaptive should have v1 at top (vector-primary), static might not
+    assert.strictEqual(adaptiveResult[0]!.chunk.id, "v1");
+  });
+
+  it("static mode ignores overlap and uses provided weights", () => {
+    const vec = [makeResult("v1", 0.9)];
+    const fts = [makeResult("f1", 0.5)];
+    // ftsWeight=5.0 should push f1 above v1 in static mode
+    const result = hybridMerge(vec, fts, 2, 60, 1.0, 5.0, "static");
+    assert.strictEqual(result[0]!.chunk.id, "f1");
+  });
+});
+
+describe("Phase 8: Reranker-as-Fusioner", () => {
+  it("deduplicates by ID, keeping higher score", () => {
+    const vec = [makeResult("shared", 0.9), makeResult("vec-only", 0.8)];
+    const fts = [makeResult("shared", 0.3), makeResult("fts-only", 0.7)];
+    const pool = prepareRerankerFusion(vec, fts, 10);
+    
+    assert.strictEqual(pool.length, 3); // shared, vec-only, fts-only
+    const shared = pool.find((r) => r.chunk.id === "shared");
+    assert.ok(shared);
+    assert.strictEqual(shared!.score, 0.9); // kept vector's higher score
+  });
+
+  it("includes all unique docs from both sources", () => {
+    const vec = [makeResult("a", 0.9), makeResult("b", 0.8)];
+    const fts = [makeResult("c", 0.7), makeResult("d", 0.6)];
+    const pool = prepareRerankerFusion(vec, fts, 10);
+    assert.strictEqual(pool.length, 4);
+  });
+
+  it("respects limit parameter", () => {
+    const vec = Array.from({ length: 20 }, (_, i) => makeResult(`v${i}`, 0.9 - i * 0.01));
+    const fts = Array.from({ length: 20 }, (_, i) => makeResult(`f${i}`, 0.8 - i * 0.01));
+    const pool = prepareRerankerFusion(vec, fts, 10);
+    assert.strictEqual(pool.length, 10);
+  });
+
+  it("prefers FTS version when FTS score is higher", () => {
+    const vec = [makeResult("shared", 0.3)];
+    const fts = [makeResult("shared", 0.9)];
+    const pool = prepareRerankerFusion(vec, fts, 10);
+    assert.strictEqual(pool[0]!.score, 0.9);
+  });
+});
+
+describe("Phase 8: Adaptive MMR Lambda", () => {
+  it("wide spread → high lambda (trust relevance)", () => {
+    const results = [makeResult("a", 1.0), makeResult("b", 0.5), makeResult("c", 0.2)];
+    const { lambda, tier } = computeAdaptiveLambda(results);
+    assert.strictEqual(tier, "wide");
+    assert.strictEqual(lambda, 0.95);
+  });
+
+  it("medium spread → balanced lambda", () => {
+    const results = [makeResult("a", 0.8), makeResult("b", 0.65), makeResult("c", 0.6)];
+    const { lambda, tier } = computeAdaptiveLambda(results);
+    assert.strictEqual(tier, "medium");
+    assert.strictEqual(lambda, 0.85);
+  });
+
+  it("tight cluster → low lambda (diversity helps)", () => {
+    const results = [makeResult("a", 0.85), makeResult("b", 0.83), makeResult("c", 0.82)];
+    const { lambda, tier } = computeAdaptiveLambda(results);
+    assert.strictEqual(tier, "tight");
+    assert.strictEqual(lambda, 0.7);
+  });
+
+  it("single result → default", () => {
+    const { lambda } = computeAdaptiveLambda([makeResult("a", 0.9)]);
+    assert.strictEqual(lambda, 0.9);
+  });
+
+  it("respects custom thresholds", () => {
+    const results = [makeResult("a", 0.8), makeResult("b", 0.6)]; // spread=0.2
+    // Default: 0.2 > 0.1 → medium tier
+    assert.strictEqual(computeAdaptiveLambda(results).tier, "medium");
+    // With high threshold at 0.15: 0.2 > 0.15 → wide tier
+    assert.strictEqual(computeAdaptiveLambda(results, { highSpreadThreshold: 0.15 }).tier, "wide");
+  });
+
+  it("mmrRerank accepts 'adaptive' string", () => {
+    const results = [
+      makeResult("a", 1.0, [1, 0, 0]),
+      makeResult("b", 0.5, [0, 1, 0]),
+      makeResult("c", 0.2, [0, 0, 1]),
+    ];
+    // Should not throw with "adaptive"
+    const reranked = mmrRerank(results, 3, "adaptive");
+    assert.strictEqual(reranked.length, 3);
+    // With wide spread (0.8), lambda should be 0.95 → nearly pure relevance → order preserved
+    assert.strictEqual(reranked[0]!.chunk.id, "a");
   });
 });
