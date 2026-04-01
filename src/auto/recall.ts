@@ -116,11 +116,12 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
       // Do NOT apply minScore to FTS results — BM25 scores are sigmoid-normalized
       // and nearly all map to >0.98, making minScore non-discriminative.
       // RRF handles FTS ranking by position (rank-only), not score magnitude.
-      const ftsResults = rawFtsResults.filter(
-        (r) => r.chunk.source !== "sessions",
-      );
+      const ftsResults = rawFtsResults.filter((r) => r.chunk.source !== "sessions");
       const merged = hybridMerge(
-        vectorResults, ftsResults, limit, 60,
+        vectorResults,
+        ftsResults,
+        limit,
+        60,
         cfg.hybridVectorWeight ?? 1.0,
         cfg.hybridFtsWeight ?? 1.0,
       );
@@ -371,7 +372,11 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
  * Returns a value in [0, 1] representing how many of the top-K vector
  * results also appear anywhere in the FTS results.
  */
-export function computeOverlap(vectorResults: SearchResult[], ftsResults: SearchResult[], topK = 10): number {
+export function computeOverlap(
+  vectorResults: SearchResult[],
+  ftsResults: SearchResult[],
+  topK = 10,
+): number {
   const vecIds = new Set(vectorResults.slice(0, topK).map((r) => r.chunk.id));
   const ftsIds = new Set(ftsResults.map((r) => r.chunk.id));
   if (vecIds.size === 0) return 0;
@@ -509,8 +514,12 @@ export function prepareRerankerFusion(
   const candidates = Array.from(seen.values()).sort((a, b) => b.score - a.score);
 
   if (process.env.MEMORY_SPARK_DEBUG) {
-    const vecOnly = vectorResults.filter((r) => !ftsResults.some((f) => f.chunk.id === r.chunk.id)).length;
-    const ftsOnly = ftsResults.filter((r) => !vectorResults.some((v) => v.chunk.id === r.chunk.id)).length;
+    const vecOnly = vectorResults.filter(
+      (r) => !ftsResults.some((f) => f.chunk.id === r.chunk.id),
+    ).length;
+    const ftsOnly = ftsResults.filter(
+      (r) => !vectorResults.some((v) => v.chunk.id === r.chunk.id),
+    ).length;
     const both = candidates.length - vecOnly - ftsOnly;
     console.debug(
       `[rerankerFusion] candidates=${candidates.length} vecOnly=${vecOnly} ftsOnly=${ftsOnly} both=${both}`,
@@ -584,9 +593,7 @@ export function deduplicateSources(results: SearchResult[]): SearchResult[] {
     const keptTokens: Set<string>[] = [];
 
     for (const r of group) {
-      const tokens = new Set(
-        (r.chunk.text.match(/\b\w{3,}\b/g) ?? []).map((w) => w.toLowerCase()),
-      );
+      const tokens = new Set((r.chunk.text.match(/\b\w{3,}\b/g) ?? []).map((w) => w.toLowerCase()));
       let isDuplicate = false;
       for (const existingTokens of keptTokens) {
         const sim = jaccardSimilaritySet(tokens, existingTokens);
@@ -634,7 +641,13 @@ function jaccardSimilaritySet(a: Set<string>, b: Set<string>): number {
  */
 export function computeAdaptiveLambda(
   results: SearchResult[],
-  opts?: { highSpreadThreshold?: number; lowSpreadThreshold?: number; highLambda?: number; midLambda?: number; lowLambda?: number },
+  opts?: {
+    highSpreadThreshold?: number;
+    lowSpreadThreshold?: number;
+    highLambda?: number;
+    midLambda?: number;
+    lowLambda?: number;
+  },
 ): { lambda: number; spread: number; tier: "wide" | "medium" | "tight" } {
   if (results.length <= 1) return { lambda: 0.9, spread: 0, tier: "wide" };
 
@@ -661,7 +674,11 @@ export function computeAdaptiveLambda(
  * When lambda is a number, uses fixed lambda (backward compat).
  * When lambda is "adaptive", computes lambda from score distribution.
  */
-export function mmrRerank(results: SearchResult[], limit: number, lambda: number | "adaptive"): SearchResult[] {
+export function mmrRerank(
+  results: SearchResult[],
+  limit: number,
+  lambda: number | "adaptive",
+): SearchResult[] {
   if (results.length <= 1) return results;
 
   // Resolve lambda — adaptive or fixed

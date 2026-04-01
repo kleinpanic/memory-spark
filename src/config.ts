@@ -347,8 +347,7 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
         apiKey: sparkToken,
         model: "nvidia/llama-embed-nemotron-8b",
         dimensions: 4096,
-        queryInstruction:
-          "Given a question, retrieve relevant passages that answer the query",
+        queryInstruction: "Given a question, retrieve relevant passages that answer the query",
       },
       openai: { model: "text-embedding-3-small" },
       gemini: { model: "gemini-embedding-001" },

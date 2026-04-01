@@ -17,7 +17,16 @@ import { heuristicClassify } from "../src/classify/heuristic.js";
 import type { MemoryChunk, SearchResult } from "../src/storage/backend.js";
 import { applyTemporalDecay } from "../src/auto/recall.js";
 import { shouldProcessAgent } from "../src/config.js";
-import { hybridMerge, applySourceWeighting, mmrRerank, cosineSimilarity, deduplicateSources, computeOverlap, computeAdaptiveLambda, prepareRerankerFusion } from "../src/auto/recall.js";
+import {
+  hybridMerge,
+  applySourceWeighting,
+  mmrRerank,
+  cosineSimilarity,
+  deduplicateSources,
+  computeOverlap,
+  computeAdaptiveLambda,
+  prepareRerankerFusion,
+} from "../src/auto/recall.js";
 import { EmbedCache } from "../src/embed/cache.js";
 import {
   ndcgAtK,
@@ -204,9 +213,24 @@ describe("Auto-Recall Logic", () => {
   it("MMR with cosine: keeps relevant-but-different chunks", () => {
     // Two chunks with different vectors (low cosine similarity) but both high relevance
     const results: import("../src/storage/backend.js").SearchResult[] = [
-      { chunk: { id: "a", text: "agent config", vector: [1, 0, 0, 0] } as any, score: 0.9, snippet: "", vector: [1, 0, 0, 0] },
-      { chunk: { id: "b", text: "agent memory", vector: [0, 1, 0, 0] } as any, score: 0.85, snippet: "", vector: [0, 1, 0, 0] },
-      { chunk: { id: "c", text: "weather info", vector: [0, 0, 1, 0] } as any, score: 0.5, snippet: "", vector: [0, 0, 1, 0] },
+      {
+        chunk: { id: "a", text: "agent config", vector: [1, 0, 0, 0] } as any,
+        score: 0.9,
+        snippet: "",
+        vector: [1, 0, 0, 0],
+      },
+      {
+        chunk: { id: "b", text: "agent memory", vector: [0, 1, 0, 0] } as any,
+        score: 0.85,
+        snippet: "",
+        vector: [0, 1, 0, 0],
+      },
+      {
+        chunk: { id: "c", text: "weather info", vector: [0, 0, 1, 0] } as any,
+        score: 0.5,
+        snippet: "",
+        vector: [0, 0, 1, 0],
+      },
     ];
     const ranked = mmrRerank(results, 3, 0.9);
     // Both high-relevance chunks should be kept because their vectors are orthogonal
@@ -222,8 +246,18 @@ describe("Auto-Recall Logic", () => {
     const v3 = [0, 0, 0.8, 0.2]; // very different
     const results: import("../src/storage/backend.js").SearchResult[] = [
       { chunk: { id: "a", text: "first", vector: v1 } as any, score: 0.9, snippet: "", vector: v1 },
-      { chunk: { id: "b", text: "duplicate", vector: v2 } as any, score: 0.85, snippet: "", vector: v2 },
-      { chunk: { id: "c", text: "different", vector: v3 } as any, score: 0.8, snippet: "", vector: v3 },
+      {
+        chunk: { id: "b", text: "duplicate", vector: v2 } as any,
+        score: 0.85,
+        snippet: "",
+        vector: v2,
+      },
+      {
+        chunk: { id: "c", text: "different", vector: v3 } as any,
+        score: 0.8,
+        snippet: "",
+        vector: v3,
+      },
     ];
     // With lambda=0.7 (strong diversity), the different vector should rank above the duplicate
     const ranked = mmrRerank(results, 3, 0.7);
@@ -234,9 +268,24 @@ describe("Auto-Recall Logic", () => {
 
   it("MMR with lambda=1.0: pure relevance ordering (no diversity)", () => {
     const results: import("../src/storage/backend.js").SearchResult[] = [
-      { chunk: { id: "a", text: "first", vector: [1, 0] } as any, score: 0.9, snippet: "", vector: [1, 0] },
-      { chunk: { id: "b", text: "second", vector: [1, 0] } as any, score: 0.8, snippet: "", vector: [1, 0] },
-      { chunk: { id: "c", text: "third", vector: [1, 0] } as any, score: 0.7, snippet: "", vector: [1, 0] },
+      {
+        chunk: { id: "a", text: "first", vector: [1, 0] } as any,
+        score: 0.9,
+        snippet: "",
+        vector: [1, 0],
+      },
+      {
+        chunk: { id: "b", text: "second", vector: [1, 0] } as any,
+        score: 0.8,
+        snippet: "",
+        vector: [1, 0],
+      },
+      {
+        chunk: { id: "c", text: "third", vector: [1, 0] } as any,
+        score: 0.7,
+        snippet: "",
+        vector: [1, 0],
+      },
     ];
     const ranked = mmrRerank(results, 3, 1.0);
     // Lambda=1.0 means diversity penalty is 0 → pure relevance order
@@ -260,8 +309,26 @@ describe("Auto-Recall Logic", () => {
 
   it("deduplicateSources: collapses overlapping chunks from same parent", () => {
     const results: import("../src/storage/backend.js").SearchResult[] = [
-      { chunk: { id: "a", text: "the agent configuration system handles model routing and fallbacks for all providers in the cluster", parent_id: "p1", path: "/mem.md" } as any, score: 0.9, snippet: "" },
-      { chunk: { id: "b", text: "the agent configuration system handles model routing and fallbacks for all providers in the production cluster", parent_id: "p1", path: "/mem.md" } as any, score: 0.7, snippet: "" },
+      {
+        chunk: {
+          id: "a",
+          text: "the agent configuration system handles model routing and fallbacks for all providers in the cluster",
+          parent_id: "p1",
+          path: "/mem.md",
+        } as any,
+        score: 0.9,
+        snippet: "",
+      },
+      {
+        chunk: {
+          id: "b",
+          text: "the agent configuration system handles model routing and fallbacks for all providers in the production cluster",
+          parent_id: "p1",
+          path: "/mem.md",
+        } as any,
+        score: 0.7,
+        snippet: "",
+      },
     ];
     const deduped = deduplicateSources(results);
     assert.equal(deduped.length, 1, "Near-identical chunks from same parent should collapse");
@@ -270,8 +337,24 @@ describe("Auto-Recall Logic", () => {
 
   it("deduplicateSources: preserves chunks from different sources", () => {
     const results: import("../src/storage/backend.js").SearchResult[] = [
-      { chunk: { id: "a", text: "the agent configuration system handles model routing", path: "/config.md" } as any, score: 0.9, snippet: "" },
-      { chunk: { id: "b", text: "the agent configuration system handles model routing", path: "/setup.md" } as any, score: 0.7, snippet: "" },
+      {
+        chunk: {
+          id: "a",
+          text: "the agent configuration system handles model routing",
+          path: "/config.md",
+        } as any,
+        score: 0.9,
+        snippet: "",
+      },
+      {
+        chunk: {
+          id: "b",
+          text: "the agent configuration system handles model routing",
+          path: "/setup.md",
+        } as any,
+        score: 0.7,
+        snippet: "",
+      },
     ];
     const deduped = deduplicateSources(results);
     // Same text but different sources → both kept (different paths = different groups)
@@ -280,8 +363,26 @@ describe("Auto-Recall Logic", () => {
 
   it("deduplicateSources: preserves distinct chunks from same parent", () => {
     const results: import("../src/storage/backend.js").SearchResult[] = [
-      { chunk: { id: "a", text: "the agent runs on user debian server", parent_id: "p1", path: "/infra.md" } as any, score: 0.9, snippet: "" },
-      { chunk: { id: "b", text: "model costs are tracked per session via codexbar", parent_id: "p1", path: "/infra.md" } as any, score: 0.7, snippet: "" },
+      {
+        chunk: {
+          id: "a",
+          text: "the agent runs on user debian server",
+          parent_id: "p1",
+          path: "/infra.md",
+        } as any,
+        score: 0.9,
+        snippet: "",
+      },
+      {
+        chunk: {
+          id: "b",
+          text: "model costs are tracked per session via codexbar",
+          parent_id: "p1",
+          path: "/infra.md",
+        } as any,
+        score: 0.7,
+        snippet: "",
+      },
     ];
     const deduped = deduplicateSources(results);
     assert.equal(deduped.length, 2, "Distinct chunks from same parent should both be kept");
@@ -662,8 +763,14 @@ describe("Config: embed provider", () => {
   it("OpenAI/Gemini providers unaffected by queryInstruction", () => {
     const cfg = resolveConfig();
     // OpenAI and Gemini configs don't have queryInstruction field
-    assert.ok(!("queryInstruction" in (cfg.embed.openai ?? {})), "OpenAI should not have queryInstruction");
-    assert.ok(!("queryInstruction" in (cfg.embed.gemini ?? {})), "Gemini should not have queryInstruction");
+    assert.ok(
+      !("queryInstruction" in (cfg.embed.openai ?? {})),
+      "OpenAI should not have queryInstruction",
+    );
+    assert.ok(
+      !("queryInstruction" in (cfg.embed.gemini ?? {})),
+      "Gemini should not have queryInstruction",
+    );
   });
 
   // Config Schema Tests (inline safeParse from index.ts)
@@ -1437,10 +1544,7 @@ describe("Quality Score Defaults", () => {
     const merged = hybridMerge(vector, fts, 10);
     // With k=60: rank0 = 1/61, rank1 = 1/62. Normalized: 1.0 and 61/62 ≈ 0.984
     const spread = merged[0]!.score - merged[1]!.score;
-    assert.ok(
-      spread < 0.05,
-      `RRF spread between adjacent ranks should be small (got ${spread})`,
-    );
+    assert.ok(spread < 0.05, `RRF spread between adjacent ranks should be small (got ${spread})`);
   });
 
   it("hybridMerge: output scores normalized to [0, 1]", () => {
@@ -1464,12 +1568,8 @@ describe("Quality Score Defaults", () => {
   });
 
   it("hybridMerge: respects limit parameter", () => {
-    const vector = Array.from({ length: 20 }, (_, i) =>
-      makeSearchResult(`v${i}`, 1 - i * 0.05),
-    );
-    const fts = Array.from({ length: 20 }, (_, i) =>
-      makeSearchResult(`f${i}`, 1 - i * 0.05),
-    );
+    const vector = Array.from({ length: 20 }, (_, i) => makeSearchResult(`v${i}`, 1 - i * 0.05));
+    const fts = Array.from({ length: 20 }, (_, i) => makeSearchResult(`f${i}`, 1 - i * 0.05));
 
     const merged = hybridMerge(vector, fts, 5);
     assert.equal(merged.length, 5, "Should respect limit");
@@ -1520,10 +1620,7 @@ describe("Quality Score Defaults", () => {
     const maxRrf = rrfB; // b should be highest (dual-evidence)
 
     assert.equal(merged[0]!.chunk.id, "b", "Dual-evidence b should rank first");
-    assert.ok(
-      Math.abs(merged[0]!.score - 1.0) < 0.001,
-      "Top result normalized to 1.0",
-    );
+    assert.ok(Math.abs(merged[0]!.score - 1.0) < 0.001, "Top result normalized to 1.0");
     // a's normalized score = rrfA / maxRrf
     const aNorm = merged.find((r) => r.chunk.id === "a")!;
     assert.ok(
@@ -1547,12 +1644,8 @@ describe("Quality Score Defaults", () => {
   });
 
   it("hybridMerge: large result sets (100+) normalize correctly", () => {
-    const vector = Array.from({ length: 100 }, (_, i) =>
-      makeSearchResult(`v${i}`, 1 - i * 0.01),
-    );
-    const fts = Array.from({ length: 100 }, (_, i) =>
-      makeSearchResult(`f${i}`, 1 - i * 0.01),
-    );
+    const vector = Array.from({ length: 100 }, (_, i) => makeSearchResult(`v${i}`, 1 - i * 0.01));
+    const fts = Array.from({ length: 100 }, (_, i) => makeSearchResult(`f${i}`, 1 - i * 0.01));
     const merged = hybridMerge(vector, fts, 200);
     // Top = 1.0, bottom > 0
     assert.equal(merged[0]!.score, 1.0);
@@ -1637,10 +1730,10 @@ describe("Quality Score Defaults", () => {
     // Simulate realistic production scenario
     const vector = [
       makeSearchResult("relevant-mistake", 0.95, "memory", "MISTAKES.md"),
-      makeSearchResult("relevant-memory", 0.90, "memory", "MEMORY.md"),
+      makeSearchResult("relevant-memory", 0.9, "memory", "MEMORY.md"),
       makeSearchResult("relevant-capture", 0.85, "capture", "capture/meta/2026-03-30"),
-      makeSearchResult("session-noise", 0.80, "sessions", "sessions/chat.jsonl"),
-      makeSearchResult("old-fact", 0.70, "memory", "notes.md"),
+      makeSearchResult("session-noise", 0.8, "sessions", "sessions/chat.jsonl"),
+      makeSearchResult("old-fact", 0.7, "memory", "notes.md"),
     ];
     // Set timestamps
     vector[0]!.chunk.updated_at = now.toISOString(); // Recent mistake
@@ -1651,25 +1744,35 @@ describe("Quality Score Defaults", () => {
 
     const fts = [
       makeSearchResult("relevant-mistake", 0.99, "memory", "MISTAKES.md"), // Also in FTS
-      makeSearchResult("fts-only", 0.80, "memory", "docs.md"),
+      makeSearchResult("fts-only", 0.8, "memory", "docs.md"),
     ];
     fts[0]!.chunk.updated_at = now.toISOString();
     fts[1]!.chunk.updated_at = new Date(now.getTime() - 30 * 86400000).toISOString();
 
     // Step 1: RRF merge
     const merged = hybridMerge(vector, fts, 20);
-    assert.equal(merged[0]!.chunk.id, "relevant-mistake", "Dual-evidence mistake should rank first");
+    assert.equal(
+      merged[0]!.chunk.id,
+      "relevant-mistake",
+      "Dual-evidence mistake should rank first",
+    );
     assert.equal(merged[0]!.score, 1.0, "Top RRF result = 1.0");
 
     // Step 2: Source weighting
     applySourceWeighting(merged);
     const sessionResult = merged.find((r) => r.chunk.id === "session-noise")!;
-    assert.ok(sessionResult.score < 0.5, `Sessions should be heavily penalized (got ${sessionResult.score})`);
+    assert.ok(
+      sessionResult.score < 0.5,
+      `Sessions should be heavily penalized (got ${sessionResult.score})`,
+    );
 
     // Step 3: Temporal decay
     applyTemporalDecay(merged);
     const oldFact = merged.find((r) => r.chunk.id === "old-fact")!;
-    assert.ok(oldFact.score < 0.8, `6-month-old fact should decay significantly (got ${oldFact.score})`);
+    assert.ok(
+      oldFact.score < 0.8,
+      `6-month-old fact should decay significantly (got ${oldFact.score})`,
+    );
 
     // Step 4: MMR diversity
     const diverse = mmrRerank(merged, 3, 0.7);
@@ -1681,14 +1784,14 @@ describe("Quality Score Defaults", () => {
     const k = 60;
     // Test that rank summing works for various rank combinations
     const vector = [
-      makeSearchResult("top-both", 0.9),     // rank 0 in vector
-      makeSearchResult("mid-both", 0.7),     // rank 1 in vector
-      makeSearchResult("vector-only", 0.5),  // rank 2 in vector
+      makeSearchResult("top-both", 0.9), // rank 0 in vector
+      makeSearchResult("mid-both", 0.7), // rank 1 in vector
+      makeSearchResult("vector-only", 0.5), // rank 2 in vector
     ];
     const fts = [
-      makeSearchResult("mid-both", 0.8),     // rank 0 in FTS (higher FTS rank than vector)
-      makeSearchResult("fts-only", 0.6),     // rank 1 in FTS
-      makeSearchResult("top-both", 0.4),     // rank 2 in FTS (lower FTS rank)
+      makeSearchResult("mid-both", 0.8), // rank 0 in FTS (higher FTS rank than vector)
+      makeSearchResult("fts-only", 0.6), // rank 1 in FTS
+      makeSearchResult("top-both", 0.4), // rank 2 in FTS (lower FTS rank)
     ];
 
     const merged = hybridMerge(vector, fts, 10, k);
@@ -1699,8 +1802,8 @@ describe("Quality Score Defaults", () => {
     const topBoth = merged.find((r) => r.chunk.id === "top-both")!;
     const midBoth = merged.find((r) => r.chunk.id === "mid-both")!;
 
-    const rrfTopBoth = 1/61 + 1/63;
-    const rrfMidBoth = 1/62 + 1/61;
+    const rrfTopBoth = 1 / 61 + 1 / 63;
+    const rrfMidBoth = 1 / 62 + 1 / 61;
     // mid-both has slightly higher RRF (1/61 + 1/62 > 1/61 + 1/63)
     assert.ok(
       midBoth.score > topBoth.score,
@@ -1709,9 +1812,7 @@ describe("Quality Score Defaults", () => {
   });
 
   it("hybridMerge: minScore compatibility — downstream filter works with RRF scores", () => {
-    const vector = Array.from({ length: 10 }, (_, i) =>
-      makeSearchResult(`v${i}`, 1 - i * 0.1),
-    );
+    const vector = Array.from({ length: 10 }, (_, i) => makeSearchResult(`v${i}`, 1 - i * 0.1));
     const merged = hybridMerge(vector, [], 10);
 
     // Simulate production minScore filter (applied AFTER merge in some code paths)
@@ -2767,7 +2868,7 @@ describe("Reranker query normalizer", () => {
       "Who discovered CRISPR?",
       "Where is the hippocampus located?",
       "Why does the immune system attack self-antigens?",
-      "something something?",  // ends with ?
+      "something something?", // ends with ?
     ];
     for (const q of questions) {
       it(`detects question: "${q.slice(0, 50)}…"`, () => {
@@ -2831,11 +2932,7 @@ describe("Phase 7: Arrow Vector Handling", () => {
   // We test the observable behavior: mmrRerank should work correctly even when
   // vectors look like Arrow objects (have .length but bracket index returns undefined).
 
-  function makeResultWithVector(
-    id: string,
-    score: number,
-    vector?: number[],
-  ): SearchResult {
+  function makeResultWithVector(id: string, score: number, vector?: number[]): SearchResult {
     return {
       chunk: {
         id,
@@ -2883,7 +2980,7 @@ describe("Phase 7: Arrow Vector Handling", () => {
     const vecC = [0.99, 0.01, 0, 0]; // near-duplicate of A
     const results: SearchResult[] = [
       makeResultWithVector("a", 0.95, vecA),
-      makeResultWithVector("b", 0.90, vecB),
+      makeResultWithVector("b", 0.9, vecB),
       makeResultWithVector("c", 0.85, vecC),
     ];
     // With λ=0.5 (equal weight relevance vs diversity), should prefer diverse
@@ -2898,7 +2995,7 @@ describe("Phase 7: Arrow Vector Handling", () => {
     const vecC = [0, 1, 0, 0]; // orthogonal
     const results: SearchResult[] = [
       makeResultWithVector("a", 0.95, vecA),
-      makeResultWithVector("b", 0.90, vecB),
+      makeResultWithVector("b", 0.9, vecB),
       makeResultWithVector("c", 0.85, vecC),
     ];
     const reranked = mmrRerank(results, 3, 1.0);
@@ -3009,7 +3106,15 @@ describe("Phase 7: cosineSimilarity edge cases", () => {
 
 function makeResult(id: string, score: number, vector?: number[]): any {
   return {
-    chunk: { id, text: `text for ${id}`, metadata: {}, createdAt: new Date(), updatedAt: new Date(), source: "test", pool: "default" },
+    chunk: {
+      id,
+      text: `text for ${id}`,
+      metadata: {},
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      source: "test",
+      pool: "default",
+    },
     score,
     vector: vector ?? undefined,
   };
@@ -3029,8 +3134,18 @@ describe("Phase 8: computeOverlap", () => {
   });
 
   it("returns correct ratio for partial overlap", () => {
-    const vec = [makeResult("a", 0.9), makeResult("b", 0.8), makeResult("c", 0.7), makeResult("d", 0.6)];
-    const fts = [makeResult("a", 0.5), makeResult("x", 0.4), makeResult("y", 0.3), makeResult("b", 0.2)];
+    const vec = [
+      makeResult("a", 0.9),
+      makeResult("b", 0.8),
+      makeResult("c", 0.7),
+      makeResult("d", 0.6),
+    ];
+    const fts = [
+      makeResult("a", 0.5),
+      makeResult("x", 0.4),
+      makeResult("y", 0.3),
+      makeResult("b", 0.2),
+    ];
     // 2 of 4 vector docs (a, b) appear in FTS
     assert.strictEqual(computeOverlap(vec, fts, 4), 0.5);
   });
@@ -3042,7 +3157,7 @@ describe("Phase 8: computeOverlap", () => {
     assert.strictEqual(computeOverlap(vec, fts, 2), 0.0);
     // topK=3: checks a, b, c → 1/3 overlap
     const ratio = computeOverlap(vec, fts, 3);
-    assert.ok(Math.abs(ratio - 1/3) < 0.001);
+    assert.ok(Math.abs(ratio - 1 / 3) < 0.001);
   });
 
   it("returns 0 for empty vector results", () => {
@@ -3065,10 +3180,10 @@ describe("Phase 8: Adaptive Hybrid Merge (overlap-aware RRF)", () => {
     // 0% overlap: vector docs not in FTS at all
     const vec = [makeResult("v1", 0.9), makeResult("v2", 0.8), makeResult("v3", 0.7)];
     const fts = [makeResult("f1", 0.95), makeResult("f2", 0.85), makeResult("f3", 0.75)];
-    
+
     const staticResult = hybridMerge(vec, fts, 3, 60, 1.0, 1.0, "static");
     const adaptiveResult = hybridMerge(vec, fts, 3, 60, 1.0, 1.0, "adaptive");
-    
+
     // Static RRF with equal weights: rank 1 from each gets equal RRF
     // Adaptive with low overlap: vector gets 2.0 weight, FTS gets 0.3
     // So adaptive should have v1 at top (vector-primary), static might not
@@ -3089,7 +3204,7 @@ describe("Phase 8: Reranker-as-Fusioner", () => {
     const vec = [makeResult("shared", 0.9), makeResult("vec-only", 0.8)];
     const fts = [makeResult("shared", 0.3), makeResult("fts-only", 0.7)];
     const pool = prepareRerankerFusion(vec, fts, 10);
-    
+
     assert.strictEqual(pool.length, 3); // shared, vec-only, fts-only
     const shared = pool.find((r) => r.chunk.id === "shared");
     assert.ok(shared);
