@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 532" width="1200" height="532" role="img" aria-label="memory-spark chart">
+  <defs><style>text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }</style></defs>
+  <rect width="1200" height="532" fill="#0d1117"/>
+  <rect x="10" y="10" width="1180" height="512" rx="12" fill="#161b22" stroke="#30363d"/>
+  <text x="40" y="48" fill="#c9d1d9" font-size="24" font-weight="700">BEIR SciFact — Recall@10</text>
+  <text x="40" y="70" fill="#8b949e" font-size="14">GATE-A achieves highest recall by skipping reranker on confident queries</text>
+  
+    <text x="190" y="104" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="700">GATE-A: Hard</text>
+    <rect x="200" y="80" width="548.22" height="40" rx="4" fill="#3fb950" opacity="1"/>
+    <text x="756.22" y="104" fill="#3fb950" font-size="13" font-weight="600">0.9137</text>
+    <text x="190" y="152" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">A: Vector-Only</text>
+    <rect x="200" y="128" width="542.2199999999999" height="40" rx="4" fill="#58a6ff" opacity="0.7"/>
+    <text x="750.2199999999999" y="152" fill="#58a6ff" font-size="13" font-weight="600">0.9037</text>
+    <text x="190" y="200" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">E: Hybrid (Static RRF)</text>
+    <rect x="200" y="176" width="535.4399999999999" height="40" rx="4" fill="#58a6ff" opacity="0.7"/>
+    <text x="743.4399999999999" y="200" fill="#58a6ff" font-size="13" font-weight="600">0.8924</text>
+    <text x="190" y="248" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">G: Full Pipeline</text>
+    <rect x="200" y="224" width="535.4399999999999" height="40" rx="4" fill="#58a6ff" opacity="0.7"/>
+    <text x="743.4399999999999" y="248" fill="#58a6ff" font-size="13" font-weight="600">0.8924</text>
+    <text x="190" y="296" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">H: Vec→Rerank</text>
+    <rect x="200" y="272" width="535.4399999999999" height="40" rx="4" fill="#58a6ff" opacity="0.7"/>
+    <text x="743.4399999999999" y="296" fill="#58a6ff" font-size="13" font-weight="600">0.8924</text>
+    <text x="190" y="344" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">RRF-A: k=60</text>
+    <rect x="200" y="320" width="535.4399999999999" height="40" rx="4" fill="#58a6ff" opacity="0.7"/>
+    <text x="743.4399999999999" y="344" fill="#58a6ff" font-size="13" font-weight="600">0.8924</text>
+    <text x="190" y="392" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">RRF-D: k=20</text>
+    <rect x="200" y="368" width="535.4399999999999" height="40" rx="4" fill="#58a6ff" opacity="0.7"/>
+    <text x="743.4399999999999" y="392" fill="#58a6ff" font-size="13" font-weight="600">0.8924</text>
+    <text x="190" y="440" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">GATE-D: Soft+RRF</text>
+    <rect x="200" y="416" width="535.4399999999999" height="40" rx="4" fill="#58a6ff" opacity="0.7"/>
+    <text x="743.4399999999999" y="440" fill="#58a6ff" font-size="13" font-weight="600">0.8924</text>
+    <text x="190" y="488" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">B: FTS-Only</text>
+    <rect x="200" y="464" width="472.02" height="40" rx="4" fill="#58a6ff" opacity="0.7"/>
+    <text x="680.02" y="488" fill="#58a6ff" font-size="13" font-weight="600">0.7867</text>
+</svg>
