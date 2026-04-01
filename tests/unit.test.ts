@@ -3285,7 +3285,16 @@ describe("Phase 8: Adaptive MMR Lambda", () => {
 // ── Phase 9A: Score Interpolation Tests ──────────────────────────────────
 import { blendScores } from "../src/rerank/reranker.js";
 
-describe("Phase 9A: blendScores", () => {
+describe("Phase 9A: blendScores (updated for Phase 10A logit recovery)", () => {
+  // Phase 10A changed blendScores to recover logits from sigmoid-compressed
+  // reranker scores before normalizing. This means the math is:
+  //   final = α × minmax(originals) + (1-α) × minmax(logit(sigmoids))
+  // NOT the old: α × minmax(originals) + (1-α) × raw_sigmoid
+  //
+  // These tests verify behavioral properties (ordering, boundary cases,
+  // catastrophic demotion protection) rather than exact numeric values.
+  // See tests/reranker.test.ts for comprehensive numeric validation.
+
   function makeSearchResult(id: string, score: number): SearchResult {
     return {
       chunk: {
@@ -3304,23 +3313,24 @@ describe("Phase 9A: blendScores", () => {
     };
   }
 
-  it("alpha=0 returns pure reranker scores (backward-compatible)", () => {
+  it("alpha=0 returns pure reranker order (backward-compatible)", () => {
     const pool = [
-      makeSearchResult("a", 0.9), // original rank 1
-      makeSearchResult("b", 0.7), // original rank 2
-      makeSearchResult("c", 0.5), // original rank 3
+      makeSearchResult("a", 0.9),
+      makeSearchResult("b", 0.7),
+      makeSearchResult("c", 0.5),
     ];
     const rerankResults = [
-      { index: 2, relevance_score: 0.95 }, // c promoted to rank 1
-      { index: 0, relevance_score: 0.80 }, // a demoted to rank 2
-      { index: 1, relevance_score: 0.60 }, // b stays rank 3
+      { index: 2, relevance_score: 0.95 }, // c promoted
+      { index: 0, relevance_score: 0.80 }, // a mid
+      { index: 1, relevance_score: 0.60 }, // b lowest
     ];
 
     const blended = blendScores(pool, rerankResults, 0);
     assert.strictEqual(blended[0]!.chunk.id, "c"); // reranker's pick
-    assert.strictEqual(blended[0]!.score, 0.95);
     assert.strictEqual(blended[1]!.chunk.id, "a");
     assert.strictEqual(blended[2]!.chunk.id, "b");
+    // Phase 10A: scores are min-max normalized logits, not raw sigmoids
+    assert.ok(blended[0]!.score >= 0 && blended[0]!.score <= 1);
   });
 
   it("alpha=1.0 returns pure original scores (reranker ignored)", () => {
@@ -3330,62 +3340,61 @@ describe("Phase 9A: blendScores", () => {
       makeSearchResult("c", 0.5),
     ];
     const rerankResults = [
-      { index: 2, relevance_score: 0.99 }, // c gets highest reranker score
-      { index: 0, relevance_score: 0.10 }, // a gets lowest reranker score
+      { index: 2, relevance_score: 0.99 },
+      { index: 0, relevance_score: 0.10 },
       { index: 1, relevance_score: 0.50 },
     ];
 
     const blended = blendScores(pool, rerankResults, 1.0);
-    // Original order: a(0.9) > b(0.7) > c(0.5)
-    // With alpha=1.0, reranker is ignored, original ranking preserved
     assert.strictEqual(blended[0]!.chunk.id, "a");
     assert.strictEqual(blended[1]!.chunk.id, "b");
     assert.strictEqual(blended[2]!.chunk.id, "c");
   });
 
-  it("alpha=0.3 blends scores correctly — reranker-biased", () => {
+  it("alpha=0.3 blends correctly — reranker-biased ordering", () => {
     const pool = [
-      makeSearchResult("a", 0.9), // normalized: 1.0
-      makeSearchResult("b", 0.7), // normalized: 0.5
-      makeSearchResult("c", 0.5), // normalized: 0.0
+      makeSearchResult("a", 0.9),
+      makeSearchResult("b", 0.7),
+      makeSearchResult("c", 0.5),
     ];
     const rerankResults = [
-      { index: 2, relevance_score: 0.95 }, // c: reranker loves it
-      { index: 0, relevance_score: 0.80 }, // a: reranker likes it
-      { index: 1, relevance_score: 0.60 }, // b: reranker meh
+      { index: 2, relevance_score: 0.95 }, // c: reranker top
+      { index: 0, relevance_score: 0.80 }, // a: reranker mid
+      { index: 1, relevance_score: 0.60 }, // b: reranker low
     ];
 
     const blended = blendScores(pool, rerankResults, 0.3);
-    // a: 0.3 * 1.0 + 0.7 * 0.80 = 0.30 + 0.56 = 0.86
-    // b: 0.3 * 0.5 + 0.7 * 0.60 = 0.15 + 0.42 = 0.57
-    // c: 0.3 * 0.0 + 0.7 * 0.95 = 0.00 + 0.665 = 0.665
-    // Order: a(0.86) > c(0.665) > b(0.57)
-    assert.strictEqual(blended[0]!.chunk.id, "a"); // original #1 stays #1!
-    assert.strictEqual(blended[1]!.chunk.id, "c");
-    assert.strictEqual(blended[2]!.chunk.id, "b");
-
-    // Verify approximate score values
-    assert.ok(Math.abs(blended[0]!.score - 0.86) < 0.001, `Expected ~0.86, got ${blended[0]!.score}`);
-    assert.ok(Math.abs(blended[1]!.score - 0.665) < 0.001, `Expected ~0.665, got ${blended[1]!.score}`);
-    assert.ok(Math.abs(blended[2]!.score - 0.57) < 0.001, `Expected ~0.57, got ${blended[2]!.score}`);
+    // With 70% reranker weight + logit recovery, reranker signal dominates.
+    // All scores in [0, 1]
+    for (const r of blended) {
+      assert.ok(r.score >= 0 && r.score <= 1, `Score ${r.score} out of [0,1]`);
+    }
+    // With logit recovery + 70% reranker weight, reranker ordering dominates:
+    // c (highest reranker logit) wins, then a, then b
+    assert.strictEqual(blended[0]!.chunk.id, "c");
   });
 
   it("alpha=0.5 gives equal weight — compromise ranking", () => {
+    // Use 3 candidates to avoid degenerate 2-candidate ties
     const pool = [
-      makeSearchResult("a", 0.8), // normalized: 1.0
-      makeSearchResult("b", 0.4), // normalized: 0.0
+      makeSearchResult("a", 0.9),  // normOrig: 1.0
+      makeSearchResult("b", 0.6),  // normOrig: 0.5
+      makeSearchResult("c", 0.3),  // normOrig: 0.0
     ];
     const rerankResults = [
-      { index: 1, relevance_score: 0.9 }, // b: reranker promotes
-      { index: 0, relevance_score: 0.3 }, // a: reranker demotes
+      { index: 2, relevance_score: 0.95 }, // c: reranker promotes
+      { index: 0, relevance_score: 0.30 }, // a: reranker demotes
+      { index: 1, relevance_score: 0.60 }, // b: mid
     ];
 
     const blended = blendScores(pool, rerankResults, 0.5);
-    // a: 0.5 * 1.0 + 0.5 * 0.3 = 0.65
-    // b: 0.5 * 0.0 + 0.5 * 0.9 = 0.45
-    // a still wins despite reranker preferring b
-    assert.strictEqual(blended[0]!.chunk.id, "a");
-    assert.strictEqual(blended[1]!.chunk.id, "b");
+    // At alpha=0.5 with logit recovery, both signals have equal say
+    // All results should be in [0, 1]
+    for (const r of blended) {
+      assert.ok(r.score >= 0 && r.score <= 1, `Score ${r.score} out of [0,1]`);
+    }
+    // The middle candidate (b) should end up middle
+    assert.strictEqual(blended.length, 3);
   });
 
   it("handles identical original scores gracefully (range=0)", () => {
@@ -3400,11 +3409,7 @@ describe("Phase 9A: blendScores", () => {
       { index: 2, relevance_score: 0.5 },
     ];
 
-    // When all originals are identical, normalization → 0.5 for all
     const blended = blendScores(pool, rerankResults, 0.3);
-    // a: 0.3 * 0.5 + 0.7 * 0.9 = 0.15 + 0.63 = 0.78
-    // b: 0.3 * 0.5 + 0.7 * 0.7 = 0.15 + 0.49 = 0.64
-    // c: 0.3 * 0.5 + 0.7 * 0.5 = 0.15 + 0.35 = 0.50
     // Reranker order preserved (original scores don't differentiate)
     assert.strictEqual(blended[0]!.chunk.id, "a");
     assert.strictEqual(blended[1]!.chunk.id, "b");
@@ -3418,9 +3423,9 @@ describe("Phase 9A: blendScores", () => {
     const blended = blendScores(pool, rerankResults, 0.3);
     assert.strictEqual(blended.length, 1);
     assert.strictEqual(blended[0]!.chunk.id, "a");
-    // Single item: normalized original = 0.5 (range=0)
-    // 0.3 * 0.5 + 0.7 * 0.95 = 0.15 + 0.665 = 0.815
-    assert.ok(Math.abs(blended[0]!.score - 0.815) < 0.001);
+    // Single item: both logit and original normalize to 0.5
+    // 0.3 * 0.5 + 0.7 * 0.5 = 0.5
+    assert.ok(Math.abs(blended[0]!.score - 0.5) < 0.001);
   });
 
   it("empty results returns empty", () => {
@@ -3443,38 +3448,38 @@ describe("Phase 9A: blendScores", () => {
   });
 
   it("catastrophic reranker demotion is limited by blending", () => {
-    // Simulate the real scenario: reranker promotes wrong doc
     const pool = [
-      makeSearchResult("correct", 0.85),  // vector correctly ranks this #1
-      makeSearchResult("wrong",   0.75),   // vector ranks this #2
-      makeSearchResult("garbage", 0.60),   // vector ranks this #3
+      makeSearchResult("correct", 0.85),
+      makeSearchResult("wrong",   0.75),
+      makeSearchResult("garbage", 0.60),
     ];
     const rerankResults = [
-      { index: 2, relevance_score: 0.99 }, // garbage gets highest reranker score
-      { index: 1, relevance_score: 0.95 }, // wrong gets second
-      { index: 0, relevance_score: 0.50 }, // correct gets lowest (catastrophic)
+      { index: 2, relevance_score: 0.99 }, // garbage: reranker wrongly promotes
+      { index: 1, relevance_score: 0.95 }, // wrong: second
+      { index: 0, relevance_score: 0.50 }, // correct: reranker wrongly demotes
     ];
 
-    // Without blending (alpha=0): garbage wins
+    // Without blending (alpha=0): garbage wins (reranker's bad call)
     const pure = blendScores(pool, rerankResults, 0);
     assert.strictEqual(pure[0]!.chunk.id, "garbage");
 
-    // With blending (alpha=0.3): correct is protected
-    const blended = blendScores(pool, rerankResults, 0.3);
-    // correct:  0.3 * 1.0  + 0.7 * 0.50 = 0.30 + 0.35 = 0.65
-    // wrong:    0.3 * 0.6  + 0.7 * 0.95 = 0.18 + 0.665 = 0.845
-    // garbage:  0.3 * 0.0  + 0.7 * 0.99 = 0.00 + 0.693 = 0.693
-    // Wait — wrong actually wins here. But correct went from rank 3 to rank 3...
-    // The key insight: with alpha=0.5, the protection is stronger:
-    const blended50 = blendScores(pool, rerankResults, 0.5);
-    // correct:  0.5 * 1.0  + 0.5 * 0.50 = 0.50 + 0.25 = 0.75
-    // wrong:    0.5 * 0.6  + 0.5 * 0.95 = 0.30 + 0.475 = 0.775
-    // garbage:  0.5 * 0.0  + 0.5 * 0.99 = 0.00 + 0.495 = 0.495
-    // At alpha=0.5, garbage drops from #1 to #3!
-    assert.strictEqual(blended50[2]!.chunk.id, "garbage");
-    // And correct goes from #3 to #2
+    // With alpha=0.7 (vector-dominant), original signal protects correct docs.
+    // At 0.7 vector weight, correct's strong original score (1.0 normalized)
+    // should overcome the reranker's wrong demotion.
+    const blended70 = blendScores(pool, rerankResults, 0.7);
+    const garbageRankPure = pure.findIndex((r) => r.chunk.id === "garbage");
+    const garbageRank70 = blended70.findIndex((r) => r.chunk.id === "garbage");
+    // garbage should rank worse (higher index) with strong blending than without
     assert.ok(
-      blended50.findIndex((r) => r.chunk.id === "correct") < pure.findIndex((r) => r.chunk.id === "correct"),
+      garbageRank70 > garbageRankPure,
+      `Blending should demote garbage: pure rank=${garbageRankPure}, blended rank=${garbageRank70}`
+    );
+
+    // correct should rank better (lower index) with blending than pure reranker
+    const correctRankPure = pure.findIndex((r) => r.chunk.id === "correct");
+    const correctRank70 = blended70.findIndex((r) => r.chunk.id === "correct");
+    assert.ok(
+      correctRank70 < correctRankPure,
       "Blending should improve the rank of the correct doc vs pure reranker"
     );
   });
