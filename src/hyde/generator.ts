@@ -160,7 +160,9 @@ async function attemptHydeGeneration(
     ];
     if (REJECTION_PATTERNS.some((p) => p.test(cleaned))) {
       if (process.env.MEMORY_SPARK_DEBUG) {
-        console.debug(`[hyde] attempt=${attempt} rejected=refusal_pattern latencyMs=${(performance.now() - t0).toFixed(0)}`);
+        console.debug(
+          `[hyde] attempt=${attempt} rejected=refusal_pattern latencyMs=${(performance.now() - t0).toFixed(0)}`,
+        );
       }
       return null;
     }
@@ -174,7 +176,9 @@ async function attemptHydeGeneration(
   } catch {
     // Timeout, network error, parse error — silently fall back
     if (process.env.MEMORY_SPARK_DEBUG) {
-      console.debug(`[hyde] attempt=${attempt} failed=true latencyMs=${(performance.now() - t0).toFixed(0)}`);
+      console.debug(
+        `[hyde] attempt=${attempt} failed=true latencyMs=${(performance.now() - t0).toFixed(0)}`,
+      );
     }
     return null;
   } finally {

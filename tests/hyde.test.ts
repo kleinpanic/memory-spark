@@ -137,10 +137,18 @@ describe("HyDE Generator", () => {
 
   it("rejects 'I don't know' responses (quality gate)", async () => {
     const mockResponse = {
-      choices: [{ message: { content: "I don't know the answer to that question. There is not enough information available to provide a response." } }],
+      choices: [
+        {
+          message: {
+            content:
+              "I don't know the answer to that question. There is not enough information available to provide a response.",
+          },
+        },
+      ],
     };
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
-      ok: true, json: () => Promise.resolve(mockResponse),
+      ok: true,
+      json: () => Promise.resolve(mockResponse),
     } as unknown as Response);
 
     const result = await generateHypotheticalDocument("What is the flux capacitor?", mockConfig);
@@ -149,10 +157,18 @@ describe("HyDE Generator", () => {
 
   it("rejects 'cannot determine' responses (quality gate)", async () => {
     const mockResponse = {
-      choices: [{ message: { content: "We cannot determine the exact configuration from the available information. The system may be running a different version than expected." } }],
+      choices: [
+        {
+          message: {
+            content:
+              "We cannot determine the exact configuration from the available information. The system may be running a different version than expected.",
+          },
+        },
+      ],
     };
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
-      ok: true, json: () => Promise.resolve(mockResponse),
+      ok: true,
+      json: () => Promise.resolve(mockResponse),
     } as unknown as Response);
 
     const result = await generateHypotheticalDocument("What version is installed?", mockConfig);
@@ -161,10 +177,18 @@ describe("HyDE Generator", () => {
 
   it("rejects 'as an AI' responses (quality gate)", async () => {
     const mockResponse = {
-      choices: [{ message: { content: "As an AI language model, I don't have access to specific system configurations or real-time data about your setup." } }],
+      choices: [
+        {
+          message: {
+            content:
+              "As an AI language model, I don't have access to specific system configurations or real-time data about your setup.",
+          },
+        },
+      ],
     };
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
-      ok: true, json: () => Promise.resolve(mockResponse),
+      ok: true,
+      json: () => Promise.resolve(mockResponse),
     } as unknown as Response);
 
     const result = await generateHypotheticalDocument("What is my timezone?", mockConfig);
@@ -176,7 +200,8 @@ describe("HyDE Generator", () => {
       choices: [{ message: { content: "OpenClaw is a platform for agents. That's it." } }],
     };
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
-      ok: true, json: () => Promise.resolve(mockResponse),
+      ok: true,
+      json: () => Promise.resolve(mockResponse),
     } as unknown as Response);
 
     const result = await generateHypotheticalDocument("What is OpenClaw?", mockConfig);
@@ -185,10 +210,18 @@ describe("HyDE Generator", () => {
 
   it("accepts valid factual hypotheticals (passes quality gate)", async () => {
     const mockResponse = {
-      choices: [{ message: { content: "Klein's timezone is America/New_York (Eastern Time). The OpenClaw system is configured to use this timezone for all scheduling, cron jobs, and timestamp display." } }],
+      choices: [
+        {
+          message: {
+            content:
+              "Klein's timezone is America/New_York (Eastern Time). The OpenClaw system is configured to use this timezone for all scheduling, cron jobs, and timestamp display.",
+          },
+        },
+      ],
     };
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
-      ok: true, json: () => Promise.resolve(mockResponse),
+      ok: true,
+      json: () => Promise.resolve(mockResponse),
     } as unknown as Response);
 
     const result = await generateHypotheticalDocument("What is Klein's timezone?", mockConfig);
@@ -198,10 +231,18 @@ describe("HyDE Generator", () => {
 
   it("rejects 'unable to provide' hedging (quality gate)", async () => {
     const mockResponse = {
-      choices: [{ message: { content: "The system is unable to provide specific configuration details without access to the actual deployment environment and runtime state." } }],
+      choices: [
+        {
+          message: {
+            content:
+              "The system is unable to provide specific configuration details without access to the actual deployment environment and runtime state.",
+          },
+        },
+      ],
     };
     vi.spyOn(globalThis, "fetch").mockResolvedValueOnce({
-      ok: true, json: () => Promise.resolve(mockResponse),
+      ok: true,
+      json: () => Promise.resolve(mockResponse),
     } as unknown as Response);
 
     const result = await generateHypotheticalDocument("What port is the gateway on?", mockConfig);

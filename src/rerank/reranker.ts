@@ -95,7 +95,8 @@ function sparkReranker(cfg: RerankConfig): Reranker {
         const spread = max - min;
         // Debug-level: enable via DEBUG=memory-spark:reranker or similar
         if (process.env.DEBUG?.includes("rerank") || process.env.RERANKER_TELEMETRY) {
-          const normalized = normalizedQuery !== query ? ` (normalized: "${normalizedQuery.slice(0, 60)}…")` : "";
+          const normalized =
+            normalizedQuery !== query ? ` (normalized: "${normalizedQuery.slice(0, 60)}…")` : "";
           console.log(
             `[reranker] ${pool.length} candidates → ${results.length} results in ${elapsedMs.toFixed(0)}ms | ` +
               `scores: min=${min.toFixed(4)} max=${max.toFixed(4)} mean=${mean.toFixed(4)} spread=${spread.toFixed(4)}${normalized}`,
@@ -169,7 +170,8 @@ function passthroughReranker(): Reranker {
 // agent queries are already questions; this catches edge cases and
 // BEIR-style claim inputs.
 
-const QUESTION_STARTERS = /^(who|what|which|when|where|why|how|is|are|was|were|do|does|did|can|could|will|would|should|shall|has|have|had|may|might)\b/i;
+const QUESTION_STARTERS =
+  /^(who|what|which|when|where|why|how|is|are|was|were|do|does|did|can|could|will|would|should|shall|has|have|had|may|might)\b/i;
 const ENDS_WITH_QUESTION = /\?\s*$/;
 
 /**
