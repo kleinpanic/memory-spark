@@ -1,8 +1,10 @@
 # memory-spark Plugin Tools
 
+> **Note:** This document is being replaced by [PLUGIN-API.md](./PLUGIN-API.md) which covers all 18 tools. Keeping this file for backward compatibility.
+
 ## Overview
 
-memory-spark exposes 9 tools to agents via the OpenClaw plugin system. Tools fall into three categories:
+memory-spark exposes 18 tools to agents via the OpenClaw plugin system (up from 9 in v0.3.0). Tools fall into three categories:
 
 1. **Search**: Find information in the knowledge base
 2. **Manage**: Store, forget, and maintain memories
