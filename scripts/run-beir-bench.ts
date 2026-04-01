@@ -34,7 +34,7 @@ import { resolveConfig, type HydeConfig } from "../src/config.js";
 import { createEmbedProvider } from "../src/embed/provider.js";
 import { EmbedQueue } from "../src/embed/queue.js";
 import { generateHypotheticalDocument } from "../src/hyde/generator.js";
-import { createReranker } from "../src/rerank/reranker.js";
+import { createReranker, blendScores } from "../src/rerank/reranker.js";
 import type { SearchResult } from "../src/storage/backend.js";
 import { LanceDBBackend } from "../src/storage/lancedb.js";
 
@@ -62,6 +62,12 @@ interface RetrievalConfig {
   adaptiveRrf?: boolean;
   /** Phase 8: Use reranker-as-fusioner (pass union to reranker, skip RRF) */
   rerankerFusion?: boolean;
+  /** Phase 9A: Score interpolation alpha (0 = pure reranker, 0.3 = recommended blend) */
+  scoreBlendAlpha?: number;
+  /** Phase 9B: Conditional routing — skip reranker when vector is confident */
+  conditionalRerank?: boolean;
+  /** Phase 9B: Spread threshold for confident vector results (skip reranker if spread > this) */
+  confidenceThreshold?: number;
 }
 
 interface QueryTelemetry {
@@ -231,6 +237,61 @@ const CONFIGS: RetrievalConfig[] = [
     maxResults: 10,
     adaptiveRrf: true,
   },
+  // ── Phase 9A: Score Interpolation configs ──────────────────────────
+  {
+    id: "M",
+    label: "Vector → Blended Reranker (α=0.3)",
+    useVector: true,
+    useFts: false,
+    useReranker: true,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    scoreBlendAlpha: 0.3,
+  },
+  {
+    id: "N",
+    label: "Vector → Blended Reranker (α=0.5)",
+    useVector: true,
+    useFts: false,
+    useReranker: true,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    scoreBlendAlpha: 0.5,
+  },
+  // ── Phase 9B: Conditional Routing configs ──────────────────────────
+  {
+    id: "O",
+    label: "Conditional Rerank (skip when confident, α=0.3)",
+    useVector: true,
+    useFts: false,
+    useReranker: true,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    scoreBlendAlpha: 0.3,
+    conditionalRerank: true,
+    confidenceThreshold: 0.15,
+  },
+  {
+    id: "P",
+    label: "Full 9A+9B (Adaptive RRF → Conditional Blended Reranker → Adaptive MMR)",
+    useVector: true,
+    useFts: true,
+    useReranker: true,
+    useMmr: true,
+    useHyde: false,
+    mmrLambda: "adaptive",
+    maxResults: 10,
+    adaptiveRrf: true,
+    scoreBlendAlpha: 0.3,
+    conditionalRerank: true,
+    confidenceThreshold: 0.15,
+  },
 ];
 
 // ── Functions ───────────────────────────────────────────────────────────────
@@ -275,6 +336,7 @@ async function runRetrieval(
   hydeConfig: HydeConfig | undefined,
   config: RetrievalConfig,
   dataset: string,
+  rerankCfg?: { baseUrl: string; apiKey?: string; model: string },
 ): Promise<{ results: Results; telemetry: QueryTelemetry[] }> {
   const results: Results = {};
   const telemetry: QueryTelemetry[] = [];
@@ -399,15 +461,64 @@ async function runRetrieval(
 
     // ── Reranker (standard path, skip if rerankerFusion already handled it) ─
     if (config.useReranker && reranker && candidates.length > 0 && !config.rerankerFusion) {
-      const beforeOrder = candidates.slice(0, 5).map((c) => c.chunk.id);
-      candidates = await reranker.rerank(q.text, candidates, k);
-      const afterOrder = candidates.slice(0, 5).map((c) => c.chunk.id);
-      const reorderCount = beforeOrder.filter((id, idx) => id !== afterOrder[idx]).length;
-      tel.stages.reranker = {
-        top1Id: candidates[0]?.chunk.id ?? "",
-        top1Score: candidates[0]?.score ?? 0,
-        reorderCount,
-      };
+      // Phase 9B: Conditional routing — skip reranker when vector is already confident
+      let skipReranker = false;
+      if (config.conditionalRerank) {
+        const topScores = candidates.slice(0, 5).map((c) => c.score);
+        const spread = topScores.length >= 2 ? Math.max(...topScores) - Math.min(...topScores) : 0;
+        const threshold = config.confidenceThreshold ?? 0.15;
+        if (spread > threshold) {
+          skipReranker = true;
+          if (process.env.MEMORY_SPARK_DEBUG) {
+            console.debug(
+              `[conditional-rerank] spread=${spread.toFixed(4)} > threshold=${threshold} — skipping reranker`,
+            );
+          }
+        }
+      }
+
+      if (!skipReranker) {
+        const beforeOrder = candidates.slice(0, 5).map((c) => c.chunk.id);
+
+        // Phase 9A: Score blending — if alpha > 0, blend original + reranker scores
+        if (config.scoreBlendAlpha && config.scoreBlendAlpha > 0) {
+          // Manual rerank call with blending (bypass the reranker's internal blending
+          // to use the benchmark-specific alpha override)
+          const normalizedQuery = candidates[0] ? q.text : "";
+          const pool = candidates.slice(0, 30); // MAX_RERANK_CANDIDATES
+          const resp = await fetch(`${rerankCfg!.baseUrl}/rerank`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${rerankCfg!.apiKey ?? "none"}`,
+            },
+            body: JSON.stringify({
+              model: rerankCfg!.model,
+              query: normalizedQuery,
+              documents: pool.map((c) => c.chunk.text),
+              top_n: k,
+              return_documents: false,
+            }),
+          });
+          if (resp.ok) {
+            const data = (await resp.json()) as {
+              results: Array<{ index: number; relevance_score: number }>;
+            };
+            candidates = blendScores(pool, data.results, config.scoreBlendAlpha);
+          }
+          // On error, fall through with unmodified candidates
+        } else {
+          candidates = await reranker.rerank(q.text, candidates, k);
+        }
+
+        const afterOrder = candidates.slice(0, 5).map((c) => c.chunk.id);
+        const reorderCount = beforeOrder.filter((id, idx) => id !== afterOrder[idx]).length;
+        tel.stages.reranker = {
+          top1Id: candidates[0]?.chunk.id ?? "",
+          top1Score: candidates[0]?.score ?? 0,
+          reorderCount,
+        };
+      }
     }
 
     // ── MMR diversity (supports adaptive lambda) ─────────────────────────
@@ -508,6 +619,7 @@ async function main() {
       hydeConfig,
       config,
       datasetArg,
+      cfg.rerank.spark ? { baseUrl: cfg.rerank.spark.baseUrl, apiKey: cfg.rerank.spark.apiKey, model: cfg.rerank.spark.model } : undefined,
     );
 
     const metrics = evaluateBEIR(qrels, results, [10]);

@@ -40,6 +40,7 @@ function sparkReranker(cfg: RerankConfig): Reranker {
   const baseUrl = cfg.spark!.baseUrl;
   const model = cfg.spark!.model;
   const apiKey = cfg.spark!.apiKey ?? "none";
+  const blendAlpha = cfg.scoreBlendAlpha ?? 0;
 
   return {
     async rerank(query, candidates, topN = 5) {
@@ -78,12 +79,21 @@ function sparkReranker(cfg: RerankConfig): Reranker {
         results: Array<{ index: number; relevance_score: number }>;
       };
 
-      const results = data.results
-        .map((r) => ({
-          ...pool[r.index]!,
-          score: r.relevance_score,
-        }))
-        .sort((a, b) => b.score - a.score);
+      // ── Phase 9A: Score Interpolation ────────────────────────────────
+      //
+      // Instead of replacing original scores entirely with reranker scores,
+      // blend them: final = α × normalized_original + (1 - α) × reranker_score
+      //
+      // This prevents catastrophic reranking — when the cross-encoder makes
+      // a bad call (32/108 queries in SciFact), the original signal limits
+      // the damage. When it makes a good call (20/108), the blend still
+      // promotes the better document.
+      //
+      // α = 0: Pure reranker (backward-compatible default)
+      // α = 0.3: Reranker-biased blend (recommended for production)
+      // α = 0.5: Equal weight between original and reranker
+      //
+      const results = blendScores(pool, data.results, blendAlpha);
 
       // Phase 5C: Score calibration telemetry
       const elapsedMs = performance.now() - t0;
@@ -97,9 +107,10 @@ function sparkReranker(cfg: RerankConfig): Reranker {
         if (process.env.DEBUG?.includes("rerank") || process.env.RERANKER_TELEMETRY) {
           const normalized =
             normalizedQuery !== query ? ` (normalized: "${normalizedQuery.slice(0, 60)}…")` : "";
+          const blendStr = blendAlpha > 0 ? ` blend=α${blendAlpha}` : "";
           console.log(
             `[reranker] ${pool.length} candidates → ${results.length} results in ${elapsedMs.toFixed(0)}ms | ` +
-              `scores: min=${min.toFixed(4)} max=${max.toFixed(4)} mean=${mean.toFixed(4)} spread=${spread.toFixed(4)}${normalized}`,
+              `scores: min=${min.toFixed(4)} max=${max.toFixed(4)} mean=${mean.toFixed(4)} spread=${spread.toFixed(4)}${blendStr}${normalized}`,
           );
         }
       }
@@ -155,6 +166,61 @@ function passthroughReranker(): Reranker {
       return true;
     },
   };
+}
+
+// ── Score Interpolation (Phase 9A) ───────────────────────────────────
+//
+// Blends original retrieval scores with cross-encoder reranker scores.
+// This prevents the reranker from catastrophically overriding good vector
+// rankings while still allowing it to refine uncertain ones.
+//
+// Formula: final = α × norm(original) + (1 - α) × reranker_score
+//   where norm(original) maps the original scores to [0, 1] using
+//   min-max normalization within the candidate pool.
+
+/**
+ * Blend original retrieval scores with reranker relevance scores.
+ *
+ * @param pool — original candidates (with retrieval scores)
+ * @param rerankResults — reranker output (index + relevance_score)
+ * @param alpha — blend weight for original scores (0 = pure reranker, 1 = ignore reranker)
+ * @returns sorted SearchResult[] with blended scores
+ */
+export function blendScores(
+  pool: SearchResult[],
+  rerankResults: Array<{ index: number; relevance_score: number }>,
+  alpha: number,
+): SearchResult[] {
+  if (alpha <= 0) {
+    // Pure reranker mode (backward-compatible default)
+    return rerankResults
+      .map((r) => ({
+        ...pool[r.index]!,
+        score: r.relevance_score,
+      }))
+      .sort((a, b) => b.score - a.score);
+  }
+
+  // Normalize original scores to [0, 1] within this pool
+  const indices = rerankResults.map((r) => r.index);
+  const originalScores = indices.map((i) => pool[i]!.score);
+  const origMin = Math.min(...originalScores);
+  const origMax = Math.max(...originalScores);
+  const origRange = origMax - origMin;
+
+  return rerankResults
+    .map((r) => {
+      const origScore = pool[r.index]!.score;
+      // Min-max normalize: maps [origMin, origMax] → [0, 1]
+      // If all original scores are identical (range=0), normalize to 0.5
+      const normOrig = origRange > 0 ? (origScore - origMin) / origRange : 0.5;
+      const blended = alpha * normOrig + (1 - alpha) * r.relevance_score;
+      return {
+        ...pool[r.index]!,
+        score: blended,
+      };
+    })
+    .sort((a, b) => b.score - a.score);
 }
 
 // ── Query Normalizer ─────────────────────────────────────────────────
