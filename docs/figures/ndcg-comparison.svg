@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 532" width="1200" height="532" role="img" aria-label="memory-spark chart">
+  <defs><style>text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }</style></defs>
+  <rect width="1200" height="532" fill="#0d1117"/>
+  <rect x="10" y="10" width="1180" height="512" rx="12" fill="#161b22" stroke="#30363d"/>
+  <text x="40" y="48" fill="#c9d1d9" font-size="24" font-weight="700">BEIR SciFact — NDCG@10 by Configuration</text>
+  <text x="40" y="70" fill="#8b949e" font-size="14">Phase 12: RRF + Dynamic Reranker Gate (300 queries)</text>
+  
+    <text x="190" y="104" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="700">GATE-D: Soft+RRF</text>
+    <rect x="200" y="80" width="520" height="40" rx="4" fill="#3fb950" opacity="1"/>
+    <text x="728" y="104" fill="#3fb950" font-size="13" font-weight="600">0.7803</text>
+    <text x="800" y="104" fill="#3fb950" font-size="11">★ PRODUCTION</text>
+    <text x="190" y="152" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="700">GATE-A: Hard</text>
+    <rect x="200" y="128" width="519.9333589645008" height="40" rx="4" fill="#3fb950" opacity="1"/>
+    <text x="727.9333589645008" y="152" fill="#3fb950" font-size="13" font-weight="600">0.7802</text>
+    <text x="799.9333589645008" y="152" fill="#3fb950" font-size="11">★ PRODUCTION</text>
+    <text x="190" y="200" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">RRF-D: k=20</text>
+    <rect x="200" y="176" width="519.6667948225042" height="40" rx="4" fill="#58a6ff" opacity="0.7"/>
+    <text x="727.6667948225042" y="200" fill="#58a6ff" font-size="13" font-weight="600">0.7798</text>
+    
+    <text x="190" y="248" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">RRF-A: k=60</text>
+    <rect x="200" y="224" width="519.600153787005" height="40" rx="4" fill="#58a6ff" opacity="0.7"/>
+    <text x="727.600153787005" y="248" fill="#58a6ff" font-size="13" font-weight="600">0.7797</text>
+    
+    <text x="190" y="296" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">A: Vector-Only</text>
+    <rect x="200" y="272" width="513.7357426630783" height="40" rx="4" fill="#d29922" opacity="0.7"/>
+    <text x="721.7357426630783" y="296" fill="#d29922" font-size="13" font-weight="600">0.7709</text>
+    
+    <text x="190" y="344" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">G: Full Pipeline</text>
+    <rect x="200" y="320" width="501.47379213123156" height="40" rx="4" fill="#c9d1d9" opacity="0.7"/>
+    <text x="709.4737921312316" y="344" fill="#c9d1d9" font-size="13" font-weight="600">0.7525</text>
+    
+    <text x="190" y="392" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">E: Hybrid (Static RRF)</text>
+    <rect x="200" y="368" width="492.8104575163399" height="40" rx="4" fill="#c9d1d9" opacity="0.7"/>
+    <text x="700.81045751634" y="392" fill="#c9d1d9" font-size="13" font-weight="600">0.7395</text>
+    
+    <text x="190" y="440" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">H: Vec→Rerank</text>
+    <rect x="200" y="416" width="485.01345636293735" height="40" rx="4" fill="#c9d1d9" opacity="0.7"/>
+    <text x="693.0134563629374" y="440" fill="#c9d1d9" font-size="13" font-weight="600">0.7278</text>
+    
+    <text x="190" y="488" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">B: FTS-Only</text>
+    <rect x="200" y="464" width="434.6994745610662" height="40" rx="4" fill="#8b949e" opacity="0.7"/>
+    <text x="642.6994745610662" y="488" fill="#8b949e" font-size="13" font-weight="600">0.6523</text>
+    
+</svg>
