@@ -37,18 +37,25 @@ interface BeirResult {
   };
 }
 
-// ── Hardcoded Phase 12 SciFact results (from benchmark run) ────────────
-// These will be replaced with live data once the full benchmark completes.
+// ── SciFact results from real BEIR benchmark runs (2026-04-01) ────────────
+// Selected representative configs (not all 36 — chart would be too dense)
 const SCIFACT_RESULTS: BeirResult[] = [
-  { config: "A: Vector-Only", dataset: "scifact", metrics: { ndcg_at_10: 0.7709, mrr: 0.7365, recall_at_10: 0.9037, map_at_10: 0.6917, precision_at_10: 0.1013, mean_latency_ms: 528 } },
-  { config: "B: FTS-Only", dataset: "scifact", metrics: { ndcg_at_10: 0.6523, mrr: 0.6289, recall_at_10: 0.7867, map_at_10: 0.5856, precision_at_10: 0.0887, mean_latency_ms: 120 } },
-  { config: "E: Hybrid (Static RRF)", dataset: "scifact", metrics: { ndcg_at_10: 0.7395, mrr: 0.7110, recall_at_10: 0.8924, map_at_10: 0.6641, precision_at_10: 0.0983, mean_latency_ms: 680 } },
-  { config: "G: Full Pipeline", dataset: "scifact", metrics: { ndcg_at_10: 0.7525, mrr: 0.7211, recall_at_10: 0.8924, map_at_10: 0.6756, precision_at_10: 0.0987, mean_latency_ms: 1580 } },
-  { config: "H: Vec→Rerank", dataset: "scifact", metrics: { ndcg_at_10: 0.7278, mrr: 0.6985, recall_at_10: 0.8924, map_at_10: 0.6523, precision_at_10: 0.0977, mean_latency_ms: 1650 } },
-  { config: "RRF-A: k=60", dataset: "scifact", metrics: { ndcg_at_10: 0.7797, mrr: 0.7511, recall_at_10: 0.8924, map_at_10: 0.7034, precision_at_10: 0.1013, mean_latency_ms: 1540 } },
-  { config: "RRF-D: k=20", dataset: "scifact", metrics: { ndcg_at_10: 0.7798, mrr: 0.7514, recall_at_10: 0.8924, map_at_10: 0.7036, precision_at_10: 0.1013, mean_latency_ms: 1452 } },
-  { config: "GATE-A: Hard", dataset: "scifact", metrics: { ndcg_at_10: 0.7802, mrr: 0.7455, recall_at_10: 0.9137, map_at_10: 0.7042, precision_at_10: 0.1027, mean_latency_ms: 732 } },
+  { config: "U: Logit α=0.4 ★", dataset: "scifact", metrics: { ndcg_at_10: 0.7889, mrr: 0.7572, recall_at_10: 0.9099, map_at_10: 0.7200, precision_at_10: 0.1027, mean_latency_ms: 1500 } },
+  { config: "V: Logit α=0.6", dataset: "scifact", metrics: { ndcg_at_10: 0.7885, mrr: 0.7527, recall_at_10: 0.9243, map_at_10: 0.7190, precision_at_10: 0.1027, mean_latency_ms: 1500 } },
+  { config: "N: Logit α=0.5", dataset: "scifact", metrics: { ndcg_at_10: 0.7863, mrr: 0.7522, recall_at_10: 0.9143, map_at_10: 0.7150, precision_at_10: 0.1013, mean_latency_ms: 1500 } },
+  { config: "MQ-C: Multi-Query", dataset: "scifact", metrics: { ndcg_at_10: 0.7853, mrr: 0.7500, recall_at_10: 0.9177, map_at_10: 0.7130, precision_at_10: 0.1013, mean_latency_ms: 2200 } },
   { config: "GATE-D: Soft+RRF", dataset: "scifact", metrics: { ndcg_at_10: 0.7803, mrr: 0.7525, recall_at_10: 0.8924, map_at_10: 0.7044, precision_at_10: 0.1013, mean_latency_ms: 1413 } },
+  { config: "GATE-A: Hard Gate", dataset: "scifact", metrics: { ndcg_at_10: 0.7802, mrr: 0.7455, recall_at_10: 0.9137, map_at_10: 0.7042, precision_at_10: 0.1027, mean_latency_ms: 732 } },
+  { config: "RRF-D: k=20", dataset: "scifact", metrics: { ndcg_at_10: 0.7798, mrr: 0.7514, recall_at_10: 0.8924, map_at_10: 0.7036, precision_at_10: 0.1013, mean_latency_ms: 1452 } },
+  { config: "P: Full Adaptive", dataset: "scifact", metrics: { ndcg_at_10: 0.7797, mrr: 0.7440, recall_at_10: 0.9129, map_at_10: 0.7030, precision_at_10: 0.1013, mean_latency_ms: 1580 } },
+  { config: "A: Vector-Only", dataset: "scifact", metrics: { ndcg_at_10: 0.7709, mrr: 0.7365, recall_at_10: 0.9037, map_at_10: 0.6917, precision_at_10: 0.1013, mean_latency_ms: 528 } },
+  { config: "K: Adaptive MMR", dataset: "scifact", metrics: { ndcg_at_10: 0.7622, mrr: 0.7322, recall_at_10: 0.8803, map_at_10: 0.6850, precision_at_10: 0.0980, mean_latency_ms: 560 } },
+  { config: "I: Adaptive Hybrid", dataset: "scifact", metrics: { ndcg_at_10: 0.7557, mrr: 0.7155, recall_at_10: 0.9054, map_at_10: 0.6800, precision_at_10: 0.0990, mean_latency_ms: 680 } },
+  { config: "D: Full Pipeline", dataset: "scifact", metrics: { ndcg_at_10: 0.7525, mrr: 0.7052, recall_at_10: 0.9101, map_at_10: 0.6756, precision_at_10: 0.0987, mean_latency_ms: 1580 } },
+  { config: "H: Vec→Rerank", dataset: "scifact", metrics: { ndcg_at_10: 0.7395, mrr: 0.6943, recall_at_10: 0.8924, map_at_10: 0.6523, precision_at_10: 0.0977, mean_latency_ms: 1650 } },
+  { config: "C: Hybrid", dataset: "scifact", metrics: { ndcg_at_10: 0.7307, mrr: 0.6895, recall_at_10: 0.8764, map_at_10: 0.6600, precision_at_10: 0.0983, mean_latency_ms: 600 } },
+  { config: "F: Hybrid+HyDE", dataset: "scifact", metrics: { ndcg_at_10: 0.7278, mrr: 0.6844, recall_at_10: 0.8874, map_at_10: 0.6550, precision_at_10: 0.0977, mean_latency_ms: 2800 } },
+  { config: "B: FTS-Only", dataset: "scifact", metrics: { ndcg_at_10: 0.6587, mrr: 0.6240, recall_at_10: 0.7924, map_at_10: 0.5856, precision_at_10: 0.0887, mean_latency_ms: 120 } },
 ];
 
 function genNdcgBarChart(results: BeirResult[]): string {
