@@ -409,14 +409,23 @@ async function runRetrieval(
       latencyMs: 0,
     };
 
+    const verbose = process.env.VERBOSE || process.env.DEBUG_PIPELINE;
     if ((i + 1) % 25 === 0 || i === 0) {
       process.stdout.write(`\r    [${i + 1}/${evalQueries.length}]`);
+    }
+    if (verbose) {
+      console.log(`\n[bench] ── query ${i + 1}/${evalQueries.length}: id=${q._id} config=${config.id}`);
+      console.log(`[bench]   text: "${q.text.slice(0, 100)}"`);
     }
 
     // Get query vector
     let queryVector: number[];
     try {
+      const t0embed = Date.now();
       queryVector = await embed.embedQuery(q.text);
+      if (verbose) {
+        console.log(`[bench]   embed: dims=${queryVector.length} latency=${Date.now() - t0embed}ms`);
+      }
     } catch (e) {
       if (i < 3) console.error(`\n[WARN] embedQuery error on query ${q._id}: ${e}`);
       tel.latencyMs = Date.now() - startTime;
@@ -429,14 +438,23 @@ async function runRetrieval(
     // The hypothetical is embedded as a document (no instruction prefix) to project
     // it into the same vector space as the indexed corpus.
     if (config.useHyde && hydeConfig?.enabled) {
+      if (verbose) console.log(`[bench]   HyDE: generating hypothetical document…`);
       try {
+        const t0hyde = Date.now();
         const hypothetical = await generateHypotheticalDocument(q.text, hydeConfig);
         if (hypothetical) {
           tel.stages.hyde = { hypotheticalDoc: hypothetical.slice(0, 200) + "..." };
+          if (verbose) {
+            console.log(`[bench]   HyDE: success in ${Date.now() - t0hyde}ms, doc=${hypothetical.length} chars`);
+            console.log(`[bench]   HyDE preview: "${hypothetical.slice(0, 100).replace(/\n/g, " ")}…"`);
+          }
           // embedDocument() = no instruction prefix → document space
           queryVector = await embed.embedDocument(hypothetical);
+        } else {
+          if (verbose) console.log(`[bench]   HyDE: generation returned null — using raw query vector`);
         }
-      } catch {
+      } catch (hydeErr) {
+        if (verbose) console.log(`[bench]   HyDE: error (${hydeErr instanceof Error ? hydeErr.message : String(hydeErr)}) — using raw query vector`);
         // Fall back to raw query (queryVector already set above)
       }
     }
@@ -447,6 +465,7 @@ async function runRetrieval(
 
     // Vector search
     if (config.useVector) {
+      const t0vec = Date.now();
       vectorResults = await backend
         .vectorSearch(queryVector, { query: q.text, maxResults: k * 4, minScore: 0.0, pathContains: `beir/${dataset}/` })
         .catch((e) => { if (i === 0) console.error(`\n[WARN] vectorSearch error on query ${q._id}: ${e}`); return []; });
@@ -457,10 +476,15 @@ async function runRetrieval(
           top1Score: vectorResults[0]!.score,
         };
       }
+      if (verbose) {
+        const top3 = vectorResults.slice(0, 3).map((r) => `${r.chunk.id.slice(-8)}:${r.score.toFixed(3)}`).join(", ");
+        console.log(`[bench]   retrieve→vector: ${vectorResults.length} results in ${Date.now() - t0vec}ms | top3: [${top3}]`);
+      }
     }
 
     // FTS search
     if (config.useFts) {
+      const t0fts = Date.now();
       ftsResults = await backend
         .ftsSearch(q.text, { query: q.text, maxResults: k * 4, pathContains: `beir/${dataset}/` })
         .catch(() => []);
@@ -470,6 +494,10 @@ async function runRetrieval(
           top1Id: ftsResults[0]!.chunk.id,
           top1Score: ftsResults[0]!.score,
         };
+      }
+      if (verbose) {
+        const top3 = ftsResults.slice(0, 3).map((r) => `${r.chunk.id.slice(-8)}:${r.score.toFixed(3)}`).join(", ");
+        console.log(`[bench]   retrieve→fts: ${ftsResults.length} results in ${Date.now() - t0fts}ms | top3: [${top3}]`);
       }
     }
 
@@ -501,6 +529,10 @@ async function runRetrieval(
           top1Id: candidates[0]!.chunk.id,
           top1Score: candidates[0]!.score,
         };
+      }
+      if (verbose) {
+        const top3 = candidates.slice(0, 3).map((r) => `${r.chunk.id.slice(-8)}:${r.score.toFixed(3)}`).join(", ");
+        console.log(`[bench]   hybrid (mode=${mode}): ${candidates.length} merged | top3: [${top3}]`);
       }
     } else {
       // Single-source — dedupe by ID
@@ -576,6 +608,10 @@ async function runRetrieval(
           top1Score: candidates[0]?.score ?? 0,
           reorderCount,
         };
+        if (verbose) {
+          const top3 = candidates.slice(0, 3).map((r) => `${r.chunk.id.slice(-8)}:${r.score.toFixed(3)}`).join(", ");
+          console.log(`[bench]   rerank: ${candidates.length} results, reordered=${reorderCount}/5 | top3: [${top3}]`);
+        }
       }
     }
 
@@ -583,7 +619,12 @@ async function runRetrieval(
     if (config.useMmr && candidates.length > 0) {
       const beforeCount = candidates.length;
       candidates = mmrRerank(candidates, k, config.mmrLambda);
-      tel.stages.mmr = { removedNearDuplicates: beforeCount - candidates.length };
+      const removed = beforeCount - candidates.length;
+      tel.stages.mmr = { removedNearDuplicates: removed };
+      if (verbose) {
+        const top3 = candidates.slice(0, 3).map((r) => `${r.chunk.id.slice(-8)}:${r.score.toFixed(3)}`).join(", ");
+        console.log(`[bench]   MMR (λ=${config.mmrLambda}): ${candidates.length} results, removed=${removed} near-dupes | top3: [${top3}]`);
+      }
     }
 
     // Record final results
@@ -594,6 +635,15 @@ async function runRetrieval(
     }));
     tel.latencyMs = Date.now() - startTime;
     telemetry.push(tel);
+
+    if (verbose) {
+      console.log(`[bench]   ── final: ${tel.finalResults.length} results in ${tel.latencyMs}ms`);
+      for (let ri = 0; ri < Math.min(tel.finalResults.length, 5); ri++) {
+        const fr = tel.finalResults[ri]!;
+        const isRelevant = qrels[q._id]?.[fr.id] ? "✓" : "✗";
+        console.log(`[bench]     [${ri + 1}] ${isRelevant} id=${fr.id.slice(0, 24)} score=${fr.score.toFixed(4)} | "${fr.text.slice(0, 60).replace(/\n/g, " ")}…"`);
+      }
+    }
 
     // Convert results for BEIR metrics - Results is Record<queryId, Record<docId, score>>
     results[q._id] = {};

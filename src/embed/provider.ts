@@ -117,7 +117,15 @@ function makeOpenAiCompat(
   }
 
   async function embed(input: string | string[]): Promise<number[][]> {
+    const batchSize = Array.isArray(input) ? input.length : 1;
+    const verbose = process.env.VERBOSE || process.env.DEBUG_PIPELINE;
+
+    if (verbose) {
+      console.log(`[embed] ${id}/${model}: request batchSize=${batchSize}`);
+    }
+
     let resp: Response;
+    const t0embed = performance.now();
     try {
       resp = await fetch(`${baseUrl}/embeddings`, {
         method: "POST",
@@ -143,8 +151,20 @@ function makeOpenAiCompat(
       throw err;
     }
     const data = (await resp.json()) as { data: Array<{ embedding: number[]; index: number }> };
+    const elapsedEmbed = (performance.now() - t0embed).toFixed(1);
+
+    const results = data.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
+
+    // Dimension verification
+    const actualDims = results[0]?.length ?? 0;
+    if (actualDims > 0 && actualDims !== dims) {
+      console.warn(`[embed] ${id}/${model}: dimension mismatch! expected=${dims} actual=${actualDims}`);
+    }
+
+    console.log(`[embed] ${id}/${model}: ${batchSize} texts → ${results.length} vectors (dims=${actualDims}) in ${elapsedEmbed}ms`);
+
     // Sort by index to preserve order
-    return data.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
+    return results;
   }
 
   return {
@@ -158,12 +178,22 @@ function makeOpenAiCompat(
       // subspaces for retrieval. Without the prefix, query vectors land in document
       // space and retrieval quality degrades significantly.
       const input = queryInstruction ? `Instruct: ${queryInstruction}\nQuery: ${text}` : text;
+      if (process.env.VERBOSE || process.env.DEBUG_PIPELINE) {
+        if (queryInstruction) {
+          console.log(`[embed] embedQuery: instruction prefix applied — "${queryInstruction.slice(0, 60)}"`);
+        } else {
+          console.log(`[embed] embedQuery: no instruction prefix (raw text)`);
+        }
+      }
       const results = await embed(input);
       return results[0]!;
     },
     async embedDocument(text) {
       // Always embed as raw text — no instruction prefix.
       // Used for HyDE hypothetical documents which must land in document space.
+      if (process.env.VERBOSE || process.env.DEBUG_PIPELINE) {
+        console.log(`[embed] embedDocument: no instruction prefix (document space, raw text)`);
+      }
       const results = await embed(text);
       return results[0]!;
     },
@@ -171,8 +201,14 @@ function makeOpenAiCompat(
       if (texts.length === 0) return [];
       // Batch in groups of 100 to avoid payload limits
       const results: number[][] = [];
+      const totalBatches = Math.ceil(texts.length / 100);
+      console.log(`[embed] embedBatch: ${texts.length} texts → ${totalBatches} batch(es) of ≤100`);
       for (let i = 0; i < texts.length; i += 100) {
         const batch = texts.slice(i, i + 100);
+        const batchIdx = Math.floor(i / 100) + 1;
+        if (totalBatches > 1) {
+          console.log(`[embed] embedBatch: batch ${batchIdx}/${totalBatches} size=${batch.length}`);
+        }
         const vectors = await embed(batch);
         results.push(...vectors);
       }
