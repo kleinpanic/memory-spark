@@ -1,45 +1,73 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 532" width="1200" height="532" role="img" aria-label="memory-spark chart">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 868" width="1200" height="868" role="img" aria-label="memory-spark chart">
   <defs><style>text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }</style></defs>
-  <rect width="1200" height="532" fill="#0d1117"/>
-  <rect x="10" y="10" width="1180" height="512" rx="12" fill="#161b22" stroke="#30363d"/>
+  <rect width="1200" height="868" fill="#0d1117"/>
+  <rect x="10" y="10" width="1180" height="848" rx="12" fill="#161b22" stroke="#30363d"/>
   <text x="40" y="48" fill="#c9d1d9" font-size="24" font-weight="700">BEIR SciFact — NDCG@10 by Configuration</text>
   <text x="40" y="70" fill="#8b949e" font-size="14">Phase 12: RRF + Dynamic Reranker Gate (300 queries)</text>
   
-    <text x="190" y="104" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="700">GATE-D: Soft+RRF</text>
-    <rect x="200" y="80" width="520" height="40" rx="4" fill="#3fb950" opacity="1"/>
-    <text x="728" y="104" fill="#3fb950" font-size="13" font-weight="600">0.7803</text>
-    <text x="800" y="104" fill="#3fb950" font-size="11">★ PRODUCTION</text>
-    <text x="190" y="152" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="700">GATE-A: Hard</text>
-    <rect x="200" y="128" width="519.9333589645008" height="40" rx="4" fill="#3fb950" opacity="1"/>
-    <text x="727.9333589645008" y="152" fill="#3fb950" font-size="13" font-weight="600">0.7802</text>
-    <text x="799.9333589645008" y="152" fill="#3fb950" font-size="11">★ PRODUCTION</text>
-    <text x="190" y="200" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">RRF-D: k=20</text>
-    <rect x="200" y="176" width="519.6667948225042" height="40" rx="4" fill="#58a6ff" opacity="0.7"/>
-    <text x="727.6667948225042" y="200" fill="#58a6ff" font-size="13" font-weight="600">0.7798</text>
+    <text x="190" y="104" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">U: Logit α=0.4 ★</text>
+    <rect x="200" y="80" width="520" height="40" rx="4" fill="#c9d1d9" opacity="0.7"/>
+    <text x="728" y="104" fill="#c9d1d9" font-size="13" font-weight="600">0.7889</text>
     
-    <text x="190" y="248" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">RRF-A: k=60</text>
-    <rect x="200" y="224" width="519.600153787005" height="40" rx="4" fill="#58a6ff" opacity="0.7"/>
-    <text x="727.600153787005" y="248" fill="#58a6ff" font-size="13" font-weight="600">0.7797</text>
+    <text x="190" y="152" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">V: Logit α=0.6</text>
+    <rect x="200" y="128" width="519.7363417416656" height="40" rx="4" fill="#c9d1d9" opacity="0.7"/>
+    <text x="727.7363417416656" y="152" fill="#c9d1d9" font-size="13" font-weight="600">0.7885</text>
     
-    <text x="190" y="296" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">A: Vector-Only</text>
-    <rect x="200" y="272" width="513.7357426630783" height="40" rx="4" fill="#d29922" opacity="0.7"/>
-    <text x="721.7357426630783" y="296" fill="#d29922" font-size="13" font-weight="600">0.7709</text>
+    <text x="190" y="200" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">N: Logit α=0.5</text>
+    <rect x="200" y="176" width="518.2862213208265" height="40" rx="4" fill="#c9d1d9" opacity="0.7"/>
+    <text x="726.2862213208265" y="200" fill="#c9d1d9" font-size="13" font-weight="600">0.7863</text>
     
-    <text x="190" y="344" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">G: Full Pipeline</text>
-    <rect x="200" y="320" width="501.47379213123156" height="40" rx="4" fill="#c9d1d9" opacity="0.7"/>
-    <text x="709.4737921312316" y="344" fill="#c9d1d9" font-size="13" font-weight="600">0.7525</text>
+    <text x="190" y="248" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">MQ-C: Multi-Query</text>
+    <rect x="200" y="224" width="517.6270756749905" height="40" rx="4" fill="#c9d1d9" opacity="0.7"/>
+    <text x="725.6270756749905" y="248" fill="#c9d1d9" font-size="13" font-weight="600">0.7853</text>
     
-    <text x="190" y="392" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">E: Hybrid (Static RRF)</text>
-    <rect x="200" y="368" width="492.8104575163399" height="40" rx="4" fill="#c9d1d9" opacity="0.7"/>
-    <text x="700.81045751634" y="392" fill="#c9d1d9" font-size="13" font-weight="600">0.7395</text>
+    <text x="190" y="296" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="700">GATE-D: Soft+RRF</text>
+    <rect x="200" y="272" width="514.3313474458106" height="40" rx="4" fill="#3fb950" opacity="1"/>
+    <text x="722.3313474458106" y="296" fill="#3fb950" font-size="13" font-weight="600">0.7803</text>
+    <text x="794.3313474458106" y="296" fill="#3fb950" font-size="11">★ PRODUCTION</text>
+    <text x="190" y="344" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="700">GATE-A: Hard Gate</text>
+    <rect x="200" y="320" width="514.265432881227" height="40" rx="4" fill="#3fb950" opacity="1"/>
+    <text x="722.265432881227" y="344" fill="#3fb950" font-size="13" font-weight="600">0.7802</text>
+    <text x="794.265432881227" y="344" fill="#3fb950" font-size="11">★ PRODUCTION</text>
+    <text x="190" y="392" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">RRF-D: k=20</text>
+    <rect x="200" y="368" width="514.0017746228926" height="40" rx="4" fill="#58a6ff" opacity="0.7"/>
+    <text x="722.0017746228926" y="392" fill="#58a6ff" font-size="13" font-weight="600">0.7798</text>
     
-    <text x="190" y="440" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">H: Vec→Rerank</text>
-    <rect x="200" y="416" width="485.01345636293735" height="40" rx="4" fill="#c9d1d9" opacity="0.7"/>
-    <text x="693.0134563629374" y="440" fill="#c9d1d9" font-size="13" font-weight="600">0.7278</text>
+    <text x="190" y="440" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">P: Full Adaptive</text>
+    <rect x="200" y="416" width="513.935860058309" height="40" rx="4" fill="#c9d1d9" opacity="0.7"/>
+    <text x="721.935860058309" y="440" fill="#c9d1d9" font-size="13" font-weight="600">0.7797</text>
     
-    <text x="190" y="488" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">B: FTS-Only</text>
-    <rect x="200" y="464" width="434.6994745610662" height="40" rx="4" fill="#8b949e" opacity="0.7"/>
-    <text x="642.6994745610662" y="488" fill="#8b949e" font-size="13" font-weight="600">0.6523</text>
+    <text x="190" y="488" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">A: Vector-Only</text>
+    <rect x="200" y="464" width="508.13537837495244" height="40" rx="4" fill="#d29922" opacity="0.7"/>
+    <text x="716.1353783749524" y="488" fill="#d29922" font-size="13" font-weight="600">0.7709</text>
+    
+    <text x="190" y="536" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">K: Adaptive MMR</text>
+    <rect x="200" y="512" width="502.40081125617945" height="40" rx="4" fill="#c9d1d9" opacity="0.7"/>
+    <text x="710.4008112561794" y="536" fill="#c9d1d9" font-size="13" font-weight="600">0.7622</text>
+    
+    <text x="190" y="584" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">I: Adaptive Hybrid</text>
+    <rect x="200" y="560" width="498.11636455824566" height="40" rx="4" fill="#c9d1d9" opacity="0.7"/>
+    <text x="706.1163645582457" y="584" fill="#c9d1d9" font-size="13" font-weight="600">0.7557</text>
+    
+    <text x="190" y="632" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">D: Full Pipeline</text>
+    <rect x="200" y="608" width="496.0070984915705" height="40" rx="4" fill="#c9d1d9" opacity="0.7"/>
+    <text x="704.0070984915706" y="632" fill="#c9d1d9" font-size="13" font-weight="600">0.7525</text>
+    
+    <text x="190" y="680" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">H: Vec→Rerank</text>
+    <rect x="200" y="656" width="487.43820509570287" height="40" rx="4" fill="#c9d1d9" opacity="0.7"/>
+    <text x="695.4382050957029" y="680" fill="#c9d1d9" font-size="13" font-weight="600">0.7395</text>
+    
+    <text x="190" y="728" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">C: Hybrid</text>
+    <rect x="200" y="704" width="481.63772341234625" height="40" rx="4" fill="#c9d1d9" opacity="0.7"/>
+    <text x="689.6377234123463" y="728" fill="#c9d1d9" font-size="13" font-weight="600">0.7307</text>
+    
+    <text x="190" y="776" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">F: Hybrid+HyDE</text>
+    <rect x="200" y="752" width="479.726201039422" height="40" rx="4" fill="#c9d1d9" opacity="0.7"/>
+    <text x="687.726201039422" y="776" fill="#c9d1d9" font-size="13" font-weight="600">0.7278</text>
+    
+    <text x="190" y="824" text-anchor="end" fill="#c9d1d9" font-size="13" font-weight="400">B: FTS-Only</text>
+    <rect x="200" y="800" width="434.1792369121561" height="40" rx="4" fill="#8b949e" opacity="0.7"/>
+    <text x="642.1792369121561" y="824" fill="#8b949e" font-size="13" font-weight="600">0.6587</text>
     
 </svg>

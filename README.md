@@ -14,9 +14,9 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/NDCG%4010-0.7802-58a6ff" alt="NDCG@10">
-  <img src="https://img.shields.io/badge/MRR-0.7455-3fb950" alt="MRR">
-  <img src="https://img.shields.io/badge/Recall%4010-0.9137-d29922" alt="Recall@10">
+  <img src="https://img.shields.io/badge/NDCG%4010-0.7889-58a6ff" alt="NDCG@10">
+  <img src="https://img.shields.io/badge/MRR-0.7572-3fb950" alt="MRR">
+  <img src="https://img.shields.io/badge/Recall%4010-0.9243-d29922" alt="Recall@10">
   <img src="https://img.shields.io/badge/Tests-483%2F483-brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/Tools-18-58a6ff" alt="Tools">
 </p>
@@ -31,27 +31,31 @@ memory-spark is a production memory substrate for [OpenClaw](https://github.com/
 
 Results below are from `evaluation/results/` generated via `scripts/run-beir-bench.ts`.
 
-| Metric | Full Pipeline (GATE-A) | Vector-Only Baseline | Delta |
-|--------|----------------------|---------------------|-------|
-| **NDCG@10** | **0.7802** | 0.7709 | **+0.94%** |
-| **MRR** | 0.7455 | 0.7365 | +1.2% |
-| **Recall@10** | **0.9137** | 0.9037 | **+1.1%** |
-| **Latency** | 732ms | 528ms | +204ms |
-| **Gate Skips** | 78% | — | — |
+| Metric | Best Overall (U) | GATE-A (Production) | Vector-Only | 
+|--------|------------------|---------------------|-------------|
+| **NDCG@10** | **0.7889** | 0.7802 | 0.7709 |
+| **MRR** | **0.7572** | 0.7455 | 0.7365 |
+| **Recall@10** | 0.9099 | 0.9137 | 0.9037 |
+| **Reranker Calls** | 100% | **21%** | 0% |
 
-> **Note:** BEIR measures zero-shot cross-domain retrieval. Our eval is on standardized academic datasets (SciFact, FiQA, NFCorpus). See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for full analysis.
+> **Note:** BEIR measures zero-shot cross-domain retrieval across standardized academic datasets (SciFact 300 queries, FiQA 648 queries, NFCorpus 323 queries). See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for full analysis across all 36 configurations.
 
-### Configuration Comparison
+### Top Configurations (36 tested, SciFact)
 
-| Config | NDCG@10 | Description |
-|--------|---------|-------------|
-| **GATE-A** ★ | **0.7802** | Hard gate (production default) — 78% skip rate |
-| GATE-D | 0.7803 | Soft gate + RRF k=20 |
-| RRF-D | 0.7798 | RRF k=20, no gate |
-| RRF-A | 0.7797 | RRF k=60, no gate |
-| A: Vector-Only | 0.7709 | Baseline — no reranking, no hybrid |
-| G: Full Pipeline | 0.7525 | Legacy score-based fusion |
-| B: FTS-Only | 0.6523 | BM25 keyword search only |
+| Config | NDCG@10 | Recall@10 | MRR | Strategy |
+|--------|---------|-----------|-----|----------|
+| **U: Logit α=0.4** | **0.7889** | 0.9099 | **0.7572** | Best NDCG — reranker on every query |
+| V: Logit α=0.6 | 0.7885 | **0.9243** | 0.7527 | **Best Recall** — reranker on every query |
+| N: Logit α=0.5 | 0.7863 | 0.9143 | 0.7522 | Balanced blend |
+| MQ-C: Multi-Query | 0.7853 | 0.9177 | 0.7500 | 3 LLM reformulations |
+| **GATE-A** ★ | **0.7802** | **0.9137** | 0.7455 | **Production** — 78% skip, best latency |
+| GATE-D | 0.7803 | 0.8924 | 0.7525 | Soft gate + RRF k=20 |
+| RRF-D | 0.7798 | 0.8924 | 0.7514 | RRF k=20 |
+| P: Full Adaptive | 0.7797 | 0.9129 | 0.7440 | Adaptive RRF + conditional rerank |
+| A: Vector-Only | 0.7709 | 0.9037 | 0.7365 | Baseline — no reranker |
+| D: Full Pipeline | 0.7525 | 0.9101 | 0.7052 | Hybrid + reranker + MMR |
+| F: Hybrid + HyDE | 0.7278 | 0.8874 | 0.6844 | HyDE hurts on short claims |
+| B: FTS-Only | 0.6587 | 0.7924 | 0.6240 | BM25 keyword only |
 
 ## Architecture
 
@@ -261,13 +265,14 @@ cd paper && pdflatex memory-spark.tex
 
 ### Ablation Study
 
-| Configuration | NDCG@10 | MRR | Recall@10 |
-|--------------|---------|-----|-----------|
-| Full Pipeline (GATE-A) | **0.7802** | 0.7455 | **0.9137** |
-| − Reranker Gate | 0.7709 | 0.7365 | 0.9037 |
-| − RRF (score blend) | 0.7525 | 0.7211 | 0.8924 |
-| − FTS / Hybrid | 0.7278 | 0.6985 | 0.8924 |
-| FTS-Only | 0.6523 | 0.6289 | 0.7867 |
+| Configuration | NDCG@10 | Recall@10 | Δ NDCG |
+|--------------|---------|-----------|--------|
+| GATE-A (full) | **0.7802** | **0.9137** | — |
+| − Gate (unconditional rerank) | 0.7797 | 0.8924 | −0.06% |
+| − Reranker entirely | 0.7709 | 0.9037 | −1.2% |
+| − RRF (score blend) | 0.7525 | 0.9101 | −3.5% |
+| − Source weighting | 0.7307 | 0.8764 | −6.3% |
+| FTS-Only | 0.6587 | 0.7924 | −15.6% |
 
 ## Key Innovations
 
@@ -341,7 +346,7 @@ docs/            # Architecture, config, benchmarks, tuning
 ```bibtex
 @software{memory_spark_2026,
   title   = {memory-spark: GPU-Accelerated Persistent Memory for Autonomous AI Agents},
-  author  = {Klein, Brok and Contributors},
+  author  = {Panic, Klein and Contributors},
   year    = {2026},
   url     = {https://github.com/exampleuser/memory-spark},
   version = {0.4.0}
