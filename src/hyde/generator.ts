@@ -105,6 +105,11 @@ async function attemptHydeGeneration(
       max_tokens: config.maxTokens,
       temperature: config.temperature,
       stream: false,
+      // Disable thinking/reasoning mode for models that support it (e.g. Nemotron-Super).
+      // With thinking enabled, the model puts all output into `reasoning` and sets
+      // `content: null`, causing HyDE to fail. HyDE needs a direct factual document,
+      // not a chain-of-thought reasoning trace.
+      chat_template_kwargs: { enable_thinking: false },
     });
 
     const response = await fetch(config.llmUrl, {
@@ -117,10 +122,13 @@ async function attemptHydeGeneration(
     if (!response.ok) return null;
 
     const data = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string } }>;
+      choices?: Array<{ message?: { content?: string | null; reasoning?: string | null } }>;
     };
 
-    const content = data.choices?.[0]?.message?.content?.trim();
+    // Prefer `content`, but fall back to `reasoning` if the model has thinking
+    // mode on (content will be null, reasoning will have the actual text).
+    const msg = data.choices?.[0]?.message;
+    const content = (msg?.content ?? msg?.reasoning ?? "").trim();
     if (!content || content.length < 20) return null;
 
     // Strip think blocks — handle both closed (<think>...</think>) and unclosed (<think>...) tags
