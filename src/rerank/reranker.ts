@@ -103,28 +103,49 @@ function sparkReranker(cfg: RerankConfig): Reranker {
 
       // Phase 10A: Telemetry — log both sigmoid and logit-space metrics
       const elapsedMs = performance.now() - t0;
+      const wasNormalized = normalizedQuery !== query;
+
       if (results.length > 0) {
         const scores = results.map((r) => r.score);
         const min = Math.min(...scores);
         const max = Math.max(...scores);
-        const mean = scores.reduce((a, b) => a + b, 0) / scores.length;
         const spread = max - min;
-        // Debug-level: enable via DEBUG=memory-spark:reranker or similar
-        if (process.env.DEBUG?.includes("rerank") || process.env.RERANKER_TELEMETRY) {
-          const normalized =
-            normalizedQuery !== query ? ` (normalized: "${normalizedQuery.slice(0, 60)}…")` : "";
-          const blendStr = blendAlpha > 0 ? ` blend=α${blendAlpha}` : "";
-          // Also show logit-space spread for Phase 10A diagnostics
-          const rawSigmoids = data.results.map((r) => r.relevance_score);
-          const logits = rawSigmoids.map(recoverLogit);
-          const logitMin = Math.min(...logits);
-          const logitMax = Math.max(...logits);
-          const logitSpread = logitMax - logitMin;
-          console.log(
-            `[reranker] ${pool.length} candidates → ${results.length} results in ${elapsedMs.toFixed(0)}ms | ` +
-              `blended: min=${min.toFixed(4)} max=${max.toFixed(4)} spread=${spread.toFixed(4)}${blendStr} | ` +
-              `logits: min=${logitMin.toFixed(2)} max=${logitMax.toFixed(2)} spread=${logitSpread.toFixed(2)}${normalized}`,
-          );
+        const rawSigmoids = data.results.map((r) => r.relevance_score);
+        const logits = rawSigmoids.map(recoverLogit);
+        const logitMin = Math.min(...logits);
+        const logitMax = Math.max(...logits);
+        const logitSpread = logitMax - logitMin;
+        const normalizedTag = wasNormalized ? " [normalized→interrogative]" : "";
+        const blendStr = blendAlpha > 0 ? ` blend=α${blendAlpha}` : " blend=none";
+
+        // Always-on summary: one line per query
+        console.log(
+          `[reranker] ${pool.length} candidates → ${results.length} results in ${elapsedMs.toFixed(0)}ms` +
+            ` | blended spread=${spread.toFixed(4)} logitSpread=${logitSpread.toFixed(2)}${blendStr}${normalizedTag}`,
+        );
+
+        const verbose = process.env.VERBOSE || process.env.DEBUG_PIPELINE;
+        if (verbose) {
+          if (wasNormalized) {
+            console.log(`[reranker]   query: "${query.slice(0, 80)}"`);
+            console.log(`[reranker]   normalized: "${normalizedQuery.slice(0, 80)}"`);
+          }
+
+          // Per-candidate scoring trace
+          console.log(`[reranker]   --- per-candidate scores (top ${Math.min(results.length, 10)}) ---`);
+          for (let ci = 0; ci < Math.min(results.length, 10); ci++) {
+            const res = results[ci]!;
+            const rerankEntry = data.results.find((dr) => pool[dr.index]?.chunk.id === res.chunk.id);
+            const origScore = pool.find((p) => p.chunk.id === res.chunk.id)?.score ?? 0;
+            const sigmoidScore = rerankEntry?.relevance_score ?? 0;
+            const logit = recoverLogit(sigmoidScore);
+            const snippet = res.chunk.text.slice(0, 60).replace(/\n/g, " ");
+            console.log(
+              `[reranker]     [${ci + 1}] id=${res.chunk.id.slice(0, 20)} ` +
+                `origScore=${origScore.toFixed(4)} sigmoid=${sigmoidScore.toFixed(4)} ` +
+                `logit=${logit.toFixed(2)} blended=${res.score.toFixed(4)} | "${snippet}…"`,
+            );
+          }
         }
       }
 
@@ -138,11 +159,10 @@ function sparkReranker(cfg: RerankConfig): Reranker {
         // in Phase 10A.  Old default 0.01 (sigmoid) → new default 0.5 (logits).
         const minSpread = cfg.spark!.minScoreSpread ?? 0.5;
         if (logitSpread < minSpread) {
-          if (process.env.MEMORY_SPARK_DEBUG || process.env.DEBUG?.includes("rerank")) {
-            console.debug(
-              `[reranker] logitSpread=${logitSpread.toFixed(4)} < minSpread=${minSpread} — falling back to input order`,
-            );
-          }
+          // Always-on: spread guard fired
+          console.log(
+            `[reranker] spread guard: logitSpread=${logitSpread.toFixed(4)} < minSpread=${minSpread} — falling back to input order`,
+          );
           return pool.slice(0, topN);
         }
       }

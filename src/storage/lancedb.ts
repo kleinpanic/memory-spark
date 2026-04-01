@@ -29,12 +29,23 @@ function toJsNumberArray(vec: unknown): number[] {
   if (Array.isArray(vec)) return vec;
   // Arrow Vector and TypedArray both have .toArray()
   if (typeof (vec as { toArray?: unknown }).toArray === "function") {
-    return Array.from((vec as { toArray: () => ArrayLike<number> }).toArray());
+    const arr = Array.from((vec as { toArray: () => ArrayLike<number> }).toArray());
+    if (process.env.VERBOSE || process.env.DEBUG_PIPELINE) {
+      // Warn if any element is undefined — indicates Arrow nullability issue
+      if (arr.length > 0 && typeof arr[0] === "undefined") {
+        console.warn(`[lancedb] Arrow vector conversion: arr[0] is undefined (length=${arr.length}) — vec constructor=${Object.getPrototypeOf(vec)?.constructor?.name ?? "unknown"}`);
+      }
+    }
+    return arr;
   }
   // Generic iterable fallback
   if (typeof (vec as Iterable<number>)[Symbol.iterator] === "function") {
+    if (process.env.VERBOSE || process.env.DEBUG_PIPELINE) {
+      console.log(`[lancedb] Arrow vector: using iterable fallback for type=${typeof vec}`);
+    }
     return Array.from(vec as Iterable<number>);
   }
+  console.warn(`[lancedb] Arrow vector: could not convert vector of type ${typeof vec} — returning empty`);
   return [];
 }
 
@@ -345,8 +356,21 @@ export class LanceDBBackend implements StorageBackend {
       q = q.where(filters.join(" AND "));
     }
 
+    const t0 = performance.now();
     const rows = await q.toArray();
-    return rows.map(rowToSearchResult).filter((r) => !(opts.minScore && r.score < opts.minScore));
+    const elapsedMs = (performance.now() - t0).toFixed(1);
+
+    const results = rows.map(rowToSearchResult).filter((r) => !(opts.minScore && r.score < opts.minScore));
+    console.log(`[lancedb] vector: ${results.length} results in ${elapsedMs}ms (limit=${limit} filters=${filters.length})`);
+
+    const verbose = process.env.VERBOSE || process.env.DEBUG_PIPELINE;
+    if (verbose && results.length > 0) {
+      for (const r of results.slice(0, 3)) {
+        console.log(`[lancedb]   vec score=${r.score.toFixed(4)} pool=${r.chunk.pool ?? "?"} id=${r.chunk.id.slice(0, 20)}`);
+      }
+    }
+
+    return results;
   }
 
   async ftsSearch(query: string, opts: SearchOptions): Promise<SearchResult[]> {
@@ -394,9 +418,29 @@ export class LanceDBBackend implements StorageBackend {
         q.where(filters.join(" AND "));
       }
 
+      const t0fts = performance.now();
       const rows = await q.toArray();
-      return rows.map(rowToSearchResult);
-    } catch {
+      const elapsedFts = (performance.now() - t0fts).toFixed(1);
+
+      const results = rows.map(rowToSearchResult);
+      console.log(`[lancedb] fts: ${results.length} results in ${elapsedFts}ms (limit=${limit} filters=${filters.length})`);
+
+      const verbose = process.env.VERBOSE || process.env.DEBUG_PIPELINE;
+      if (verbose && results.length > 0) {
+        for (const r of results.slice(0, 3)) {
+          // Log raw BM25 score alongside the sigmoid-normalized score for calibration
+          const rawRow = rows[results.indexOf(r)] as Record<string, unknown>;
+          const bm25Raw = rawRow._score as number | undefined;
+          const sigmoidDetail = bm25Raw != null
+            ? ` bm25_raw=${bm25Raw.toFixed(3)} sigmoid_mid=${BM25_SIGMOID_MIDPOINT}`
+            : "";
+          console.log(`[lancedb]   fts score=${r.score.toFixed(4)} pool=${r.chunk.pool ?? "?"} id=${r.chunk.id.slice(0, 20)}${sigmoidDetail}`);
+        }
+      }
+
+      return results;
+    } catch (err) {
+      console.log(`[lancedb] fts: query failed — ${err instanceof Error ? err.message : String(err)}`);
       // FTS search failed — return empty (non-fatal)
       return [];
     }

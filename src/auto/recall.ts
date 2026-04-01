@@ -52,24 +52,33 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     //
     // FTS still uses the raw queryText — keyword matching needs real terms.
     //
+    const verbose = process.env.VERBOSE || process.env.DEBUG_PIPELINE;
+
     let queryVector: number[];
     try {
       const hydeConfig = deps.hyde;
       if (hydeConfig?.enabled) {
+        console.log(`[recall] HyDE: generating hypothetical document for query="${queryText.slice(0, 60)}"`);
         const hypothetical = await generateHypotheticalDocument(queryText, hydeConfig);
         if (hypothetical) {
+          console.log(`[recall] HyDE: success, doc length=${hypothetical.length} chars — embedding as document`);
+          if (verbose) {
+            console.log(`[recall]   HyDE doc preview: "${hypothetical.slice(0, 120).replace(/\n/g, " ")}…"`);
+          }
           // HyDE: embed the hypothetical as a DOCUMENT (no instruction prefix).
           // The hypothetical is a pseudo-document and must land in document embedding
           // space, not query space. This is the correct approach per Gao et al. 2022.
           queryVector = await embed.embedDocument(hypothetical);
         } else {
           // HyDE failed (timeout, too short, etc.) — fall back to raw query
+          console.log(`[recall] HyDE: generation returned empty/null — falling back to raw query embedding`);
           queryVector = await embed.embedQuery(queryText);
         }
       } else {
         queryVector = await embed.embedQuery(queryText);
       }
-    } catch {
+    } catch (hydeErr) {
+      console.log(`[recall] HyDE/embed error: ${hydeErr instanceof Error ? hydeErr.message : String(hydeErr)} — aborting recall`);
       return undefined;
     }
 
@@ -133,9 +142,16 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
 
     // 1. Agent's own memory + tools (primary recall)
     const agentResults = await poolSearch(["agent_memory", "agent_tools"], agentId, fetchN);
+    console.log(`[recall] pool agent_memory+agent_tools (agent=${agentId}): ${agentResults.length} results`);
+    if (verbose && agentResults.length > 0) {
+      for (const r of agentResults.slice(0, 3)) {
+        console.log(`[recall]   score=${r.score.toFixed(4)} pool=${r.chunk.pool} path=${r.chunk.path} id=${r.chunk.id.slice(0, 20)}`);
+      }
+    }
 
     // 2. Agent's own mistakes (per-agent, higher priority than shared)
     const agentMistakes = await poolSearch(["agent_mistakes"], agentId, 5, lowThreshold);
+    console.log(`[recall] pool agent_mistakes (agent=${agentId}): ${agentMistakes.length} results`);
 
     // 3. Shared mistakes (cross-agent)
     const sharedMistakes = await poolSearch(
@@ -144,12 +160,15 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
       5,
       lowThreshold,
     );
+    console.log(`[recall] pool shared_mistakes (cross-agent): ${sharedMistakes.length} results`);
 
     // 4. Shared knowledge (cross-agent)
     const sharedKnowledge = await poolSearch(["shared_knowledge"], undefined, 10, lowThreshold);
+    console.log(`[recall] pool shared_knowledge (cross-agent): ${sharedKnowledge.length} results`);
 
     // 5. Shared rules — relevance-gated like all other pools
     const sharedRules = await poolSearch(["shared_rules"], undefined, 5, lowThreshold);
+    console.log(`[recall] pool shared_rules (cross-agent): ${sharedRules.length} results`);
 
     // Merge all results, deduplicating by chunk ID
     const merged: SearchResult[] = [...agentResults];
@@ -169,6 +188,7 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     mergeIn(sharedKnowledge);
     mergeIn(sharedRules);
 
+    console.log(`[recall] merged (all pools, deduped): ${merged.length} candidates`);
     if (merged.length === 0) return undefined;
 
     // Source weighting EARLY — penalize garbage before expensive stages
@@ -181,16 +201,43 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     // Source-level dedup: collapse near-identical chunks from the same source
     // before the reranker, so it doesn't waste slots on overlapping content.
     const deduped = deduplicateSources(merged);
+    console.log(`[recall] after source dedup: ${deduped.length} candidates (removed ${merged.length - deduped.length})`);
 
     // Cross-encoder rerank FIRST — reranker is the most accurate relevance signal.
     // Give it a large candidate set so it can identify the best documents.
     // Then MMR trims the reranked output for diversity.
     const reranked = await reranker.rerank(queryText, deduped, cfg.maxResults * 2);
+    console.log(`[recall] after rerank: ${reranked.length} candidates`);
 
     // MMR diversity re-ranking on reranker-approved candidates.
     // This prevents MMR from discarding documents the reranker would have rescued.
     // (Pipeline ordering fix: retrieve → rerank → MMR per NVIDIA RAG Blueprint)
-    const diverse = mmrRerank(reranked, cfg.maxResults, cfg.mmrLambda ?? 0.9);
+    const mmrLambda = cfg.mmrLambda ?? 0.9;
+
+    // Log adaptive lambda details for diagnostics
+    const adaptiveLambdaInfo = computeAdaptiveLambda(reranked);
+    console.log(
+      `[recall] MMR: configured λ=${mmrLambda} | adaptive would be λ=${adaptiveLambdaInfo.lambda} ` +
+        `(spread=${adaptiveLambdaInfo.spread.toFixed(3)}, tier=${adaptiveLambdaInfo.tier})`,
+    );
+
+    if (verbose && reranked.length > 0) {
+      console.log(`[recall]   MMR input scores (top ${Math.min(reranked.length, 5)}):`);
+      for (const r of reranked.slice(0, 5)) {
+        console.log(`[recall]     score=${r.score.toFixed(4)} id=${r.chunk.id.slice(0, 20)} path=${r.chunk.path}`);
+      }
+    }
+
+    const diverse = mmrRerank(reranked, cfg.maxResults, mmrLambda);
+    console.log(`[recall] after MMR: ${diverse.length} results (removed ${reranked.length - diverse.length} near-duplicates)`);
+
+    if (verbose && diverse.length > 0) {
+      console.log(`[recall]   MMR output (final candidates):`);
+      for (const r of diverse) {
+        console.log(`[recall]     score=${r.score.toFixed(4)} id=${r.chunk.id.slice(0, 20)} path=${r.chunk.path} pool=${r.chunk.pool}`);
+      }
+    }
+
     if (diverse.length === 0) return undefined;
 
     // ── Parent-Child Context Expansion ───────────────────────────────────
