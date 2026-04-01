@@ -100,7 +100,7 @@ memory-spark addresses these challenges with a 15-stage retrieval pipeline (Sect
 
 \paragraph{Dense Retrieval.} Modern embedding models \citep{neelakantan2022text,li2023e5} achieve strong zero-shot retrieval but struggle with domain-specific terminology and temporal context. Instruction-tuned embeddings \citep{su2022instructor} improve query-document alignment but require careful asymmetric encoding---a pattern we enforce in Section~\ref{sec:embed}.
 
-\paragraph{Hybrid Search.} Combining dense and sparse retrieval is well-established \citep{chen2022salient,luan2021sparse}. However, most approaches use score-based fusion (weighted sum or learned interpolation), which assumes compatible score scales. In practice, BM25 scores range from 5--20+ while cosine similarities range from 0.2--0.6, making score-based fusion unreliable without careful calibration \citep{cormack2009reciprocal}.
+\paragraph{Hybrid Search.} Combining dense and sparse retrieval is well-established. However, most approaches use score-based fusion (weighted sum or learned interpolation), which assumes compatible score scales. In practice, BM25 scores range from 5--20+ while cosine similarities range from 0.2--0.6, making score-based fusion unreliable without careful calibration \citep{cormack2009reciprocal}.
 
 \paragraph{Cross-Encoder Reranking.} Two-stage retrieve-then-rerank pipelines \citep{nogueira2019passage,glass2022re2g} achieve SOTA quality but add significant latency. ColBERT \citep{khattab2020colbert} offers a middle ground with late interaction, but requires specialized indexing. Our Dynamic Reranker Gate takes a different approach: fire the full cross-encoder only when the first-stage retrieval signal is ambiguous.
 
