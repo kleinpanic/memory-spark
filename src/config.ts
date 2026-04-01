@@ -65,6 +65,19 @@ export interface RerankConfig {
     minScoreSpread?: number;
   };
   topN: number;
+  /**
+   * Score interpolation: blend original retrieval scores with reranker scores
+   * instead of replacing them entirely. Prevents catastrophic reranking when
+   * the cross-encoder makes bad decisions.
+   *
+   * Formula: final = alpha × normalized_original + (1 - alpha) × reranker_score
+   *
+   * - alpha = 0.0: Pure reranker (current behavior, default)
+   * - alpha = 0.3: Reranker-biased blend (recommended)
+   * - alpha = 0.5: Equal weight
+   * - alpha = 1.0: Ignore reranker entirely
+   */
+  scoreBlendAlpha?: number;
 }
 
 /** Full-text search configuration. All fields optional — defaults applied at use site. */
