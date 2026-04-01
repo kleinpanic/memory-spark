@@ -433,6 +433,7 @@ describe("alphaOverride (Phase 10B)", () => {
       spark: { baseUrl: "http://mock:18096", model: "test-model" },
       topN: 5,
       scoreBlendAlpha: 0.3,
+      blendMode: "score", rerankerGate: "off",
     });
 
     const candidates = [makeResult("a", 0.9), makeResult("b", 0.7)];
@@ -463,6 +464,7 @@ describe("alphaOverride (Phase 10B)", () => {
       spark: { baseUrl: "http://mock:18096", model: "test-model" },
       topN: 5,
       scoreBlendAlpha: 0,
+      blendMode: "score", rerankerGate: "off",
     });
 
     // Candidates where vector and reranker disagree — a is best vector, c is worst
@@ -492,6 +494,7 @@ describe("alphaOverride (Phase 10B)", () => {
       spark: { baseUrl: "http://mock:18096", model: "test-model" },
       topN: 5,
       scoreBlendAlpha: 0.5, // config says blend
+      blendMode: "score", rerankerGate: "off",
     });
 
     const candidates = [makeResult("a", 0.9), makeResult("b", 0.3)];
@@ -516,6 +519,7 @@ describe("alphaOverride (Phase 10B)", () => {
       spark: { baseUrl: "http://mock:18096", model: "test-model" },
       topN: 5,
       scoreBlendAlpha: 0.5,
+      blendMode: "score", rerankerGate: "off",
     });
 
     const candidates = [makeResult("a", 0.9), makeResult("b", 0.7)];
@@ -541,6 +545,7 @@ describe("alphaOverride (Phase 10B)", () => {
       spark: { baseUrl: "http://mock:18096", model: "test-model" },
       topN: 5,
       scoreBlendAlpha: 0.5,
+      blendMode: "score", rerankerGate: "off",
     });
 
     const candidates = [makeResult("a", 0.9)];
@@ -574,6 +579,7 @@ describe("reranker error handling (Phase 10B)", () => {
       enabled: true,
       spark: { baseUrl: "http://mock:18096", model: "test-model" },
       topN: 5,
+      blendMode: "score", rerankerGate: "off",
     });
 
     const candidates = [makeResult("a", 0.9), makeResult("b", 0.7), makeResult("c", 0.5)];
@@ -605,6 +611,7 @@ describe("reranker error handling (Phase 10B)", () => {
       enabled: true,
       spark: { baseUrl: "http://mock:18096", model: "test-model" },
       topN: 5,
+      blendMode: "score", rerankerGate: "off",
     });
 
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -628,6 +635,7 @@ describe("reranker error handling (Phase 10B)", () => {
       enabled: true,
       spark: { baseUrl: "http://mock:18096", model: "test-model" },
       topN: 5,
+      blendMode: "score", rerankerGate: "off",
     });
 
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -647,6 +655,7 @@ describe("reranker error handling (Phase 10B)", () => {
       enabled: true,
       spark: { baseUrl: "http://mock:18096", model: "test-model" },
       topN: 5,
+      blendMode: "score", rerankerGate: "off",
     });
 
     const result = await reranker.rerank("test", [], 5);
@@ -661,6 +670,7 @@ describe("passthroughReranker", () => {
     const reranker = await createReranker({
       enabled: false,
       topN: 5,
+      blendMode: "score", rerankerGate: "off",
     });
 
     const candidates = [makeResult("a", 0.9), makeResult("b", 0.7), makeResult("c", 0.5)];
@@ -675,6 +685,7 @@ describe("passthroughReranker", () => {
     const reranker = await createReranker({
       enabled: false,
       topN: 5,
+      blendMode: "score", rerankerGate: "off",
     });
 
     const candidates = [makeResult("a", 0.9)];
@@ -686,6 +697,7 @@ describe("passthroughReranker", () => {
     const reranker = await createReranker({
       enabled: false,
       topN: 5,
+      blendMode: "score", rerankerGate: "off",
     });
 
     expect(await reranker.probe()).toBe(true);
@@ -725,6 +737,7 @@ describe("spread guard", () => {
       enabled: true,
       spark: { baseUrl: "http://mock:18096", model: "test-model", minScoreSpread: 0.5 },
       topN: 5,
+      blendMode: "score", rerankerGate: "off",
     });
 
     const candidates = [makeResult("a", 0.9), makeResult("b", 0.7), makeResult("c", 0.5)];
