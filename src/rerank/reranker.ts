@@ -65,7 +65,10 @@ function sparkReranker(cfg: RerankConfig): Reranker {
           model,
           query: normalizedQuery,
           documents,
-          top_n: topN,
+          // When blending (alpha > 0), score ALL candidates so the blend
+          // can promote vector-strong docs the reranker would have excluded.
+          // Without blending, respect the original topN to save latency.
+          top_n: blendAlpha > 0 ? pool.length : topN,
           return_documents: false,
         }),
       });
@@ -93,7 +96,10 @@ function sparkReranker(cfg: RerankConfig): Reranker {
       // α = 0.3: Reranker-biased blend (recommended for production)
       // α = 0.5: Equal weight between original and reranker
       //
-      const results = blendScores(pool, data.results, blendAlpha);
+      // When blending, we scored all candidates. Now take top-N.
+      const results = blendAlpha > 0
+        ? blendScores(pool, data.results, blendAlpha).slice(0, topN)
+        : blendScores(pool, data.results, blendAlpha);
 
       // Phase 5C: Score calibration telemetry
       const elapsedMs = performance.now() - t0;
