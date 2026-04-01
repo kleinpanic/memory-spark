@@ -292,6 +292,60 @@ const CONFIGS: RetrievalConfig[] = [
     conditionalRerank: true,
     confidenceThreshold: 0.15,
   },
+  // ── Phase 10A: Logit Recovery configs ─────────────────────────────────
+  // These use the same pipeline as Phase 9, but blendScores() now applies
+  // inverse-sigmoid (logit recovery) before normalizing reranker scores.
+  // The reranker's discrimination signal is recovered from sigmoid compression.
+  {
+    id: "Q",
+    label: "Vector → Logit-Recovered Blend (α=0.5)",
+    useVector: true,
+    useFts: false,
+    useReranker: true,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    scoreBlendAlpha: 0.5,
+  },
+  {
+    id: "R",
+    label: "Vector → Pure Logit Reranker (α=0)",
+    useVector: true,
+    useFts: false,
+    useReranker: true,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    scoreBlendAlpha: 0,
+  },
+  {
+    id: "S",
+    label: "Vector → Logit Blend + Conditional (α=0.3)",
+    useVector: true,
+    useFts: false,
+    useReranker: true,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    scoreBlendAlpha: 0.3,
+    conditionalRerank: true,
+    confidenceThreshold: 0.15,
+  },
+  {
+    id: "T",
+    label: "Vector → Logit Blend (α=0.3)",
+    useVector: true,
+    useFts: false,
+    useReranker: true,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    scoreBlendAlpha: 0.3,
+  },
 ];
 
 // ── Functions ───────────────────────────────────────────────────────────────

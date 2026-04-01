@@ -101,7 +101,7 @@ function sparkReranker(cfg: RerankConfig): Reranker {
         ? blendScores(pool, data.results, blendAlpha).slice(0, topN)
         : blendScores(pool, data.results, blendAlpha);
 
-      // Phase 5C: Score calibration telemetry
+      // Phase 10A: Telemetry — log both sigmoid and logit-space metrics
       const elapsedMs = performance.now() - t0;
       if (results.length > 0) {
         const scores = results.map((r) => r.score);
@@ -114,23 +114,33 @@ function sparkReranker(cfg: RerankConfig): Reranker {
           const normalized =
             normalizedQuery !== query ? ` (normalized: "${normalizedQuery.slice(0, 60)}…")` : "";
           const blendStr = blendAlpha > 0 ? ` blend=α${blendAlpha}` : "";
+          // Also show logit-space spread for Phase 10A diagnostics
+          const rawSigmoids = data.results.map((r) => r.relevance_score);
+          const logits = rawSigmoids.map(recoverLogit);
+          const logitMin = Math.min(...logits);
+          const logitMax = Math.max(...logits);
+          const logitSpread = logitMax - logitMin;
           console.log(
             `[reranker] ${pool.length} candidates → ${results.length} results in ${elapsedMs.toFixed(0)}ms | ` +
-              `scores: min=${min.toFixed(4)} max=${max.toFixed(4)} mean=${mean.toFixed(4)} spread=${spread.toFixed(4)}${blendStr}${normalized}`,
+              `blended: min=${min.toFixed(4)} max=${max.toFixed(4)} spread=${spread.toFixed(4)}${blendStr} | ` +
+              `logits: min=${logitMin.toFixed(2)} max=${logitMax.toFixed(2)} spread=${logitSpread.toFixed(2)}${normalized}`,
           );
         }
       }
 
-      // Score spread guard: if reranker scores are too compressed, it's not
-      // discriminating — fall back to input ordering to avoid coin-flip reranks.
-      if (results.length >= 2) {
-        const scores = results.map((r) => r.score);
-        const spread = Math.max(...scores) - Math.min(...scores);
-        const minSpread = cfg.spark!.minScoreSpread ?? 0.01;
-        if (spread < minSpread) {
+      // Score spread guard: operate on recovered LOGITS, not sigmoid scores.
+      // A 0.02 sigmoid spread might represent a 2-point logit spread (real signal).
+      // Default threshold: 0.5 logit units ≈ negligible discrimination.
+      if (data.results.length >= 2) {
+        const logits = data.results.map((r) => recoverLogit(r.relevance_score));
+        const logitSpread = Math.max(...logits) - Math.min(...logits);
+        // Config uses minScoreSpread for backward compat; interpret as logit threshold
+        // in Phase 10A.  Old default 0.01 (sigmoid) → new default 0.5 (logits).
+        const minSpread = cfg.spark!.minScoreSpread ?? 0.5;
+        if (logitSpread < minSpread) {
           if (process.env.MEMORY_SPARK_DEBUG || process.env.DEBUG?.includes("rerank")) {
             console.debug(
-              `[reranker] spread=${spread.toFixed(4)} < minSpread=${minSpread} — falling back to input order`,
+              `[reranker] logitSpread=${logitSpread.toFixed(4)} < minSpread=${minSpread} — falling back to input order`,
             );
           }
           return pool.slice(0, topN);
@@ -174,18 +184,57 @@ function passthroughReranker(): Reranker {
   };
 }
 
-// ── Score Interpolation (Phase 9A) ───────────────────────────────────
+// ── Logit Recovery (Phase 10A) ───────────────────────────────────────
+//
+// vLLM's /rerank endpoint applies sigmoid internally, converting the
+// model's raw logits to relevance_score ∈ (0, 1).  For in-domain docs
+// the logits cluster in a narrow band (e.g. +1 to +5), which sigmoid
+// crushes to ~0.73–0.99 — a 0.26 effective range.  This destroys
+// discrimination when we try to blend with vector scores in full [0, 1].
+//
+// Fix: recover the logits via inverse sigmoid (logit function), then
+// min-max normalize them to [0, 1] — same scale as the vector signal.
+//
+// Math: logit = ln(s / (1 - s))
+//       where s = sigmoid-compressed relevance_score from vLLM
+
+/**
+ * Recover the raw logit from a sigmoid-compressed relevance score.
+ * Clamps to (ε, 1-ε) to avoid ±Infinity at boundaries.
+ */
+export function recoverLogit(sigmoidScore: number): number {
+  const eps = 1e-7;
+  const s = Math.max(eps, Math.min(1 - eps, sigmoidScore));
+  return Math.log(s / (1 - s));
+}
+
+/**
+ * Min-max normalize an array of values to [0, 1].
+ * If all values are identical, returns 0.5 for each.
+ */
+function minMaxNormalize(values: number[]): number[] {
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const range = max - min;
+  if (range === 0) return values.map(() => 0.5);
+  return values.map((v) => (v - min) / range);
+}
+
+// ── Score Interpolation (Phase 9A → 10A) ────────────────────────────
 //
 // Blends original retrieval scores with cross-encoder reranker scores.
-// This prevents the reranker from catastrophically overriding good vector
-// rankings while still allowing it to refine uncertain ones.
+// Phase 10A upgrade: recover logits from sigmoid-compressed scores
+// before normalizing, so the reranker's discrimination signal survives
+// the blend instead of being crushed into a ~0.17 band.
 //
-// Formula: final = α × norm(original) + (1 - α) × reranker_score
-//   where norm(original) maps the original scores to [0, 1] using
-//   min-max normalization within the candidate pool.
+// Formula: final = α × norm(original) + (1 - α) × norm(logit(reranker))
+//   where both sides are min-max normalized to [0, 1].
 
 /**
  * Blend original retrieval scores with reranker relevance scores.
+ *
+ * Phase 10A: Recovers reranker logits via inverse sigmoid before
+ * normalizing, ensuring both signals compete on equal [0, 1] footing.
  *
  * @param pool — original candidates (with retrieval scores)
  * @param rerankResults — reranker output (index + relevance_score)
@@ -197,30 +246,27 @@ export function blendScores(
   rerankResults: Array<{ index: number; relevance_score: number }>,
   alpha: number,
 ): SearchResult[] {
+  // Recover logits from sigmoid-compressed scores
+  const logits = rerankResults.map((r) => recoverLogit(r.relevance_score));
+  const normLogits = minMaxNormalize(logits);
+
   if (alpha <= 0) {
-    // Pure reranker mode (backward-compatible default)
+    // Pure reranker mode — use recovered logits for better ordering
     return rerankResults
-      .map((r) => ({
+      .map((r, i) => ({
         ...pool[r.index]!,
-        score: r.relevance_score,
+        score: normLogits[i]!,
       }))
       .sort((a, b) => b.score - a.score);
   }
 
   // Normalize original scores to [0, 1] within this pool
-  const indices = rerankResults.map((r) => r.index);
-  const originalScores = indices.map((i) => pool[i]!.score);
-  const origMin = Math.min(...originalScores);
-  const origMax = Math.max(...originalScores);
-  const origRange = origMax - origMin;
+  const originalScores = rerankResults.map((r) => pool[r.index]!.score);
+  const normOrig = minMaxNormalize(originalScores);
 
   return rerankResults
-    .map((r) => {
-      const origScore = pool[r.index]!.score;
-      // Min-max normalize: maps [origMin, origMax] → [0, 1]
-      // If all original scores are identical (range=0), normalize to 0.5
-      const normOrig = origRange > 0 ? (origScore - origMin) / origRange : 0.5;
-      const blended = alpha * normOrig + (1 - alpha) * r.relevance_score;
+    .map((r, i) => {
+      const blended = alpha * normOrig[i]! + (1 - alpha) * normLogits[i]!;
       return {
         ...pool[r.index]!,
         score: blended,
