@@ -73,6 +73,20 @@ interface RetrievalConfig {
   useMultiQuery?: boolean;
   /** Phase 11B: Number of reformulations to generate (default: 3) */
   multiQueryN?: number;
+  /** Phase 12: Blend mode for reranker fusion ("score" = legacy alpha, "rrf" = rank fusion) */
+  blendMode?: "score" | "rrf";
+  /** Phase 12: RRF k constant (default 60). Lower = top ranks dominate more */
+  rrfK?: number;
+  /** Phase 12: RRF vector weight (default 1.0) */
+  rrfVectorWeight?: number;
+  /** Phase 12: RRF reranker weight (default 1.0) */
+  rrfRerankerWeight?: number;
+  /** Phase 12: Reranker gate mode ("off" | "hard" | "soft") */
+  rerankerGate?: "off" | "hard" | "soft";
+  /** Phase 12: Gate threshold (skip if spread > this) */
+  rerankerGateThreshold?: number;
+  /** Phase 12: Gate low threshold (skip if spread < this) */
+  rerankerGateLowThreshold?: number;
 }
 
 interface QueryTelemetry {
@@ -470,6 +484,142 @@ const CONFIGS: RetrievalConfig[] = [
     conditionalRerank: true,
     confidenceThreshold: 0.15,
   },
+
+  // ── Phase 12: RRF Rank Fusion Configs ──────────────────────────────────
+  {
+    id: "RRF-A",
+    label: "Vector ⊕ Reranker via RRF (k=60, equal weight)",
+    useVector: true,
+    useFts: false,
+    useReranker: true,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    blendMode: "rrf",
+    rrfK: 60,
+    rrfVectorWeight: 1.0,
+    rrfRerankerWeight: 1.0,
+  },
+  {
+    id: "RRF-B",
+    label: "Vector ⊕ Reranker via RRF (k=60, vector=1.5)",
+    useVector: true,
+    useFts: false,
+    useReranker: true,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    blendMode: "rrf",
+    rrfK: 60,
+    rrfVectorWeight: 1.5,
+    rrfRerankerWeight: 1.0,
+  },
+  {
+    id: "RRF-C",
+    label: "Vector ⊕ Reranker via RRF (k=60, reranker=1.5)",
+    useVector: true,
+    useFts: false,
+    useReranker: true,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    blendMode: "rrf",
+    rrfK: 60,
+    rrfVectorWeight: 1.0,
+    rrfRerankerWeight: 1.5,
+  },
+  {
+    id: "RRF-D",
+    label: "Vector ⊕ Reranker via RRF (k=20, equal weight — sharper top focus)",
+    useVector: true,
+    useFts: false,
+    useReranker: true,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    blendMode: "rrf",
+    rrfK: 20,
+    rrfVectorWeight: 1.0,
+    rrfRerankerWeight: 1.0,
+  },
+
+  // ── Phase 12: Reranker Gate Configs ────────────────────────────────────
+  {
+    id: "GATE-A",
+    label: "RRF + Hard Gate (skip if spread > 0.08 or < 0.02)",
+    useVector: true,
+    useFts: false,
+    useReranker: true,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    blendMode: "rrf",
+    rrfK: 60,
+    rrfVectorWeight: 1.0,
+    rrfRerankerWeight: 1.0,
+    rerankerGate: "hard",
+    rerankerGateThreshold: 0.08,
+    rerankerGateLowThreshold: 0.02,
+  },
+  {
+    id: "GATE-B",
+    label: "RRF + Soft Gate (dynamic vector weight from spread)",
+    useVector: true,
+    useFts: false,
+    useReranker: true,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    blendMode: "rrf",
+    rrfK: 60,
+    rrfVectorWeight: 1.0,
+    rrfRerankerWeight: 1.0,
+    rerankerGate: "soft",
+    rerankerGateThreshold: 0.08,
+    rerankerGateLowThreshold: 0.02,
+  },
+  {
+    id: "GATE-C",
+    label: "RRF + Soft Gate (threshold=0.12, wider confidence window)",
+    useVector: true,
+    useFts: false,
+    useReranker: true,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    blendMode: "rrf",
+    rrfK: 60,
+    rrfVectorWeight: 1.0,
+    rrfRerankerWeight: 1.0,
+    rerankerGate: "soft",
+    rerankerGateThreshold: 0.12,
+    rerankerGateLowThreshold: 0.02,
+  },
+  {
+    id: "GATE-D",
+    label: "RRF (vector=1.5) + Soft Gate (best of Fix 1 + Fix 2)",
+    useVector: true,
+    useFts: false,
+    useReranker: true,
+    useMmr: false,
+    useHyde: false,
+    mmrLambda: 0.9,
+    maxResults: 10,
+    blendMode: "rrf",
+    rrfK: 60,
+    rrfVectorWeight: 1.5,
+    rrfRerankerWeight: 1.0,
+    rerankerGate: "soft",
+    rerankerGateThreshold: 0.08,
+    rerankerGateLowThreshold: 0.02,
+  },
 ];
 
 // ── Functions ───────────────────────────────────────────────────────────────
@@ -754,14 +904,23 @@ async function runRetrieval(
       if (!skipReranker) {
         const beforeOrder = candidates.slice(0, 5).map((c) => c.chunk.id);
 
-        // Phase 10B: Unified reranker path — ALL configs go through reranker.rerank().
-        // The alphaOverride lets the benchmark control blend weight per-config without
+        // Phase 10B/12: Unified reranker path — ALL configs go through reranker.rerank().
+        // Options let the benchmark control blend weight/mode per-config without
         // duplicating normalization, telemetry, or error handling.
+        const rerankOpts: import("../src/rerank/reranker.js").RerankOptions = {};
+        if (config.scoreBlendAlpha != null) rerankOpts.alphaOverride = config.scoreBlendAlpha;
+        if (config.blendMode) rerankOpts.blendModeOverride = config.blendMode;
+        if (config.rrfK != null) rerankOpts.rrfKOverride = config.rrfK;
+        if (config.rrfVectorWeight != null) rerankOpts.vectorWeightOverride = config.rrfVectorWeight;
+        if (config.rrfRerankerWeight != null) rerankOpts.rerankerWeightOverride = config.rrfRerankerWeight;
+        if (config.rerankerGate) rerankOpts.gateOverride = config.rerankerGate;
+        if (config.rerankerGateThreshold != null) rerankOpts.gateThresholdOverride = config.rerankerGateThreshold;
+        if (config.rerankerGateLowThreshold != null) rerankOpts.gateLowThresholdOverride = config.rerankerGateLowThreshold;
         candidates = await reranker.rerank(
           q.text,
           candidates,
           k,
-          config.scoreBlendAlpha != null ? { alphaOverride: config.scoreBlendAlpha } : undefined,
+          Object.keys(rerankOpts).length > 0 ? rerankOpts : undefined,
         );
 
         const afterOrder = candidates.slice(0, 5).map((c) => c.chunk.id);
@@ -875,7 +1034,9 @@ async function main() {
   console.log(`[INFO] ${queries.length} queries, ${Object.keys(qrels).length} with judgments`);
 
   // Filter configs
-  const configs = configArg ? CONFIGS.filter((c) => c.id === configArg.toUpperCase()) : CONFIGS;
+  const configs = configArg
+    ? CONFIGS.filter((c) => configArg.split(",").map((s) => s.trim().toUpperCase()).includes(c.id))
+    : CONFIGS;
 
   // Results directory
   const resultsDir = path.join(import.meta.dirname!, "../evaluation/results");

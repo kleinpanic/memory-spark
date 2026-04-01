@@ -14,6 +14,20 @@ import type { SearchResult } from "../storage/backend.js";
 export interface RerankOptions {
   /** Override the blend alpha for this call (0 = pure reranker, 1 = ignore reranker). */
   alphaOverride?: number;
+  /** Override the blend mode for this call. */
+  blendModeOverride?: "score" | "rrf";
+  /** Override RRF k constant for this call. */
+  rrfKOverride?: number;
+  /** Override vector weight for RRF for this call. */
+  vectorWeightOverride?: number;
+  /** Override reranker weight for RRF for this call. */
+  rerankerWeightOverride?: number;
+  /** Override reranker gate mode for this call. */
+  gateOverride?: "off" | "hard" | "soft";
+  /** Override reranker gate threshold for this call. */
+  gateThresholdOverride?: number;
+  /** Override reranker gate low threshold for this call. */
+  gateLowThresholdOverride?: number;
 }
 
 export interface Reranker {
@@ -46,6 +60,13 @@ function sparkReranker(cfg: RerankConfig): Reranker {
   const model = cfg.spark!.model;
   const apiKey = cfg.spark!.apiKey ?? "none";
   const blendAlpha = cfg.scoreBlendAlpha ?? 0;
+  const defaultBlendMode = cfg.blendMode ?? "rrf";
+  const defaultRrfK = cfg.rrfK ?? 60;
+  const defaultVectorWeight = cfg.rrfVectorWeight ?? 1.0;
+  const defaultRerankerWeight = cfg.rrfRerankerWeight ?? 1.0;
+  const defaultGateMode = cfg.rerankerGate ?? "hard";
+  const defaultGateThreshold = cfg.rerankerGateThreshold ?? 0.08;
+  const defaultGateLowThreshold = cfg.rerankerGateLowThreshold ?? 0.02;
 
   return {
     async rerank(query, candidates, topN = 5, options?: RerankOptions) {
@@ -53,9 +74,30 @@ function sparkReranker(cfg: RerankConfig): Reranker {
 
       // Phase 10B: per-call alpha override for benchmark flexibility
       const effectiveAlpha = options?.alphaOverride ?? blendAlpha;
+      const effectiveBlendMode = options?.blendModeOverride ?? defaultBlendMode;
+      const effectiveRrfK = options?.rrfKOverride ?? defaultRrfK;
+      let effectiveVectorWeight = options?.vectorWeightOverride ?? defaultVectorWeight;
+      const effectiveRerankerWeight = options?.rerankerWeightOverride ?? defaultRerankerWeight;
+      const effectiveGateMode = options?.gateOverride ?? defaultGateMode;
+      const effectiveGateThreshold = options?.gateThresholdOverride ?? defaultGateThreshold;
+      const effectiveGateLowThreshold = options?.gateLowThresholdOverride ?? defaultGateLowThreshold;
 
       // Phase 5B: Limit candidate pool to prevent unbounded reranker input
       const pool = candidates.slice(0, MAX_RERANK_CANDIDATES);
+
+      // Phase 12 Fix 2: Dynamic Reranker Gate
+      const gate = computeRerankerGate(pool, effectiveGateMode, effectiveGateThreshold, effectiveGateLowThreshold);
+      if (!gate.shouldRerank) {
+        console.log(`[reranker] GATE SKIP: ${gate.reason} — returning vector order`);
+        return pool.slice(0, topN);
+      }
+      if (effectiveBlendMode === "rrf" && gate.vectorWeightMultiplier !== 1.0) {
+        // Soft gate: scale vector weight
+        effectiveVectorWeight *= gate.vectorWeightMultiplier;
+        if (process.env.VERBOSE || process.env.DEBUG_PIPELINE) {
+          console.log(`[reranker] GATE SOFT: ${gate.reason} → effectiveVectorWeight=${effectiveVectorWeight.toFixed(3)}`);
+        }
+      }
 
       // Normalize declarative queries → questions for better reranker discrimination
       const normalizedQuery = normalizeQueryForReranker(query);
@@ -110,9 +152,17 @@ function sparkReranker(cfg: RerankConfig): Reranker {
       // α = 0.5: Equal weight between original and reranker
       //
       // When blending, we scored all candidates. Now take top-N.
-      const results = effectiveAlpha > 0
-        ? blendScores(pool, data.results, effectiveAlpha).slice(0, topN)
-        : blendScores(pool, data.results, effectiveAlpha);
+      let results: SearchResult[];
+      if (effectiveBlendMode === "rrf") {
+        // Phase 12 Fix 1: Rank-based fusion — scale-invariant, no normalization needed
+        results = blendByRank(pool, data.results, effectiveRrfK, effectiveVectorWeight, effectiveRerankerWeight)
+          .slice(0, topN);
+      } else {
+        // Legacy score-based blending (Phase 9A/10A)
+        results = effectiveAlpha > 0
+          ? blendScores(pool, data.results, effectiveAlpha).slice(0, topN)
+          : blendScores(pool, data.results, effectiveAlpha);
+      }
 
       // Phase 10A: Telemetry — log both sigmoid and logit-space metrics
       const elapsedMs = performance.now() - t0;
@@ -306,6 +356,166 @@ export function blendScores(
       };
     })
     .sort((a, b) => b.score - a.score);
+}
+
+// ── Dynamic Reranker Gate (Phase 12, Fix 2) ──────────────────────────
+//
+// Telemetry from 300 SciFact queries showed:
+// - 13 queries LOST relevant docs when reranker reshuffled tight clusters
+// - 9 queries GAINED relevant docs from reranker promotion
+// - Net: reranker is harmful on tight clusters, helpful on clear separations
+//
+// The gate skips or dampens the reranker based on the top-5 vector score spread:
+// - High spread (>0.08): vector is confident → skip reranker (it'll mess this up)
+// - Low spread (<0.02): near-tie → skip reranker (it's gambling)
+// - Medium spread: let the reranker help break the tie
+//
+// In "soft" mode, instead of hard skip, the vector weight in RRF is scaled
+// by the spread, giving a smooth transition.
+
+export interface RerankerGateResult {
+  /** Whether to proceed with reranking */
+  shouldRerank: boolean;
+  /** For soft gate: dynamic vector weight multiplier (1.0 = full trust in vector) */
+  vectorWeightMultiplier: number;
+  /** Why the gate fired (for telemetry) */
+  reason: string;
+}
+
+/**
+ * Compute whether to gate (skip) the reranker based on vector score distribution.
+ *
+ * @param candidates — top candidates sorted by vector score (descending)
+ * @param mode — "off" | "hard" | "soft"
+ * @param threshold — spread at which vector is "confident" (default 0.08)
+ * @param lowThreshold — spread below which candidates are "tied" (default 0.02)
+ * @returns gate decision with reason and optional weight multiplier
+ */
+export function computeRerankerGate(
+  candidates: SearchResult[],
+  mode: "off" | "hard" | "soft" = "off",
+  threshold: number = 0.08,
+  lowThreshold: number = 0.02,
+): RerankerGateResult {
+  if (mode === "off" || candidates.length < 2) {
+    return { shouldRerank: true, vectorWeightMultiplier: 1.0, reason: "gate-off" };
+  }
+
+  const top5 = candidates.slice(0, Math.min(5, candidates.length));
+  const scores = top5.map((c) => c.score);
+  const spread = Math.max(...scores) - Math.min(...scores);
+
+  if (mode === "hard") {
+    if (spread > threshold) {
+      return {
+        shouldRerank: false,
+        vectorWeightMultiplier: 1.0,
+        reason: `hard-gate-high: spread=${spread.toFixed(4)} > ${threshold} (vector confident)`,
+      };
+    }
+    if (spread < lowThreshold) {
+      return {
+        shouldRerank: false,
+        vectorWeightMultiplier: 1.0,
+        reason: `hard-gate-low: spread=${spread.toFixed(4)} < ${lowThreshold} (tied set)`,
+      };
+    }
+    return {
+      shouldRerank: true,
+      vectorWeightMultiplier: 1.0,
+      reason: `hard-gate-pass: spread=${spread.toFixed(4)} in [${lowThreshold}, ${threshold}]`,
+    };
+  }
+
+  // Soft gate: compute a dynamic vector weight multiplier
+  // At spread=0: multiplier = 0.5 (let reranker have influence)
+  // At spread=threshold: multiplier = 1.0 (full vector trust)
+  // Above threshold: multiplier = 1.0 (capped)
+  // Below lowThreshold: multiplier ramps up to 1.0 (don't trust reranker on ties either)
+  let multiplier: number;
+  if (spread >= threshold) {
+    multiplier = 1.0;
+  } else if (spread <= lowThreshold) {
+    // Below low threshold: ramp from 0.8 at lowThreshold to 1.0 at spread=0
+    // (ties → trust vector slightly more, but still let reranker try)
+    multiplier = 0.8 + 0.2 * (1 - spread / lowThreshold);
+  } else {
+    // Linear interpolation in the useful range [lowThreshold, threshold]
+    // At lowThreshold: multiplier = 0.5 (reranker gets max influence)
+    // At threshold: multiplier = 1.0 (reranker has no influence)
+    const t = (spread - lowThreshold) / (threshold - lowThreshold);
+    multiplier = 0.5 + 0.5 * t;
+  }
+
+  return {
+    shouldRerank: true,
+    vectorWeightMultiplier: multiplier,
+    reason: `soft-gate: spread=${spread.toFixed(4)} → vectorMultiplier=${multiplier.toFixed(3)}`,
+  };
+}
+
+// ── Rank-Based Fusion (Phase 12, Fix 1) ──────────────────────────────
+//
+// Score-based blending (blendScores) fails because min-max normalization
+// after any monotonic transform is a no-op — the ranking is identical
+// regardless of whether we apply recoverLogit first. Proven by telemetry:
+// Configs M=T and N=Q produce identical NDCG/MRR/Recall/MAP.
+//
+// RRF (Reciprocal Rank Fusion) works on rank positions, not scores.
+// It's scale-invariant and doesn't need normalization. The formula:
+//   rrfScore(doc) = Σ weight_i / (k + rank_i)
+// where k is a constant (60 is standard) that controls how much
+// top ranks dominate over lower ranks.
+//
+// Key advantage: when vector and reranker AGREE on top-1, that doc
+// gets double the RRF credit. When they DISAGREE, neither can
+// catastrophically demote the other's pick.
+
+/**
+ * Blend vector and reranker results using Reciprocal Rank Fusion.
+ *
+ * Unlike score-based blending, RRF is scale-invariant — it doesn't matter
+ * if reranker scores are 0.83–1.0 or 0–100. It fuses based on rank positions.
+ *
+ * @param pool — original candidates sorted by vector/retrieval score
+ * @param rerankResults — reranker output sorted by relevance_score (descending)
+ * @param k — RRF constant (default 60). Lower k = top ranks dominate more.
+ * @param vectorWeight — weight for vector rank contribution (default 1.0)
+ * @param rerankerWeight — weight for reranker rank contribution (default 1.0)
+ * @returns sorted SearchResult[] with RRF fusion scores
+ */
+export function blendByRank(
+  pool: SearchResult[],
+  rerankResults: Array<{ index: number; relevance_score: number }>,
+  k: number = 60,
+  vectorWeight: number = 1.0,
+  rerankerWeight: number = 1.0,
+): SearchResult[] {
+  if (pool.length === 0 || rerankResults.length === 0) return [];
+
+  const rrfScores = new Map<number, number>(); // index → rrf score
+
+  // Vector rank contribution (pool is already sorted by vector score descending)
+  for (let rank = 0; rank < pool.length; rank++) {
+    const idx = rank; // pool index IS the vector rank
+    rrfScores.set(idx, (rrfScores.get(idx) ?? 0) + vectorWeight / (k + rank + 1));
+  }
+
+  // Reranker rank contribution (rerankResults sorted by relevance_score descending)
+  // Sort by relevance_score to get reranker ranks
+  const sortedRerank = [...rerankResults].sort((a, b) => b.relevance_score - a.relevance_score);
+  for (let rank = 0; rank < sortedRerank.length; rank++) {
+    const idx = sortedRerank[rank]!.index;
+    rrfScores.set(idx, (rrfScores.get(idx) ?? 0) + rerankerWeight / (k + rank + 1));
+  }
+
+  // Build results sorted by RRF score
+  return [...rrfScores.entries()]
+    .sort(([, a], [, b]) => b - a)
+    .map(([idx, score]) => ({
+      ...pool[idx]!,
+      score, // RRF fusion score
+    }));
 }
 
 // ── Query Normalizer ─────────────────────────────────────────────────

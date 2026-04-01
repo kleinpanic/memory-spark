@@ -78,6 +78,50 @@ export interface RerankConfig {
    * - alpha = 1.0: Ignore reranker entirely
    */
   scoreBlendAlpha?: number;
+  /**
+   * Blend mode for combining vector and reranker signals.
+   *
+   * - "score": Legacy alpha-interpolation (Phase 9A/10A). Uses min-max normalization.
+   *   Known issue: monotonic transforms + min-max = no-op (M=T, N=Q identical).
+   * - "rrf": Reciprocal Rank Fusion (Phase 12). Scale-invariant, no normalization.
+   *   Fuses based on rank positions, not scores. Recommended.
+   *
+   * Default: "score" (backward compatible)
+   */
+  blendMode?: "score" | "rrf";
+  /** RRF k constant. Lower = top ranks dominate more. Default: 60 (standard) */
+  rrfK?: number;
+  /** RRF weight for vector rank contribution. Default: 1.0 */
+  rrfVectorWeight?: number;
+  /** RRF weight for reranker rank contribution. Default: 1.0 */
+  rrfRerankerWeight?: number;
+  /**
+   * Dynamic reranker gate (Phase 12, Fix 2).
+   *
+   * When vector scores are tightly clustered, the reranker is gambling on
+   * an effectively tied set. When vector has a clear winner (high spread),
+   * the reranker is more likely to mess up a confident ranking.
+   *
+   * Gate modes:
+   * - "off": No gating (backward compatible)
+   * - "hard": Skip reranker entirely if spread > threshold (trust vector)
+   *           or if spread < lowThreshold (tied set — reranker is gambling)
+   * - "soft": Dynamically adjust vector weight based on spread.
+   *           High spread → high vector weight → trust vector.
+   *           Low spread → lower vector weight → let reranker try.
+   */
+  rerankerGate?: "off" | "hard" | "soft";
+  /**
+   * For hard gate: skip reranker if top-5 vector spread exceeds this.
+   * For soft gate: spread at which vector weight reaches 1.0 (full trust).
+   * Default: 0.08
+   */
+  rerankerGateThreshold?: number;
+  /**
+   * For hard gate only: also skip reranker if spread is BELOW this
+   * (tied set where reranker is gambling). Default: 0.02
+   */
+  rerankerGateLowThreshold?: number;
 }
 
 /** Full-text search configuration. All fields optional — defaults applied at use site. */
