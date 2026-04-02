@@ -61,59 +61,65 @@ Results below are from `evaluation/results/` generated via `scripts/run-beir-ben
 
 ```mermaid
 flowchart LR
-  subgraph PREP["Prepare"]
-    A["🔄 Agent Turn"]
-    B["1·Clean"]
-    C["2·HyDE"]
-    D["3·Multi-Query"]
-    E["4·Embed 4096d"]
+  subgraph PREP["① Prepare"]
+    A["🔄 Agent Turn\nbefore_prompt_build"]
+    B["1·Query Clean\nstrip metadata"]
+    C["2·HyDE ⚡\nhypothetical doc"]
+    D["3·Multi-Query\n3 reformulations"]
+    E["4·Embed\nnemotron-8b 4096d"]
     A --> B --> C --> D --> E
   end
 
-  subgraph RETRIEVE["Retrieve"]
-    F["Vector IVF_PQ"]
-    G["FTS BM25"]
-    H["5·RRF Merge k=60"]
+  subgraph SEARCH["② Search + Fuse"]
+    F["Vector Search\nIVF_PQ index"]
+    G["FTS Search\ntantivy BM25"]
+    H["5·RRF Merge\nk=60 rank fusion"]
+    I["6·Source Wt\ncaptures 1.5×\nmistakes 1.6×"]
+    J["7·Temporal Decay\n0.8 + 0.2·e⁻ᵗ"]
+    K["8·Source Dedup\nJaccard > 0.85"]
     F --> H
     G --> H
+    H --> I --> J --> K
   end
 
-  subgraph SCORE["Score"]
-    I["6·Source Wt 1.5×"]
-    J["7·Temporal Decay"]
-    K["8·Dedup"]
-    I --> J --> K
+  subgraph GATE["③ ⚡ Reranker Gate"]
+    L{"9·Confidence\nσ = s₁ − s₅"}
+    M["10·Cross-Encoder\nrerank-1b-v2\n:18098"]
+    N["11·RRF Blend\nvec ⊕ rerank"]
+    L -->|"σ ∈ [0.02, 0.08]\nFIRE 22%"| M --> N
   end
 
-  subgraph RERANK["⚡ Reranker Gate"]
-    L{"9·Gate σ?"}
-    M["10·Cross-Encoder"]
-    N["11·RRF Blend"]
-    L -->|"FIRE 22%"| M --> N
-  end
-
-  subgraph DELIVER["Deliver"]
-    O["12·MMR λ=0.9"]
-    P["13·Expand"]
-    Q["14·Dedup"]
-    R["15·Security"]
-    S["📦 Output"]
+  subgraph OUT["④ Output"]
+    O["12·MMR\nλ=0.9 diversity"]
+    P["13·Parent Expand\nchild → parent"]
+    Q["14·LCM Dedup\noverlap > 40%"]
+    R["15·Security\ninjection filter\n≤ 2000 tokens"]
+    S["📦 Memories\nXML → prompt"]
     O --> P --> Q --> R --> S
   end
 
   E --> F
   E --> G
-  H --> I
   K --> L
-  L -->|"SKIP 78%"| O
+  L -->|"σ > 0.08 · σ < 0.02\nSKIP 78%"| O
   N --> O
 
-  T[("LanceDB\n7 pools")]
-  E -.->|index| T
-  T -.-> F
-  T -.-> G
+  subgraph STORE["Storage"]
+    T[("LanceDB\n7 pools\nIVF_PQ + FTS")]
+  end
 
-  style RERANK fill:#0d1a0d,stroke:#3fb950,stroke-width:2
+  subgraph CAP["Auto-Capture"]
+    U["agent_end hook"]
+    V["Extract + classify\ndedup 0.92 cosine"]
+    U --> V
+  end
+
+  E -.->|"embed + index"| T
+  T -.->|query| F
+  T -.->|query| G
+  V -.->|store| T
+
+  style GATE fill:#0d1a0d,stroke:#3fb950,stroke-width:2
   style L fill:#132a13,stroke:#3fb950,stroke-width:2
   style M fill:#2d1117,stroke:#f85149
   style S fill:#1a1f2e,stroke:#58a6ff,stroke-width:2
