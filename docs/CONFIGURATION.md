@@ -29,7 +29,7 @@ In `openclaw.json` under `plugins.entries.memory-spark.config`:
 | `model` | string | `"nvidia/llama-embed-nemotron-8b"` | Model name |
 | `dims` | number | `4096` | Embedding dimensions |
 | `spark.host` | string | env `SPARK_HOST` | Spark node hostname/IP |
-| `spark.port` | number | `18081` | Spark embed server port |
+| `spark.port` | number | `18091` | Spark embed server port |
 | `spark.bearerToken` | string | env `SPARK_BEARER_TOKEN` | Auth token |
 
 ### Reranking (`rerank`)
@@ -40,7 +40,7 @@ In `openclaw.json` under `plugins.entries.memory-spark.config`:
 | `provider` | string | `"spark"` | Rerank provider |
 | `model` | string | `"nvidia/llama-nemotron-rerank-1b-v2"` | Model name |
 | `spark.host` | string | env `SPARK_HOST` | Spark node hostname/IP |
-| `spark.port` | number | `18098` | Rerank server port |
+| `spark.port` | number | `18096` | Rerank server port |
 
 ### Auto-Recall (`autoRecall`)
 

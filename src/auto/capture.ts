@@ -134,8 +134,12 @@ export function createAutoCaptureHandler(deps: AutoCaptureDeps) {
 
         await backend.upsert([chunk]);
         captured++;
-      } catch {
-        // Non-fatal
+      } catch (err) {
+        // Non-fatal but must be observable — silent capture failure is invisible to operators
+        console.warn(
+          `[memory-spark] capture failed for chunk:`,
+          err instanceof Error ? err.message : String(err),
+        );
       }
     }
   };
