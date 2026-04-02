@@ -84,9 +84,9 @@ export function parseReformulations(
     .split("\n")
     .map((line) => line.trim())
     // Strip common LLM formatting artifacts
-    .map((line) => line.replace(/^\d+[\.\)]\s*/, "")) // "1. query" or "1) query"
-    .map((line) => line.replace(/^[-•*]\s*/, ""))      // "- query" or "• query"
-    .map((line) => line.replace(/^["']|["']$/g, ""))   // Strip surrounding quotes
+    .map((line) => line.replace(/^\d+[.)]\s*/, "")) // "1. query" or "1) query"
+    .map((line) => line.replace(/^[-•*]\s*/, "")) // "- query" or "• query"
+    .map((line) => line.replace(/^["']|["']$/g, "")) // Strip surrounding quotes
     .map((line) => line.trim())
     .filter((line) => line.length >= MIN_REFORMULATION_LENGTH)
     .filter((line) => line.length <= MAX_REFORMULATION_LENGTH)
@@ -99,9 +99,7 @@ export function parseReformulations(
   const unique: string[] = [];
   for (const line of lines) {
     const normalized = normalizeForComparison(line);
-    const isDupe = unique.some(
-      (existing) => normalizeForComparison(existing) === normalized,
-    );
+    const isDupe = unique.some((existing) => normalizeForComparison(existing) === normalized);
     if (!isDupe) unique.push(line);
     if (unique.length >= maxReformulations) break;
   }
@@ -128,10 +126,7 @@ function normalizeForComparison(text: string): string {
  *
  * @returns [original, ...reformulations]
  */
-export async function expandQuery(
-  query: string,
-  config: QueryExpansionConfig,
-): Promise<string[]> {
+export async function expandQuery(query: string, config: QueryExpansionConfig): Promise<string[]> {
   if (!config.enabled) return [query];
   if (query.length < MIN_QUERY_LENGTH) return [query];
 
@@ -140,7 +135,10 @@ export async function expandQuery(
   try {
     const result = await attemptExpansion(query, config, verbose);
     if (result.length === 0) {
-      if (verbose) console.log(`[multi-query] expansion returned 0 valid reformulations — using original only`);
+      if (verbose)
+        console.log(
+          `[multi-query] expansion returned 0 valid reformulations — using original only`,
+        );
       return [query];
     }
     if (verbose) {
@@ -210,18 +208,28 @@ async function attemptExpansion(
     }
 
     if (!rawContent || rawContent.length < MIN_REFORMULATION_LENGTH) {
-      console.log(`[multi-query] LLM returned empty/too-short content (${rawContent.length} chars) in ${elapsed}ms`);
+      console.log(
+        `[multi-query] LLM returned empty/too-short content (${rawContent.length} chars) in ${elapsed}ms`,
+      );
       return [];
     }
 
     // Check for LLM thinking/refusal artifacts
-    if (rawContent.startsWith("<think>") || rawContent.includes("I cannot") || rawContent.includes("I'm sorry")) {
-      console.log(`[multi-query] LLM returned thinking trace or refusal in ${elapsed}ms — skipping`);
+    if (
+      rawContent.startsWith("<think>") ||
+      rawContent.includes("I cannot") ||
+      rawContent.includes("I'm sorry")
+    ) {
+      console.log(
+        `[multi-query] LLM returned thinking trace or refusal in ${elapsed}ms — skipping`,
+      );
       return [];
     }
 
     const reformulations = parseReformulations(rawContent, query, config.numReformulations);
-    console.log(`[multi-query] ${reformulations.length}/${config.numReformulations} valid reformulations in ${elapsed}ms`);
+    console.log(
+      `[multi-query] ${reformulations.length}/${config.numReformulations} valid reformulations in ${elapsed}ms`,
+    );
     return reformulations;
   } finally {
     clearTimeout(timeout);

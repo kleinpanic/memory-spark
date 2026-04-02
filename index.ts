@@ -783,13 +783,17 @@ const memorySpark = {
               const stats = await lanceStats;
               if (stats.poolBreakdown && Object.keys(stats.poolBreakdown).length > 0) {
                 statsText += `\nChunks by pool:\n`;
-                for (const [pool, count] of Object.entries(stats.poolBreakdown).sort((a, b) => b[1] - a[1])) {
+                for (const [pool, count] of Object.entries(stats.poolBreakdown).sort(
+                  (a, b) => b[1] - a[1],
+                )) {
                   statsText += `  ${count.toString().padStart(6)} — ${pool}\n`;
                 }
               }
               if (stats.agentBreakdown && Object.keys(stats.agentBreakdown).length > 0) {
                 statsText += `\nChunks by agent:\n`;
-                for (const [agent, count] of Object.entries(stats.agentBreakdown).sort((a, b) => b[1] - a[1])) {
+                for (const [agent, count] of Object.entries(stats.agentBreakdown).sort(
+                  (a, b) => b[1] - a[1],
+                )) {
                   statsText += `  ${count.toString().padStart(6)} — ${agent}\n`;
                 }
               }
@@ -1254,10 +1258,7 @@ const memorySpark = {
               Type.Number({ description: "Max results to trace", minimum: 1, maximum: 50 }),
             ),
           }),
-          execute: async (
-            _toolCallId: string,
-            params: { query: string; maxResults?: number },
-          ) => {
+          execute: async (_toolCallId: string, params: { query: string; maxResults?: number }) => {
             const s = await getState(cfg, api.logger);
             const maxR = params.maxResults ?? 10;
 
@@ -1354,9 +1355,7 @@ const memorySpark = {
             items: Type.Array(
               Type.Object({
                 text: Type.String({ description: "Content to store" }),
-                path: Type.Optional(
-                  Type.String({ description: "Virtual path for the memory" }),
-                ),
+                path: Type.Optional(Type.String({ description: "Virtual path for the memory" })),
                 source: Type.Optional(
                   Type.String({ description: "Source identifier (default: capture)" }),
                 ),
@@ -1387,10 +1386,14 @@ const memorySpark = {
               try {
                 const vector = await s.queue.embedDocument(item.text);
                 const chunk = {
-                  id: `capture-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 8)}`,
+                  id: `capture-${Date.now()}-${i}-${crypto.randomUUID().slice(0, 8)}`,
                   text: item.text,
                   path: item.path ?? `capture/bulk-${Date.now()}`,
-                  source: (item.source ?? "capture") as "memory" | "ingest" | "capture" | "sessions",
+                  source: (item.source ?? "capture") as
+                    | "memory"
+                    | "ingest"
+                    | "capture"
+                    | "sessions",
                   agent_id: agentId,
                   pool: "agent_memory",
                   updated_at: new Date().toISOString(),
@@ -1486,7 +1489,11 @@ const memorySpark = {
                 content: [
                   {
                     type: "text" as const,
-                    text: `No memories found${params.after ? ` after ${params.after}` : ""}${params.before ? ` before ${params.before}` : ""}.`,
+                    text:
+                      "No memories found" +
+                      (params.after ? " after " + String(params.after) : "") +
+                      (params.before ? " before " + String(params.before) : "") +
+                      ".",
                   },
                 ],
                 details: {},
@@ -1531,9 +1538,7 @@ const memorySpark = {
             const chunks = await s.backend.getByIds([params.chunkId]);
             if (chunks.length === 0) {
               return {
-                content: [
-                  { type: "text" as const, text: `Chunk ${params.chunkId} not found.` },
-                ],
+                content: [{ type: "text" as const, text: `Chunk ${params.chunkId} not found.` }],
                 details: {},
               };
             }
@@ -1554,9 +1559,7 @@ const memorySpark = {
 
             if (related.length === 0) {
               return {
-                content: [
-                  { type: "text" as const, text: "No related memories found." },
-                ],
+                content: [{ type: "text" as const, text: "No related memories found." }],
                 details: {},
               };
             }

@@ -10,7 +10,11 @@ import type { EmbedLike } from "../embed/cached-provider.js";
 import type { EmbedProvider } from "../embed/provider.js";
 import type { EmbedQueue } from "../embed/queue.js";
 import { generateHypotheticalDocument } from "../hyde/generator.js";
-import { expandQuery, QUERY_EXPANSION_DEFAULTS, type QueryExpansionConfig } from "../query/expander.js";
+import {
+  expandQuery,
+  QUERY_EXPANSION_DEFAULTS,
+  type QueryExpansionConfig,
+} from "../query/expander.js";
 import type { Reranker } from "../rerank/reranker.js";
 import { looksLikePromptInjection, formatRecalledMemories } from "../security.js";
 import type { StorageBackend, SearchResult } from "../storage/backend.js";
@@ -59,12 +63,18 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     try {
       const hydeConfig = deps.hyde;
       if (hydeConfig?.enabled) {
-        console.log(`[recall] HyDE: generating hypothetical document for query="${queryText.slice(0, 60)}"`);
+        console.log(
+          `[recall] HyDE: generating hypothetical document for query="${queryText.slice(0, 60)}"`,
+        );
         const hypothetical = await generateHypotheticalDocument(queryText, hydeConfig);
         if (hypothetical) {
-          console.log(`[recall] HyDE: success, doc length=${hypothetical.length} chars — embedding as document`);
+          console.log(
+            `[recall] HyDE: success, doc length=${hypothetical.length} chars — embedding as document`,
+          );
           if (verbose) {
-            console.log(`[recall]   HyDE doc preview: "${hypothetical.slice(0, 120).replace(/\n/g, " ")}…"`);
+            console.log(
+              `[recall]   HyDE doc preview: "${hypothetical.slice(0, 120).replace(/\n/g, " ")}…"`,
+            );
           }
           // HyDE: embed the hypothetical as a DOCUMENT (no instruction prefix).
           // The hypothetical is a pseudo-document and must land in document embedding
@@ -72,14 +82,18 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
           queryVector = await embed.embedDocument(hypothetical);
         } else {
           // HyDE failed (timeout, too short, etc.) — fall back to raw query
-          console.log(`[recall] HyDE: generation returned empty/null — falling back to raw query embedding`);
+          console.log(
+            `[recall] HyDE: generation returned empty/null — falling back to raw query embedding`,
+          );
           queryVector = await embed.embedQuery(queryText);
         }
       } else {
         queryVector = await embed.embedQuery(queryText);
       }
     } catch (hydeErr) {
-      console.log(`[recall] HyDE/embed error: ${hydeErr instanceof Error ? hydeErr.message : String(hydeErr)} — aborting recall`);
+      console.log(
+        `[recall] HyDE/embed error: ${hydeErr instanceof Error ? hydeErr.message : String(hydeErr)} — aborting recall`,
+      );
       return undefined;
     }
 
@@ -124,7 +138,8 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
           `[recall] multi-query: ${queries.length} queries, ${allQueryVectors.length} vectors in ${Math.round(performance.now() - t0mq)}ms`,
         );
         if (verbose) {
-          for (const mq of queries.slice(1)) console.log(`[recall]   reformulation: "${mq.slice(0, 100)}"`);
+          for (const mq of queries.slice(1))
+            console.log(`[recall]   reformulation: "${mq.slice(0, 100)}"`);
         }
       }
     }
@@ -145,13 +160,16 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
       };
 
       // Multi-vector search: search each query vector and union by chunk ID
+      async function searchOne(vec: number[]): Promise<SearchResult[]> {
+        try {
+          return await backend.vectorSearch(vec, searchOpts);
+        } catch {
+          return [];
+        }
+      }
       let vectorResults: SearchResult[];
       if (allQueryVectors.length > 1) {
-        const allVecResults = await Promise.all(
-          allQueryVectors.map((vec) =>
-            backend.vectorSearch(vec, searchOpts).catch(() => [] as SearchResult[]),
-          ),
-        );
+        const allVecResults = await Promise.all(allQueryVectors.map(searchOne));
         // Union: dedupe by chunk ID, keep highest score
         const best = new Map<string, SearchResult>();
         for (const resultSet of allVecResults) {
@@ -193,10 +211,14 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
 
     // 1. Agent's own memory + tools (primary recall)
     const agentResults = await poolSearch(["agent_memory", "agent_tools"], agentId, fetchN);
-    console.log(`[recall] pool agent_memory+agent_tools (agent=${agentId}): ${agentResults.length} results`);
+    console.log(
+      `[recall] pool agent_memory+agent_tools (agent=${agentId}): ${agentResults.length} results`,
+    );
     if (verbose && agentResults.length > 0) {
       for (const r of agentResults.slice(0, 3)) {
-        console.log(`[recall]   score=${r.score.toFixed(4)} pool=${r.chunk.pool} path=${r.chunk.path} id=${r.chunk.id.slice(0, 20)}`);
+        console.log(
+          `[recall]   score=${r.score.toFixed(4)} pool=${r.chunk.pool} path=${r.chunk.path} id=${r.chunk.id.slice(0, 20)}`,
+        );
       }
     }
 
@@ -252,7 +274,9 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     // Source-level dedup: collapse near-identical chunks from the same source
     // before the reranker, so it doesn't waste slots on overlapping content.
     const deduped = deduplicateSources(merged);
-    console.log(`[recall] after source dedup: ${deduped.length} candidates (removed ${merged.length - deduped.length})`);
+    console.log(
+      `[recall] after source dedup: ${deduped.length} candidates (removed ${merged.length - deduped.length})`,
+    );
 
     // Cross-encoder rerank — the reranker is the most accurate relevance signal.
     // Give it a large candidate set so it can identify the best documents.
@@ -280,17 +304,23 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     if (verbose && reranked.length > 0) {
       console.log(`[recall]   MMR input scores (top ${Math.min(reranked.length, 5)}):`);
       for (const r of reranked.slice(0, 5)) {
-        console.log(`[recall]     score=${r.score.toFixed(4)} id=${r.chunk.id.slice(0, 20)} path=${r.chunk.path}`);
+        console.log(
+          `[recall]     score=${r.score.toFixed(4)} id=${r.chunk.id.slice(0, 20)} path=${r.chunk.path}`,
+        );
       }
     }
 
     const diverse = mmrRerank(reranked, cfg.maxResults, mmrLambda);
-    console.log(`[recall] after MMR: ${diverse.length} results (removed ${reranked.length - diverse.length} near-duplicates)`);
+    console.log(
+      `[recall] after MMR: ${diverse.length} results (removed ${reranked.length - diverse.length} near-duplicates)`,
+    );
 
     if (verbose && diverse.length > 0) {
       console.log(`[recall]   MMR output (final candidates):`);
       for (const r of diverse) {
-        console.log(`[recall]     score=${r.score.toFixed(4)} id=${r.chunk.id.slice(0, 20)} path=${r.chunk.path} pool=${r.chunk.pool}`);
+        console.log(
+          `[recall]     score=${r.score.toFixed(4)} id=${r.chunk.id.slice(0, 20)} path=${r.chunk.path} pool=${r.chunk.pool}`,
+        );
       }
     }
 

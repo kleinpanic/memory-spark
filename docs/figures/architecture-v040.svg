@@ -1,229 +1,305 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 900" width="1400" height="900" role="img" aria-label="memory-spark v0.4.0 architecture">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 780" width="1200" height="780">
   <defs>
     <style>
-      text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Helvetica Neue', sans-serif; }
-      .title { font-size: 24px; font-weight: 700; fill: #c9d1d9; }
-      .subtitle { font-size: 14px; fill: #8b949e; }
-      .node-label { font-size: 12px; font-weight: 600; fill: #c9d1d9; }
-      .node-detail { font-size: 10px; fill: #8b949e; }
-      .section-label { font-size: 14px; font-weight: 700; fill: #58a6ff; }
-      .gate-label { font-size: 11px; font-weight: 700; fill: #3fb950; }
-      .metric { font-size: 11px; fill: #d29922; font-weight: 600; }
+      text { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+      .title { font-size: 22px; font-weight: 800; fill: #e6edf3; letter-spacing: -0.5px; }
+      .subtitle { font-size: 13px; fill: #7d8590; }
+      .label { font-size: 11px; font-weight: 600; fill: #e6edf3; }
+      .detail { font-size: 9.5px; fill: #7d8590; }
+      .stage-num { font-size: 9px; font-weight: 700; fill: #0d1117; }
+      .section { font-size: 11px; font-weight: 700; letter-spacing: 1.2px; text-transform: uppercase; }
+      .metric-val { font-size: 20px; font-weight: 800; }
+      .metric-label { font-size: 9px; font-weight: 600; fill: #7d8590; letter-spacing: 0.8px; text-transform: uppercase; }
     </style>
-    <!-- Arrow marker -->
-    <marker id="arrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" fill="#484f58"/>
+    <marker id="a" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#484f58"/>
     </marker>
-    <marker id="arrow-green" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" fill="#3fb950"/>
+    <marker id="ag" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#3fb950"/>
     </marker>
-    <marker id="arrow-red" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
-      <polygon points="0 0, 10 3.5, 0 7" fill="#f85149"/>
+    <marker id="ar" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#f85149"/>
     </marker>
+    <linearGradient id="gateGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#238636" stop-opacity="0.3"/>
+      <stop offset="100%" stop-color="#238636" stop-opacity="0.08"/>
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="blur"/>
+      <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
   </defs>
 
   <!-- Background -->
-  <rect width="1400" height="900" fill="#0d1117"/>
-  <rect x="8" y="8" width="1384" height="884" rx="12" fill="#161b22" stroke="#30363d"/>
+  <rect width="1200" height="780" rx="16" fill="#0d1117"/>
 
-  <!-- Title -->
-  <text x="30" y="45" class="title">memory-spark v0.4.0 — 15-Stage Retrieval Pipeline</text>
-  <text x="30" y="68" class="subtitle">GPU-accelerated persistent memory for autonomous AI agents</text>
+  <!-- Title bar -->
+  <rect x="0" y="0" width="1200" height="56" rx="16" fill="#161b22"/>
+  <rect x="0" y="40" width="1200" height="16" fill="#161b22"/>
+  <line x1="0" y1="56" x2="1200" y2="56" stroke="#21262d" stroke-width="1"/>
+  <text x="24" y="36" class="title">memory-spark</text>
+  <text x="200" y="36" class="subtitle">v0.4.0 · 15-Stage Retrieval Pipeline · NVIDIA DGX Spark</text>
 
-  <!-- ═══ ROW 1: Input ═══ -->
-  <text x="40" y="110" class="section-label">INPUT</text>
+  <!-- ══════════════════ ROW 1: INPUT (y=72) ══════════════════ -->
+  <text x="24" y="86" class="section" fill="#58a6ff">① Input</text>
 
   <!-- Agent Turn -->
-  <rect x="40" y="120" width="140" height="50" rx="8" fill="#1f2937" stroke="#58a6ff" stroke-width="2"/>
-  <text x="110" y="143" text-anchor="middle" class="node-label">Agent Turn</text>
-  <text x="110" y="158" text-anchor="middle" class="node-detail">before_prompt_build</text>
+  <rect x="24" y="96" width="120" height="44" rx="8" fill="#161b22" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="84" y="116" text-anchor="middle" class="label">Agent Turn</text>
+  <text x="84" y="130" text-anchor="middle" class="detail">before_prompt_build</text>
+
+  <!-- Arrow -->
+  <line x1="144" y1="118" x2="168" y2="118" stroke="#484f58" marker-end="url(#a)"/>
 
   <!-- Query Clean -->
-  <rect x="220" y="120" width="130" height="50" rx="8" fill="#1f2937" stroke="#30363d"/>
-  <text x="285" y="143" text-anchor="middle" class="node-label">① Query Clean</text>
-  <text x="285" y="158" text-anchor="middle" class="node-detail">Strip metadata</text>
-  <line x1="180" y1="145" x2="218" y2="145" stroke="#484f58" marker-end="url(#arrow)"/>
+  <rect x="170" y="96" width="100" height="44" rx="8" fill="#161b22" stroke="#30363d"/>
+  <circle cx="182" cy="108" r="8" fill="#58a6ff"/><text x="182" y="112" text-anchor="middle" class="stage-num">1</text>
+  <text x="230" y="116" text-anchor="middle" class="label">Query Clean</text>
+  <text x="230" y="130" text-anchor="middle" class="detail">Strip metadata</text>
+
+  <line x1="270" y1="118" x2="294" y2="118" stroke="#484f58" marker-end="url(#a)"/>
 
   <!-- HyDE -->
-  <rect x="390" y="120" width="130" height="50" rx="8" fill="#1f2937" stroke="#d29922" stroke-dasharray="4"/>
-  <text x="455" y="143" text-anchor="middle" class="node-label">② HyDE</text>
-  <text x="455" y="158" text-anchor="middle" class="node-detail">Optional, LLM gen</text>
-  <line x1="350" y1="145" x2="388" y2="145" stroke="#484f58" marker-end="url(#arrow)"/>
+  <rect x="296" y="96" width="100" height="44" rx="8" fill="#161b22" stroke="#d29922" stroke-dasharray="4"/>
+  <circle cx="308" cy="108" r="8" fill="#d29922"/><text x="308" y="112" text-anchor="middle" class="stage-num">2</text>
+  <text x="356" y="116" text-anchor="middle" class="label">HyDE</text>
+  <text x="356" y="130" text-anchor="middle" class="detail">Optional LLM</text>
+
+  <line x1="396" y1="118" x2="420" y2="118" stroke="#484f58" marker-end="url(#a)"/>
 
   <!-- Multi-Query -->
-  <rect x="560" y="120" width="150" height="50" rx="8" fill="#1f2937" stroke="#d29922" stroke-dasharray="4"/>
-  <text x="635" y="143" text-anchor="middle" class="node-label">③ Multi-Query</text>
-  <text x="635" y="158" text-anchor="middle" class="node-detail">3 LLM reformulations</text>
-  <line x1="520" y1="145" x2="558" y2="145" stroke="#484f58" marker-end="url(#arrow)"/>
+  <rect x="422" y="96" width="120" height="44" rx="8" fill="#161b22" stroke="#d29922" stroke-dasharray="4"/>
+  <circle cx="434" cy="108" r="8" fill="#d29922"/><text x="434" y="112" text-anchor="middle" class="stage-num">3</text>
+  <text x="492" y="116" text-anchor="middle" class="label">Multi-Query</text>
+  <text x="492" y="130" text-anchor="middle" class="detail">3 LLM reformulations</text>
+
+  <line x1="542" y1="118" x2="566" y2="118" stroke="#484f58" marker-end="url(#a)"/>
 
   <!-- Embed -->
-  <rect x="750" y="120" width="140" height="50" rx="8" fill="#1f2937" stroke="#58a6ff" stroke-width="2"/>
-  <text x="820" y="143" text-anchor="middle" class="node-label">Embed (4096d)</text>
-  <text x="820" y="158" text-anchor="middle" class="node-detail">nemotron-8b :18081</text>
-  <line x1="710" y1="145" x2="748" y2="145" stroke="#484f58" marker-end="url(#arrow)"/>
+  <rect x="568" y="96" width="140" height="44" rx="8" fill="#161b22" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="638" y="116" text-anchor="middle" class="label">Embed (4096d)</text>
+  <text x="638" y="130" text-anchor="middle" class="detail">nemotron-8b · :18081</text>
 
-  <!-- ═══ ROW 2: Search ═══ -->
-  <text x="40" y="215" class="section-label">SEARCH</text>
+  <!-- ══════════════════ ROW 2: SEARCH (y=160) ══════════════════ -->
+  <text x="24" y="174" class="section" fill="#58a6ff">④ Search</text>
+
+  <!-- Embed down-arrow -->
+  <line x1="638" y1="140" x2="638" y2="155" stroke="#484f58"/>
+  <line x1="638" y1="155" x2="84" y2="155" stroke="#484f58"/>
 
   <!-- Pool boxes -->
-  <rect x="40" y="225" width="170" height="50" rx="8" fill="#1f2937" stroke="#30363d"/>
-  <text x="125" y="248" text-anchor="middle" class="node-label">④ agent_memory</text>
-  <text x="125" y="263" text-anchor="middle" class="node-detail">Vec + FTS (filtered)</text>
+  <rect x="24" y="184" width="135" height="40" rx="6" fill="#161b22" stroke="#30363d"/>
+  <text x="91" y="202" text-anchor="middle" class="label">agent_memory</text>
+  <text x="91" y="215" text-anchor="middle" class="detail">Vec + FTS · per-agent</text>
+  <line x1="84" y1="155" x2="84" y2="182" stroke="#484f58" marker-end="url(#a)"/>
 
-  <rect x="230" y="225" width="170" height="50" rx="8" fill="#1f2937" stroke="#30363d"/>
-  <text x="315" y="248" text-anchor="middle" class="node-label">④ agent_mistakes</text>
-  <text x="315" y="263" text-anchor="middle" class="node-detail">1.6× boost</text>
+  <rect x="170" y="184" width="135" height="40" rx="6" fill="#161b22" stroke="#30363d"/>
+  <text x="237" y="202" text-anchor="middle" class="label">agent_mistakes</text>
+  <text x="237" y="215" text-anchor="middle" class="detail">1.6× boost · per-agent</text>
+  <line x1="237" y1="155" x2="237" y2="182" stroke="#484f58" marker-end="url(#a)"/>
 
-  <rect x="420" y="225" width="170" height="50" rx="8" fill="#1f2937" stroke="#30363d"/>
-  <text x="505" y="248" text-anchor="middle" class="node-label">④ shared_knowledge</text>
-  <text x="505" y="263" text-anchor="middle" class="node-detail">Cross-agent</text>
+  <rect x="316" y="184" width="145" height="40" rx="6" fill="#161b22" stroke="#30363d"/>
+  <text x="388" y="202" text-anchor="middle" class="label">shared_knowledge</text>
+  <text x="388" y="215" text-anchor="middle" class="detail">Cross-agent</text>
+  <line x1="388" y1="155" x2="388" y2="182" stroke="#484f58" marker-end="url(#a)"/>
 
-  <rect x="610" y="225" width="170" height="50" rx="8" fill="#1f2937" stroke="#30363d"/>
-  <text x="695" y="248" text-anchor="middle" class="node-label">④ shared_rules</text>
-  <text x="695" y="263" text-anchor="middle" class="node-detail">Cross-agent</text>
+  <rect x="472" y="184" width="115" height="40" rx="6" fill="#161b22" stroke="#30363d"/>
+  <text x="529" y="202" text-anchor="middle" class="label">shared_rules</text>
+  <text x="529" y="215" text-anchor="middle" class="detail">Cross-agent</text>
+  <line x1="529" y1="155" x2="529" y2="182" stroke="#484f58" marker-end="url(#a)"/>
 
-  <!-- Arrows from embed down to pools -->
-  <line x1="820" y1="170" x2="820" y2="195" stroke="#484f58"/>
-  <line x1="820" y1="195" x2="125" y2="195" stroke="#484f58"/>
-  <line x1="125" y1="195" x2="125" y2="223" stroke="#484f58" marker-end="url(#arrow)"/>
-  <line x1="315" y1="195" x2="315" y2="223" stroke="#484f58" marker-end="url(#arrow)"/>
-  <line x1="505" y1="195" x2="505" y2="223" stroke="#484f58" marker-end="url(#arrow)"/>
-  <line x1="695" y1="195" x2="695" y2="223" stroke="#484f58" marker-end="url(#arrow)"/>
+  <rect x="598" y="184" width="110" height="40" rx="6" fill="#161b22" stroke="#30363d"/>
+  <text x="653" y="202" text-anchor="middle" class="label">reference</text>
+  <text x="653" y="215" text-anchor="middle" class="detail">Read-only</text>
+  <line x1="638" y1="155" x2="653" y2="155" stroke="#484f58"/>
+  <line x1="653" y1="155" x2="653" y2="182" stroke="#484f58" marker-end="url(#a)"/>
 
-  <!-- LanceDB -->
-  <rect x="860" y="220" width="160" height="60" rx="8" fill="#1a1f2e" stroke="#58a6ff" stroke-width="1.5"/>
-  <text x="940" y="245" text-anchor="middle" class="node-label">LanceDB</text>
-  <text x="940" y="260" text-anchor="middle" class="node-detail">IVF_PQ + tantivy FTS</text>
-  <text x="940" y="273" text-anchor="middle" class="node-detail">Single table, pool col</text>
+  <!-- LanceDB box on right -->
+  <rect x="740" y="170" width="160" height="68" rx="10" fill="#161b22" stroke="#58a6ff" stroke-width="1.5"/>
+  <text x="820" y="194" text-anchor="middle" class="label" fill="#58a6ff">LanceDB</text>
+  <text x="820" y="210" text-anchor="middle" class="detail">IVF_PQ + tantivy FTS</text>
+  <text x="820" y="224" text-anchor="middle" class="detail">Single table · pool column</text>
+  <line x1="708" y1="204" x2="738" y2="204" stroke="#58a6ff" stroke-dasharray="3"/>
 
-  <!-- ═══ ROW 3: Fusion ═══ -->
-  <text x="40" y="320" class="section-label">FUSION</text>
+  <!-- ══════════════════ ROW 3: FUSION (y=244) ══════════════════ -->
+  <text x="24" y="262" class="section" fill="#3fb950">⑤–⑧ Fusion</text>
 
-  <!-- RRF Hybrid Merge -->
-  <rect x="40" y="330" width="200" height="55" rx="8" fill="#1f2937" stroke="#3fb950" stroke-width="2"/>
-  <text x="140" y="353" text-anchor="middle" class="node-label">⑤ RRF Hybrid Merge</text>
-  <text x="140" y="368" text-anchor="middle" class="node-detail">Rank-based, k=60</text>
-  <text x="140" y="380" text-anchor="middle" class="metric">Scale-invariant ✓</text>
+  <!-- Collect arrow -->
+  <line x1="350" y1="224" x2="350" y2="242" stroke="#484f58"/>
+  <line x1="350" y1="242" x2="60" y2="242" stroke="#484f58"/>
+
+  <!-- RRF -->
+  <rect x="24" y="272" width="155" height="48" rx="8" fill="#161b22" stroke="#3fb950" stroke-width="1.5"/>
+  <circle cx="38" cy="284" r="8" fill="#3fb950"/><text x="38" y="288" text-anchor="middle" class="stage-num">5</text>
+  <text x="111" y="292" text-anchor="middle" class="label">RRF Hybrid Merge</text>
+  <text x="111" y="308" text-anchor="middle" class="detail">Rank-based · k=60</text>
+  <line x1="60" y1="242" x2="60" y2="270" stroke="#484f58" marker-end="url(#a)"/>
+
+  <line x1="179" y1="296" x2="198" y2="296" stroke="#484f58" marker-end="url(#a)"/>
 
   <!-- Source Weight -->
-  <rect x="280" y="330" width="160" height="55" rx="8" fill="#1f2937" stroke="#30363d"/>
-  <text x="360" y="353" text-anchor="middle" class="node-label">⑥ Source Weight</text>
-  <text x="360" y="368" text-anchor="middle" class="node-detail">captures 1.5×</text>
-  <text x="360" y="380" text-anchor="middle" class="node-detail">mistakes 1.6×</text>
-  <line x1="240" y1="357" x2="278" y2="357" stroke="#484f58" marker-end="url(#arrow)"/>
+  <rect x="200" y="272" width="130" height="48" rx="8" fill="#161b22" stroke="#30363d"/>
+  <circle cx="214" cy="284" r="8" fill="#7d8590"/><text x="214" y="288" text-anchor="middle" class="stage-num">6</text>
+  <text x="275" y="292" text-anchor="middle" class="label">Source Weight</text>
+  <text x="275" y="308" text-anchor="middle" class="detail">captures 1.5× · mistakes 1.6×</text>
+
+  <line x1="330" y1="296" x2="349" y2="296" stroke="#484f58" marker-end="url(#a)"/>
 
   <!-- Temporal Decay -->
-  <rect x="480" y="330" width="160" height="55" rx="8" fill="#1f2937" stroke="#30363d"/>
-  <text x="560" y="353" text-anchor="middle" class="node-label">⑦ Temporal Decay</text>
-  <text x="560" y="368" text-anchor="middle" class="node-detail">0.8 + 0.2·e^(−0.03t)</text>
-  <text x="560" y="380" text-anchor="middle" class="node-detail">80% floor</text>
-  <line x1="440" y1="357" x2="478" y2="357" stroke="#484f58" marker-end="url(#arrow)"/>
+  <rect x="351" y="272" width="130" height="48" rx="8" fill="#161b22" stroke="#30363d"/>
+  <circle cx="365" cy="284" r="8" fill="#7d8590"/><text x="365" y="288" text-anchor="middle" class="stage-num">7</text>
+  <text x="426" y="292" text-anchor="middle" class="label">Temporal Decay</text>
+  <text x="426" y="308" text-anchor="middle" class="detail">0.8 + 0.2·e⁻⁰·⁰³ᵗ</text>
+
+  <line x1="481" y1="296" x2="500" y2="296" stroke="#484f58" marker-end="url(#a)"/>
 
   <!-- Source Dedup -->
-  <rect x="680" y="330" width="140" height="55" rx="8" fill="#1f2937" stroke="#30363d"/>
-  <text x="750" y="353" text-anchor="middle" class="node-label">⑧ Source Dedup</text>
-  <text x="750" y="368" text-anchor="middle" class="node-detail">Jaccard > 0.85</text>
-  <line x1="640" y1="357" x2="678" y2="357" stroke="#484f58" marker-end="url(#arrow)"/>
+  <rect x="502" y="272" width="120" height="48" rx="8" fill="#161b22" stroke="#30363d"/>
+  <circle cx="516" cy="284" r="8" fill="#7d8590"/><text x="516" y="288" text-anchor="middle" class="stage-num">8</text>
+  <text x="572" y="292" text-anchor="middle" class="label">Source Dedup</text>
+  <text x="572" y="308" text-anchor="middle" class="detail">Jaccard > 0.85</text>
 
-  <!-- ═══ ROW 4: Reranking (the gate) ═══ -->
-  <text x="40" y="430" class="section-label">RERANKING</text>
+  <!-- ══════════════════ ROW 4: RERANKING — THE GATE (y=340) ══════════════════ -->
+  <!-- Gate highlight zone -->
+  <rect x="16" y="342" width="700" height="130" rx="12" fill="url(#gateGrad)" stroke="#238636" stroke-width="1" stroke-dasharray="6"/>
+  <text x="24" y="360" class="section" fill="#3fb950">⑨–⑪ Dynamic Reranker Gate</text>
 
-  <!-- Dynamic Gate -->
-  <rect x="40" y="440" width="240" height="70" rx="8" fill="#132a13" stroke="#3fb950" stroke-width="2.5"/>
-  <text x="160" y="462" text-anchor="middle" class="gate-label">⑨ DYNAMIC RERANKER GATE</text>
-  <text x="160" y="477" text-anchor="middle" class="node-detail">σ = max(top5) − min(top5)</text>
-  <text x="160" y="492" text-anchor="middle" class="node-detail">σ > 0.08 → SKIP | σ &lt; 0.02 → SKIP</text>
-  <text x="160" y="504" text-anchor="middle" class="metric">78% queries skip (0 NDCG loss)</text>
-  <line x1="750" y1="385" x2="750" y2="410" stroke="#484f58"/>
-  <line x1="750" y1="410" x2="160" y2="410" stroke="#484f58"/>
-  <line x1="160" y1="410" x2="160" y2="438" stroke="#484f58" marker-end="url(#arrow)"/>
+  <!-- Connect from row 3 -->
+  <line x1="562" y1="320" x2="562" y2="335" stroke="#484f58"/>
+  <line x1="562" y1="335" x2="100" y2="335" stroke="#484f58"/>
+  <line x1="100" y1="335" x2="100" y2="370" stroke="#484f58" marker-end="url(#a)"/>
 
-  <!-- Skip path -->
-  <line x1="160" y1="510" x2="160" y2="540" stroke="#3fb950" stroke-width="2" stroke-dasharray="5" marker-end="url(#arrow-green)"/>
-  <text x="175" y="533" class="gate-label">SKIP (78%)</text>
+  <!-- Gate Diamond -->
+  <polygon points="100,372 140,400 100,428 60,400" fill="#132a13" stroke="#3fb950" stroke-width="2"/>
+  <text x="100" y="396" text-anchor="middle" class="stage-num" fill="#3fb950" font-size="10">9</text>
+  <text x="100" y="408" text-anchor="middle" class="detail" fill="#3fb950">σ?</text>
 
-  <!-- Fire path -->
-  <line x1="280" y1="475" x2="350" y2="475" stroke="#f85149" marker-end="url(#arrow-red)"/>
-  <text x="315" y="468" class="node-detail" fill="#f85149" font-weight="600">FIRE (22%)</text>
+  <!-- SKIP path (green, down) -->
+  <line x1="100" y1="428" x2="100" y2="460" stroke="#3fb950" stroke-width="2" stroke-dasharray="5" marker-end="url(#ag)"/>
+  <text x="56" y="450" class="detail" fill="#3fb950" font-weight="700">SKIP 78%</text>
+
+  <!-- FIRE path (red, right) -->
+  <line x1="140" y1="400" x2="200" y2="400" stroke="#f85149" stroke-width="1.5" marker-end="url(#ar)"/>
+  <text x="168" y="392" class="detail" fill="#f85149" font-weight="700">FIRE 22%</text>
 
   <!-- Cross-Encoder -->
-  <rect x="355" y="440" width="200" height="70" rx="8" fill="#1f2937" stroke="#f85149" stroke-width="1.5"/>
-  <text x="455" y="462" text-anchor="middle" class="node-label">⑩ Cross-Encoder</text>
-  <text x="455" y="477" text-anchor="middle" class="node-detail">rerank-1b-v2 :18098</text>
-  <text x="455" y="492" text-anchor="middle" class="node-detail">GPU inference</text>
+  <rect x="202" y="376" width="170" height="48" rx="8" fill="#161b22" stroke="#f85149" stroke-width="1.5"/>
+  <circle cx="216" cy="388" r="8" fill="#f85149"/><text x="216" y="392" text-anchor="middle" class="stage-num">10</text>
+  <text x="297" y="396" text-anchor="middle" class="label">Cross-Encoder</text>
+  <text x="297" y="412" text-anchor="middle" class="detail">rerank-1b-v2 · :18098</text>
+
+  <line x1="372" y1="400" x2="408" y2="400" stroke="#484f58" marker-end="url(#a)"/>
 
   <!-- RRF Blend -->
-  <rect x="595" y="440" width="180" height="70" rx="8" fill="#1f2937" stroke="#3fb950" stroke-width="2"/>
-  <text x="685" y="462" text-anchor="middle" class="node-label">⑪ RRF Blend</text>
-  <text x="685" y="477" text-anchor="middle" class="node-detail">vec_rank ⊕ rerank_rank</text>
-  <text x="685" y="492" text-anchor="middle" class="node-detail">Configurable weights</text>
-  <line x1="555" y1="475" x2="593" y2="475" stroke="#484f58" marker-end="url(#arrow)"/>
+  <rect x="410" y="376" width="155" height="48" rx="8" fill="#161b22" stroke="#3fb950" stroke-width="1.5"/>
+  <circle cx="424" cy="388" r="8" fill="#3fb950"/><text x="424" y="392" text-anchor="middle" class="stage-num">11</text>
+  <text x="497" y="396" text-anchor="middle" class="label">RRF Blend</text>
+  <text x="497" y="412" text-anchor="middle" class="detail">vec_rank ⊕ rerank_rank</text>
 
-  <!-- ═══ ROW 5: Post-processing ═══ -->
-  <text x="40" y="565" class="section-label">OUTPUT</text>
+  <!-- RRF Blend → down to join with skip path -->
+  <line x1="487" y1="424" x2="487" y2="460" stroke="#484f58"/>
+  <line x1="487" y1="460" x2="100" y2="460" stroke="#484f58"/>
+
+  <!-- ══════════════════ ROW 5: OUTPUT (y=480) ══════════════════ -->
+  <text x="24" y="498" class="section" fill="#a371f7">⑫–⑮ Output</text>
 
   <!-- MMR -->
-  <rect x="40" y="575" width="140" height="50" rx="8" fill="#1f2937" stroke="#30363d"/>
-  <text x="110" y="598" text-anchor="middle" class="node-label">⑫ MMR λ=0.9</text>
-  <text x="110" y="613" text-anchor="middle" class="node-detail">Cosine diversity</text>
+  <rect x="24" y="508" width="120" height="44" rx="8" fill="#161b22" stroke="#30363d"/>
+  <circle cx="38" cy="520" r="8" fill="#a371f7"/><text x="38" y="524" text-anchor="middle" class="stage-num">12</text>
+  <text x="94" y="528" text-anchor="middle" class="label">MMR λ=0.9</text>
+  <text x="94" y="542" text-anchor="middle" class="detail">Cosine diversity</text>
+  <line x1="100" y1="460" x2="100" y2="506" stroke="#484f58" marker-end="url(#a)"/>
+
+  <line x1="144" y1="530" x2="168" y2="530" stroke="#484f58" marker-end="url(#a)"/>
 
   <!-- Parent Expand -->
-  <rect x="220" y="575" width="160" height="50" rx="8" fill="#1f2937" stroke="#30363d"/>
-  <text x="300" y="598" text-anchor="middle" class="node-label">⑬ Parent Expand</text>
-  <text x="300" y="613" text-anchor="middle" class="node-detail">Child → parent text</text>
-  <line x1="180" y1="600" x2="218" y2="600" stroke="#484f58" marker-end="url(#arrow)"/>
+  <rect x="170" y="508" width="130" height="44" rx="8" fill="#161b22" stroke="#30363d"/>
+  <circle cx="184" cy="520" r="8" fill="#a371f7"/><text x="184" y="524" text-anchor="middle" class="stage-num">13</text>
+  <text x="245" y="528" text-anchor="middle" class="label">Parent Expand</text>
+  <text x="245" y="542" text-anchor="middle" class="detail">Child → parent text</text>
+
+  <line x1="300" y1="530" x2="324" y2="530" stroke="#484f58" marker-end="url(#a)"/>
 
   <!-- LCM Dedup -->
-  <rect x="420" y="575" width="140" height="50" rx="8" fill="#1f2937" stroke="#30363d"/>
-  <text x="490" y="598" text-anchor="middle" class="node-label">⑭ LCM Dedup</text>
-  <text x="490" y="613" text-anchor="middle" class="node-detail">>40% overlap → skip</text>
-  <line x1="380" y1="600" x2="418" y2="600" stroke="#484f58" marker-end="url(#arrow)"/>
+  <rect x="326" y="508" width="120" height="44" rx="8" fill="#161b22" stroke="#30363d"/>
+  <circle cx="340" cy="520" r="8" fill="#a371f7"/><text x="340" y="524" text-anchor="middle" class="stage-num">14</text>
+  <text x="396" y="528" text-anchor="middle" class="label">LCM Dedup</text>
+  <text x="396" y="542" text-anchor="middle" class="detail">>40% overlap → skip</text>
+
+  <line x1="446" y1="530" x2="470" y2="530" stroke="#484f58" marker-end="url(#a)"/>
 
   <!-- Security + Budget -->
-  <rect x="600" y="575" width="180" height="50" rx="8" fill="#1f2937" stroke="#d29922"/>
-  <text x="690" y="598" text-anchor="middle" class="node-label">⑮ Security + Budget</text>
-  <text x="690" y="613" text-anchor="middle" class="node-detail">Injection filter, 2000 tok</text>
-  <line x1="560" y1="600" x2="598" y2="600" stroke="#484f58" marker-end="url(#arrow)"/>
+  <rect x="472" y="508" width="150" height="44" rx="8" fill="#161b22" stroke="#d29922"/>
+  <circle cx="486" cy="520" r="8" fill="#d29922"/><text x="486" y="524" text-anchor="middle" class="stage-num">15</text>
+  <text x="557" y="528" text-anchor="middle" class="label">Security + Budget</text>
+  <text x="557" y="542" text-anchor="middle" class="detail">Injection filter · 2000 tok</text>
 
-  <!-- Output XML -->
-  <rect x="820" y="575" width="200" height="50" rx="8" fill="#1a1f2e" stroke="#58a6ff" stroke-width="2"/>
-  <text x="920" y="598" text-anchor="middle" class="node-label">&lt;relevant-memories&gt;</text>
-  <text x="920" y="613" text-anchor="middle" class="node-detail">XML injection → agent</text>
-  <line x1="780" y1="600" x2="818" y2="600" stroke="#484f58" marker-end="url(#arrow)"/>
+  <line x1="622" y1="530" x2="650" y2="530" stroke="#484f58" marker-end="url(#a)"/>
 
-  <!-- Connect gate skip to MMR -->
-  <line x1="160" y1="540" x2="160" y2="555" stroke="#3fb950" stroke-width="2"/>
-  <line x1="160" y1="555" x2="110" y2="555" stroke="#3fb950" stroke-width="2"/>
-  <line x1="110" y1="555" x2="110" y2="573" stroke="#3fb950" stroke-width="2" marker-end="url(#arrow-green)"/>
+  <!-- Output -->
+  <rect x="652" y="504" width="185" height="52" rx="10" fill="#161b22" stroke="#58a6ff" stroke-width="2" filter="url(#glow)"/>
+  <text x="744" y="528" text-anchor="middle" class="label" fill="#58a6ff">&lt;relevant-memories&gt;</text>
+  <text x="744" y="544" text-anchor="middle" class="detail">XML → agent prompt</text>
 
-  <!-- Connect RRF blend to MMR -->
-  <line x1="685" y1="510" x2="685" y2="555" stroke="#484f58"/>
-  <line x1="685" y1="555" x2="110" y2="555" stroke="#484f58"/>
+  <!-- ══════════════════ RIGHT PANEL: AUTO-CAPTURE ══════════════════ -->
+  <rect x="920" y="72" width="260" height="200" rx="10" fill="#161b22" stroke="#30363d"/>
+  <text x="940" y="96" class="section" fill="#d29922">Auto-Capture</text>
+  <text x="940" y="116" class="label">agent_end hook</text>
+  <text x="940" y="136" class="detail">• Extract facts, decisions, preferences</text>
+  <text x="940" y="152" class="detail">• Quality gate (classifier + heuristic)</text>
+  <text x="940" y="168" class="detail">• Dedup: cosine > 0.92 → skip</text>
+  <text x="940" y="184" class="detail">• Max 3 captures / turn</text>
+  <text x="940" y="200" class="detail">• Self-poisoning prevention</text>
+  <text x="940" y="220" class="detail">• Garbage regex filter (39 patterns)</text>
+  <!-- Arrow from auto-capture to LanceDB -->
+  <line x1="920" y1="204" x2="900" y2="204" stroke="#d29922" stroke-dasharray="4" marker-end="url(#a)"/>
 
-  <!-- ═══ Bottom: Metrics bar ═══ -->
-  <rect x="40" y="660" width="1320" height="70" rx="8" fill="#1a1f2e" stroke="#30363d"/>
-  <text x="60" y="685" class="section-label">BEIR SciFact (GATE-A)</text>
-  <text x="60" y="710" class="metric">NDCG@10: 0.7802 (+0.94%)</text>
-  <text x="310" y="710" class="metric">Recall@10: 0.9137 (+1.1%)</text>
-  <text x="560" y="710" class="metric">Latency: 732ms (−50%)</text>
-  <text x="790" y="710" class="metric">Gate Skips: 78%</text>
-  <text x="990" y="710" class="metric">Tests: 483/483 ✓</text>
-  <text x="1190" y="710" class="metric">Tools: 18</text>
+  <!-- ══════════════════ RIGHT PANEL: INFRA ══════════════════ -->
+  <rect x="920" y="290" width="260" height="150" rx="10" fill="#161b22" stroke="#30363d"/>
+  <text x="940" y="314" class="section" fill="#58a6ff">Infrastructure</text>
+  <text x="940" y="336" class="detail">EMBED   llama-embed-nemotron-8b    :18081</text>
+  <text x="940" y="354" class="detail">RERANK  llama-nemotron-rerank-1b   :18098</text>
+  <text x="940" y="372" class="detail">LLM    Nemotron-Super-120B        :18080</text>
+  <text x="940" y="390" class="detail">NER    bert-large-NER              :18112</text>
+  <text x="940" y="408" class="detail">ZSHOT  bart-large-mnli              :8013</text>
+  <text x="940" y="426" class="detail">STORE  LanceDB (local, IVF_PQ+FTS)</text>
 
-  <!-- ═══ Right sidebar: Auto-Capture ═══ -->
-  <rect x="1080" y="100" width="290" height="160" rx="8" fill="#1a1f2e" stroke="#30363d"/>
-  <text x="1100" y="125" class="section-label">AUTO-CAPTURE</text>
-  <text x="1100" y="148" class="node-label">agent_end hook</text>
-  <text x="1100" y="168" class="node-detail">• Extract facts, decisions, preferences</text>
-  <text x="1100" y="183" class="node-detail">• Quality gate (classifier + heuristic)</text>
-  <text x="1100" y="198" class="node-detail">• Dedup: cosine > 0.92 → skip</text>
-  <text x="1100" y="213" class="node-detail">• Max 3 captures/turn</text>
-  <text x="1100" y="233" class="node-detail">• Self-poisoning prevention</text>
+  <!-- ══════════════════ BOTTOM: METRICS BAR ══════════════════ -->
+  <rect x="0" y="580" width="1200" height="200" fill="#161b22"/>
+  <line x1="0" y1="580" x2="1200" y2="580" stroke="#21262d"/>
 
-  <!-- Capture arrow to LanceDB -->
-  <line x1="1080" y1="250" x2="940" y2="250" stroke="#484f58" stroke-dasharray="4" marker-end="url(#arrow)"/>
+  <text x="24" y="608" class="section" fill="#7d8590">BEIR SciFact · 300 Queries · 36 Configurations</text>
 
-  <!-- Version watermark -->
-  <text x="1340" y="870" text-anchor="end" class="subtitle" font-size="12">v0.4.0 · April 2026</text>
+  <!-- Metric cards -->
+  <rect x="24" y="624" width="170" height="72" rx="10" fill="#0d1117" stroke="#30363d"/>
+  <text x="109" y="648" text-anchor="middle" class="metric-label">NDCG@10 (BEST)</text>
+  <text x="109" y="676" text-anchor="middle" class="metric-val" fill="#58a6ff">0.7889</text>
+
+  <rect x="210" y="624" width="170" height="72" rx="10" fill="#0d1117" stroke="#30363d"/>
+  <text x="295" y="648" text-anchor="middle" class="metric-label">RECALL@10 (BEST)</text>
+  <text x="295" y="676" text-anchor="middle" class="metric-val" fill="#3fb950">0.9243</text>
+
+  <rect x="396" y="624" width="170" height="72" rx="10" fill="#0d1117" stroke="#30363d"/>
+  <text x="481" y="648" text-anchor="middle" class="metric-label">GATE-A LATENCY</text>
+  <text x="481" y="676" text-anchor="middle" class="metric-val" fill="#d29922">732ms</text>
+
+  <rect x="582" y="624" width="170" height="72" rx="10" fill="#0d1117" stroke="#30363d"/>
+  <text x="667" y="648" text-anchor="middle" class="metric-label">GATE SKIP RATE</text>
+  <text x="667" y="676" text-anchor="middle" class="metric-val" fill="#3fb950">78%</text>
+
+  <rect x="768" y="624" width="170" height="72" rx="10" fill="#0d1117" stroke="#30363d"/>
+  <text x="853" y="648" text-anchor="middle" class="metric-label">TESTS PASSING</text>
+  <text x="853" y="676" text-anchor="middle" class="metric-val" fill="#3fb950">483</text>
+
+  <rect x="954" y="624" width="170" height="72" rx="10" fill="#0d1117" stroke="#30363d"/>
+  <text x="1039" y="648" text-anchor="middle" class="metric-label">PLUGIN TOOLS</text>
+  <text x="1039" y="676" text-anchor="middle" class="metric-val" fill="#58a6ff">18</text>
+
+  <!-- Configs tested label -->
+  <text x="24" y="730" class="detail">Configs: A–X (baselines, hybrid, HyDE, reranker blending α=0.3–0.8, conditional) · RRF-A–D (k=20/60, weighted) · GATE-A–D (hard/soft gate) · MQ-A–D (multi-query expansion)</text>
+  <text x="24" y="748" class="detail">Best NDCG: U (Logit α=0.4) · Best Recall: V (Logit α=0.6) · Production: GATE-A (hard gate, 78% skip, 98.9% of peak NDCG)</text>
+
+  <!-- Version -->
+  <text x="1176" y="770" text-anchor="end" class="detail" fill="#484f58">v0.4.0 · April 2026 · github.com/kleinpanic/memory-spark</text>
 </svg>

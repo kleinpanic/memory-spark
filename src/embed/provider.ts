@@ -158,10 +158,14 @@ function makeOpenAiCompat(
     // Dimension verification
     const actualDims = results[0]?.length ?? 0;
     if (actualDims > 0 && actualDims !== dims) {
-      console.warn(`[embed] ${id}/${model}: dimension mismatch! expected=${dims} actual=${actualDims}`);
+      console.warn(
+        `[embed] ${id}/${model}: dimension mismatch! expected=${dims} actual=${actualDims}`,
+      );
     }
 
-    console.log(`[embed] ${id}/${model}: ${batchSize} texts → ${results.length} vectors (dims=${actualDims}) in ${elapsedEmbed}ms`);
+    console.log(
+      `[embed] ${id}/${model}: ${batchSize} texts → ${results.length} vectors (dims=${actualDims}) in ${elapsedEmbed}ms`,
+    );
 
     // Sort by index to preserve order
     return results;
@@ -180,7 +184,9 @@ function makeOpenAiCompat(
       const input = queryInstruction ? `Instruct: ${queryInstruction}\nQuery: ${text}` : text;
       if (process.env.VERBOSE || process.env.DEBUG_PIPELINE) {
         if (queryInstruction) {
-          console.log(`[embed] embedQuery: instruction prefix applied — "${queryInstruction.slice(0, 60)}"`);
+          console.log(
+            `[embed] embedQuery: instruction prefix applied — "${queryInstruction.slice(0, 60)}"`,
+          );
         } else {
           console.log(`[embed] embedQuery: no instruction prefix (raw text)`);
         }

@@ -3321,8 +3321,8 @@ describe("Phase 9A: blendScores (updated for Phase 10A logit recovery)", () => {
     ];
     const rerankResults = [
       { index: 2, relevance_score: 0.95 }, // c promoted
-      { index: 0, relevance_score: 0.80 }, // a mid
-      { index: 1, relevance_score: 0.60 }, // b lowest
+      { index: 0, relevance_score: 0.8 }, // a mid
+      { index: 1, relevance_score: 0.6 }, // b lowest
     ];
 
     const blended = blendScores(pool, rerankResults, 0);
@@ -3341,8 +3341,8 @@ describe("Phase 9A: blendScores (updated for Phase 10A logit recovery)", () => {
     ];
     const rerankResults = [
       { index: 2, relevance_score: 0.99 },
-      { index: 0, relevance_score: 0.10 },
-      { index: 1, relevance_score: 0.50 },
+      { index: 0, relevance_score: 0.1 },
+      { index: 1, relevance_score: 0.5 },
     ];
 
     const blended = blendScores(pool, rerankResults, 1.0);
@@ -3359,8 +3359,8 @@ describe("Phase 9A: blendScores (updated for Phase 10A logit recovery)", () => {
     ];
     const rerankResults = [
       { index: 2, relevance_score: 0.95 }, // c: reranker top
-      { index: 0, relevance_score: 0.80 }, // a: reranker mid
-      { index: 1, relevance_score: 0.60 }, // b: reranker low
+      { index: 0, relevance_score: 0.8 }, // a: reranker mid
+      { index: 1, relevance_score: 0.6 }, // b: reranker low
     ];
 
     const blended = blendScores(pool, rerankResults, 0.3);
@@ -3377,14 +3377,14 @@ describe("Phase 9A: blendScores (updated for Phase 10A logit recovery)", () => {
   it("alpha=0.5 gives equal weight — compromise ranking", () => {
     // Use 3 candidates to avoid degenerate 2-candidate ties
     const pool = [
-      makeSearchResult("a", 0.9),  // normOrig: 1.0
-      makeSearchResult("b", 0.6),  // normOrig: 0.5
-      makeSearchResult("c", 0.3),  // normOrig: 0.0
+      makeSearchResult("a", 0.9), // normOrig: 1.0
+      makeSearchResult("b", 0.6), // normOrig: 0.5
+      makeSearchResult("c", 0.3), // normOrig: 0.0
     ];
     const rerankResults = [
       { index: 2, relevance_score: 0.95 }, // c: reranker promotes
-      { index: 0, relevance_score: 0.30 }, // a: reranker demotes
-      { index: 1, relevance_score: 0.60 }, // b: mid
+      { index: 0, relevance_score: 0.3 }, // a: reranker demotes
+      { index: 1, relevance_score: 0.6 }, // b: mid
     ];
 
     const blended = blendScores(pool, rerankResults, 0.5);
@@ -3450,13 +3450,13 @@ describe("Phase 9A: blendScores (updated for Phase 10A logit recovery)", () => {
   it("catastrophic reranker demotion is limited by blending", () => {
     const pool = [
       makeSearchResult("correct", 0.85),
-      makeSearchResult("wrong",   0.75),
-      makeSearchResult("garbage", 0.60),
+      makeSearchResult("wrong", 0.75),
+      makeSearchResult("garbage", 0.6),
     ];
     const rerankResults = [
       { index: 2, relevance_score: 0.99 }, // garbage: reranker wrongly promotes
       { index: 1, relevance_score: 0.95 }, // wrong: second
-      { index: 0, relevance_score: 0.50 }, // correct: reranker wrongly demotes
+      { index: 0, relevance_score: 0.5 }, // correct: reranker wrongly demotes
     ];
 
     // Without blending (alpha=0): garbage wins (reranker's bad call)
@@ -3472,7 +3472,7 @@ describe("Phase 9A: blendScores (updated for Phase 10A logit recovery)", () => {
     // garbage should rank worse (higher index) with strong blending than without
     assert.ok(
       garbageRank70 > garbageRankPure,
-      `Blending should demote garbage: pure rank=${garbageRankPure}, blended rank=${garbageRank70}`
+      `Blending should demote garbage: pure rank=${garbageRankPure}, blended rank=${garbageRank70}`,
     );
 
     // correct should rank better (lower index) with blending than pure reranker
@@ -3480,7 +3480,7 @@ describe("Phase 9A: blendScores (updated for Phase 10A logit recovery)", () => {
     const correctRank70 = blended70.findIndex((r) => r.chunk.id === "correct");
     assert.ok(
       correctRank70 < correctRankPure,
-      "Blending should improve the rank of the correct doc vs pure reranker"
+      "Blending should improve the rank of the correct doc vs pure reranker",
     );
   });
 });
