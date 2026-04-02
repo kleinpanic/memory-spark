@@ -48,18 +48,18 @@ describe("BEFORE: without gate, reranker damages tight clusters", () => {
     const pool = [
       makeResult("a", 0.255),
       makeResult("b", 0.253),
-      makeResult("c_relevant", 0.251),  // RELEVANT doc
+      makeResult("c_relevant", 0.251), // RELEVANT doc
       makeResult("d", 0.249),
       makeResult("e", 0.247),
     ];
 
     // Reranker pushes relevant doc to last
     const rerankResults = [
-      { index: 4, relevance_score: 0.999 },  // e → #1
-      { index: 3, relevance_score: 0.998 },  // d → #2
-      { index: 0, relevance_score: 0.997 },  // a → #3
-      { index: 1, relevance_score: 0.996 },  // b → #4
-      { index: 2, relevance_score: 0.850 },  // c_relevant → #5 (DEMOTED)
+      { index: 4, relevance_score: 0.999 }, // e → #1
+      { index: 3, relevance_score: 0.998 }, // d → #2
+      { index: 0, relevance_score: 0.997 }, // a → #3
+      { index: 1, relevance_score: 0.996 }, // b → #4
+      { index: 2, relevance_score: 0.85 }, // c_relevant → #5 (DEMOTED)
     ];
 
     // Without gate, reranker runs and demotes the relevant doc
@@ -71,21 +71,21 @@ describe("BEFORE: without gate, reranker damages tight clusters", () => {
   it("reranker overrides a confident vector ranking", () => {
     // Clear vector winner with large spread (0.15)
     const pool = [
-      makeResult("winner", 0.65),     // Clear #1
+      makeResult("winner", 0.65), // Clear #1
       makeResult("distant2", 0.52),
-      makeResult("distant3", 0.50),   // spread = 0.15
+      makeResult("distant3", 0.5), // spread = 0.15
     ];
 
     // Reranker disagrees and promotes distant3
     const rerankResults = [
-      { index: 2, relevance_score: 0.999 },  // distant3 → #1
-      { index: 1, relevance_score: 0.950 },  // distant2 → #2
-      { index: 0, relevance_score: 0.900 },  // winner → #3 (DEMOTED)
+      { index: 2, relevance_score: 0.999 }, // distant3 → #1
+      { index: 1, relevance_score: 0.95 }, // distant2 → #2
+      { index: 0, relevance_score: 0.9 }, // winner → #3 (DEMOTED)
     ];
 
     const result = blendScores(pool, rerankResults, 0);
     expect(result[0]!.chunk.id).toBe("distant3"); // Reranker overrode vector
-    expect(result[2]!.chunk.id).toBe("winner");   // Winner demoted to last
+    expect(result[2]!.chunk.id).toBe("winner"); // Winner demoted to last
   });
 });
 
@@ -95,7 +95,7 @@ describe("computeRerankerGate", () => {
   describe("mode=off", () => {
     it("always returns shouldRerank=true", () => {
       const tight = [makeResult("a", 0.25), makeResult("b", 0.249)];
-      const wide = [makeResult("a", 0.65), makeResult("b", 0.40)];
+      const wide = [makeResult("a", 0.65), makeResult("b", 0.4)];
 
       expect(computeRerankerGate(tight, "off").shouldRerank).toBe(true);
       expect(computeRerankerGate(wide, "off").shouldRerank).toBe(true);
@@ -113,9 +113,9 @@ describe("computeRerankerGate", () => {
 
     it("skips reranker when spread > threshold (vector confident)", () => {
       const pool = [
-        makeResult("a", 0.60),
+        makeResult("a", 0.6),
         makeResult("b", 0.55),
-        makeResult("c", 0.50),
+        makeResult("c", 0.5),
         makeResult("d", 0.48),
         makeResult("e", 0.45),
       ];
@@ -128,7 +128,7 @@ describe("computeRerankerGate", () => {
     it("skips reranker when spread < lowThreshold (tied set)", () => {
       const pool = [
         makeResult("a", 0.251),
-        makeResult("b", 0.250),
+        makeResult("b", 0.25),
         makeResult("c", 0.249),
         makeResult("d", 0.248),
         makeResult("e", 0.247),
@@ -143,7 +143,7 @@ describe("computeRerankerGate", () => {
       const pool = [
         makeResult("a", 0.35),
         makeResult("b", 0.32),
-        makeResult("c", 0.30),
+        makeResult("c", 0.3),
         makeResult("d", 0.29),
         makeResult("e", 0.28),
       ];
@@ -156,27 +156,27 @@ describe("computeRerankerGate", () => {
     it("handles near-threshold value (floating point: 0.38-0.30 > 0.08)", () => {
       // NOTE: 0.38 - 0.30 = 0.08000000000000002 due to IEEE 754
       // This is technically > 0.08, so the gate fires (skip)
-      const pool = [makeResult("a", 0.38), makeResult("b", 0.30)];
+      const pool = [makeResult("a", 0.38), makeResult("b", 0.3)];
       const gate = computeRerankerGate(pool, "hard", 0.08, 0.02);
       expect(gate.shouldRerank).toBe(false); // FP makes it barely over threshold
     });
 
     it("boundary: spread clearly below threshold passes", () => {
-      const pool = [makeResult("a", 0.375), makeResult("b", 0.300)];
+      const pool = [makeResult("a", 0.375), makeResult("b", 0.3)];
       // spread = 0.075 < 0.08 → passes
       const gate = computeRerankerGate(pool, "hard", 0.08, 0.02);
       expect(gate.shouldRerank).toBe(true);
     });
 
     it("handles fewer than 5 candidates", () => {
-      const pool = [makeResult("a", 0.50), makeResult("b", 0.30)];
+      const pool = [makeResult("a", 0.5), makeResult("b", 0.3)];
       // spread = 0.20 > 0.08
       const gate = computeRerankerGate(pool, "hard", threshold, lowThreshold);
       expect(gate.shouldRerank).toBe(false);
     });
 
     it("handles single candidate", () => {
-      const pool = [makeResult("only", 0.50)];
+      const pool = [makeResult("only", 0.5)];
       const gate = computeRerankerGate(pool, "hard", threshold, lowThreshold);
       expect(gate.shouldRerank).toBe(true); // < 2 candidates → allow
     });
@@ -184,10 +184,7 @@ describe("computeRerankerGate", () => {
 
   describe("mode=soft", () => {
     it("returns high multiplier (→1.0) when spread > threshold", () => {
-      const pool = [
-        makeResult("a", 0.60),
-        makeResult("b", 0.50),
-      ];
+      const pool = [makeResult("a", 0.6), makeResult("b", 0.5)];
       // spread = 0.10 > 0.08 → multiplier should be 1.0
       const gate = computeRerankerGate(pool, "soft", 0.08, 0.02);
       expect(gate.shouldRerank).toBe(true);
@@ -195,11 +192,7 @@ describe("computeRerankerGate", () => {
     });
 
     it("returns lower multiplier in the useful range", () => {
-      const pool = [
-        makeResult("a", 0.35),
-        makeResult("b", 0.32),
-        makeResult("c", 0.30),
-      ];
+      const pool = [makeResult("a", 0.35), makeResult("b", 0.32), makeResult("c", 0.3)];
       // spread = 0.05, in [0.02, 0.08]
       // t = (0.05 - 0.02) / (0.08 - 0.02) = 0.5
       // multiplier = 0.5 + 0.5 * 0.5 = 0.75
@@ -209,10 +202,7 @@ describe("computeRerankerGate", () => {
     });
 
     it("returns ~0.5 multiplier at lowThreshold (max reranker influence)", () => {
-      const pool = [
-        makeResult("a", 0.32),
-        makeResult("b", 0.30),
-      ];
+      const pool = [makeResult("a", 0.32), makeResult("b", 0.3)];
       // spread = 0.02 = lowThreshold
       // t = (0.02 - 0.02) / (0.08 - 0.02) = 0
       // multiplier = 0.5 + 0.5 * 0 = 0.5
@@ -221,10 +211,7 @@ describe("computeRerankerGate", () => {
     });
 
     it("ramps up multiplier below lowThreshold (tied set protection)", () => {
-      const pool = [
-        makeResult("a", 0.301),
-        makeResult("b", 0.300),
-      ];
+      const pool = [makeResult("a", 0.301), makeResult("b", 0.3)];
       // spread = 0.001 < lowThreshold (0.02)
       // multiplier = 0.8 + 0.2 * (1 - 0.001/0.02) = 0.8 + 0.2 * 0.95 = 0.99
       const gate = computeRerankerGate(pool, "soft", 0.08, 0.02);
@@ -232,11 +219,11 @@ describe("computeRerankerGate", () => {
     });
 
     it("multiplier is monotonically decreasing from 0 to threshold", () => {
-      const spreads = [0.0, 0.01, 0.02, 0.04, 0.06, 0.08, 0.10];
+      const spreads = [0.0, 0.01, 0.02, 0.04, 0.06, 0.08, 0.1];
       const multipliers: number[] = [];
 
       for (const s of spreads) {
-        const pool = [makeResult("a", 0.50), makeResult("b", 0.50 - s)];
+        const pool = [makeResult("a", 0.5), makeResult("b", 0.5 - s)];
         const gate = computeRerankerGate(pool, "soft", 0.08, 0.02);
         multipliers.push(gate.vectorWeightMultiplier);
       }
@@ -280,7 +267,7 @@ describe("AFTER: gate protects against reranker damage", () => {
     const pool = [
       makeResult("winner", 0.65),
       makeResult("distant2", 0.52),
-      makeResult("distant3", 0.50),
+      makeResult("distant3", 0.5),
     ];
     // spread = 0.15 > threshold (0.08) → SKIP reranker
 
@@ -312,7 +299,7 @@ describe("AFTER: gate protects against reranker damage", () => {
       { index: 3, relevance_score: 0.998 },
       { index: 0, relevance_score: 0.997 },
       { index: 1, relevance_score: 0.996 },
-      { index: 2, relevance_score: 0.850 },  // c_relevant demoted by reranker
+      { index: 2, relevance_score: 0.85 }, // c_relevant demoted by reranker
     ];
 
     // With high vector multiplier (~0.96), vector rank 3 is worth ~1.44x more
@@ -332,7 +319,7 @@ describe("AFTER: gate protects against reranker damage", () => {
     const pool = [
       makeResult("a", 0.35),
       makeResult("b", 0.32),
-      makeResult("c", 0.30),
+      makeResult("c", 0.3),
       makeResult("d", 0.29),
       makeResult("e", 0.28),
     ];
@@ -349,7 +336,7 @@ describe("AFTER: gate protects against reranker damage", () => {
     const pool = [
       makeResult("wrong1", 0.35),
       makeResult("wrong2", 0.32),
-      makeResult("right", 0.30),     // RELEVANT — vector missed it
+      makeResult("right", 0.3), // RELEVANT — vector missed it
       makeResult("wrong3", 0.29),
       makeResult("wrong4", 0.28),
     ];
@@ -360,11 +347,11 @@ describe("AFTER: gate protects against reranker damage", () => {
 
     // Reranker correctly promotes "right" to #1
     const rerankResults = [
-      { index: 2, relevance_score: 0.999 },  // right → #1
-      { index: 0, relevance_score: 0.900 },
-      { index: 1, relevance_score: 0.850 },
-      { index: 3, relevance_score: 0.800 },
-      { index: 4, relevance_score: 0.750 },
+      { index: 2, relevance_score: 0.999 }, // right → #1
+      { index: 0, relevance_score: 0.9 },
+      { index: 1, relevance_score: 0.85 },
+      { index: 3, relevance_score: 0.8 },
+      { index: 4, relevance_score: 0.75 },
     ];
 
     const rrfResult = blendByRank(pool, rerankResults);
@@ -378,11 +365,7 @@ describe("AFTER: gate protects against reranker damage", () => {
 
 describe("gate regression: off mode matches pre-gate behavior", () => {
   it("gate=off produces identical results to no gate", () => {
-    const pool = [
-      makeResult("a", 0.50),
-      makeResult("b", 0.40),
-      makeResult("c", 0.30),
-    ];
+    const pool = [makeResult("a", 0.5), makeResult("b", 0.4), makeResult("c", 0.3)];
 
     // Verify gate=off has no effect
     const gateOff = computeRerankerGate(pool, "off", 0.08, 0.02);
@@ -393,7 +376,7 @@ describe("gate regression: off mode matches pre-gate behavior", () => {
     const rerankResults = [
       { index: 2, relevance_score: 0.99 },
       { index: 0, relevance_score: 0.85 },
-      { index: 1, relevance_score: 0.80 },
+      { index: 1, relevance_score: 0.8 },
     ];
 
     const withGate = blendByRank(pool, rerankResults, 60, gateOff.vectorWeightMultiplier, 1.0);
@@ -413,14 +396,14 @@ describe("head-to-head: SciFact scenarios with gate", () => {
     const pool = [
       makeResult("21456232", 0.277),
       makeResult("43990286", 0.236),
-      makeResult("31715818", 0.229),   // RELEVANT
+      makeResult("31715818", 0.229), // RELEVANT
       makeResult("25435456", 0.227),
       makeResult("19855358", 0.226),
-      makeResult("14082855", 0.220),
+      makeResult("14082855", 0.22),
       makeResult("9122283", 0.215),
-      makeResult("39532074", 0.210),
+      makeResult("39532074", 0.21),
       makeResult("16532419", 0.205),
-      makeResult("8290953", 0.200),
+      makeResult("8290953", 0.2),
     ];
 
     // spread of top-5: 0.277 - 0.226 = 0.051, in [0.02, 0.08] → gate passes
@@ -443,9 +426,9 @@ describe("head-to-head: SciFact scenarios with gate", () => {
     const pool = [
       makeResult("perfect_match", 0.75),
       makeResult("ok_match", 0.55),
-      makeResult("distant1", 0.40),
+      makeResult("distant1", 0.4),
       makeResult("distant2", 0.35),
-      makeResult("distant3", 0.30),
+      makeResult("distant3", 0.3),
     ];
     // spread = 0.75 - 0.30 = 0.45 > 0.08 → SKIP
 
@@ -460,17 +443,14 @@ describe("head-to-head: SciFact scenarios with gate", () => {
     // Test the gate response across the observed SciFact spread range
     const testCases = [
       { spread: 0.005, expectedMultiplier: "> 0.9", desc: "near-tie" },
-      { spread: 0.020, expectedMultiplier: "≈ 0.5", desc: "low threshold" },
-      { spread: 0.050, expectedMultiplier: "≈ 0.75", desc: "mid-range" },
-      { spread: 0.080, expectedMultiplier: "= 1.0", desc: "at threshold" },
-      { spread: 0.150, expectedMultiplier: "= 1.0", desc: "confident" },
+      { spread: 0.02, expectedMultiplier: "≈ 0.5", desc: "low threshold" },
+      { spread: 0.05, expectedMultiplier: "≈ 0.75", desc: "mid-range" },
+      { spread: 0.08, expectedMultiplier: "= 1.0", desc: "at threshold" },
+      { spread: 0.15, expectedMultiplier: "= 1.0", desc: "confident" },
     ];
 
     for (const tc of testCases) {
-      const pool = [
-        makeResult("a", 0.50),
-        makeResult("b", 0.50 - tc.spread),
-      ];
+      const pool = [makeResult("a", 0.5), makeResult("b", 0.5 - tc.spread)];
       const gate = computeRerankerGate(pool, "soft", 0.08, 0.02);
 
       if (tc.spread <= 0.005) {

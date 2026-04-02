@@ -179,18 +179,14 @@ describe("normalizeQueryForReranker", () => {
 // ── blendScores ───────────────────────────────────────────────────────────
 
 describe("blendScores", () => {
-  const pool = [
-    makeResult("a", 0.9),
-    makeResult("b", 0.7),
-    makeResult("c", 0.5),
-  ];
+  const pool = [makeResult("a", 0.9), makeResult("b", 0.7), makeResult("c", 0.5)];
 
   describe("alpha=0 (pure reranker)", () => {
     it("returns results ordered by reranker logit scores", () => {
       const rerankResults = [
         makeRerankResult(2, 0.99), // c: highest reranker
         makeRerankResult(0, 0.85), // a: mid reranker
-        makeRerankResult(1, 0.80), // b: lowest reranker
+        makeRerankResult(1, 0.8), // b: lowest reranker
       ];
       const blended = blendScores(pool, rerankResults, 0);
       expect(blended[0]!.chunk.id).toBe("c");
@@ -202,7 +198,7 @@ describe("blendScores", () => {
       // Tight sigmoid scores but different logits
       const rerankResults = [
         makeRerankResult(0, 0.95), // a: logit ≈ 2.94
-        makeRerankResult(1, 0.90), // b: logit ≈ 2.20
+        makeRerankResult(1, 0.9), // b: logit ≈ 2.20
         makeRerankResult(2, 0.85), // c: logit ≈ 1.73
       ];
       const blended = blendScores(pool, rerankResults, 0);
@@ -220,8 +216,8 @@ describe("blendScores", () => {
     it("preserves original ordering", () => {
       const rerankResults = [
         makeRerankResult(2, 0.99), // c: highest reranker — but ignored
-        makeRerankResult(0, 0.10), // a: lowest reranker — but ignored
-        makeRerankResult(1, 0.50), // b
+        makeRerankResult(0, 0.1), // a: lowest reranker — but ignored
+        makeRerankResult(1, 0.5), // b
       ];
       const blended = blendScores(pool, rerankResults, 1.0);
       // Original order: a(0.9) > b(0.7) > c(0.5)
@@ -235,9 +231,9 @@ describe("blendScores", () => {
     it("prevents catastrophic reranker demotion", () => {
       // a is the best vector result, reranker demotes it
       const rerankResults = [
-        makeRerankResult(0, 0.30), // a: reranker hates it
-        makeRerankResult(1, 0.90), // b: reranker loves it
-        makeRerankResult(2, 0.60), // c: mid
+        makeRerankResult(0, 0.3), // a: reranker hates it
+        makeRerankResult(1, 0.9), // b: reranker loves it
+        makeRerankResult(2, 0.6), // c: mid
       ];
       const blended = blendScores(pool, rerankResults, 0.5);
       // a should stay near the top due to 50% vector weight
@@ -251,8 +247,8 @@ describe("blendScores", () => {
       // c is actually the best document, reranker knows it
       const rerankResults = [
         makeRerankResult(2, 0.99), // c: reranker's top pick
-        makeRerankResult(0, 0.80), // a: mid
-        makeRerankResult(1, 0.60), // b: lowest
+        makeRerankResult(0, 0.8), // a: mid
+        makeRerankResult(1, 0.6), // b: lowest
       ];
       const blended = blendScores(pool, rerankResults, 0.3);
       // With 70% reranker weight, c should be promoted
@@ -263,8 +259,8 @@ describe("blendScores", () => {
       // a is truly best (high vector), reranker wrongly promotes c
       const rerankResults = [
         makeRerankResult(2, 0.99), // c: reranker wrongly picks garbage
-        makeRerankResult(1, 0.50), // b: mid
-        makeRerankResult(0, 0.10), // a: reranker wrongly demotes best
+        makeRerankResult(1, 0.5), // b: mid
+        makeRerankResult(0, 0.1), // a: reranker wrongly demotes best
       ];
       const blendedPure = blendScores(pool, rerankResults, 0);
       const blended03 = blendScores(pool, rerankResults, 0.3);
@@ -309,15 +305,11 @@ describe("blendScores", () => {
     });
 
     it("handles identical original scores", () => {
-      const equalPool = [
-        makeResult("a", 0.5),
-        makeResult("b", 0.5),
-        makeResult("c", 0.5),
-      ];
+      const equalPool = [makeResult("a", 0.5), makeResult("b", 0.5), makeResult("c", 0.5)];
       const rerankResults = [
         makeRerankResult(2, 0.99),
-        makeRerankResult(0, 0.50),
-        makeRerankResult(1, 0.10),
+        makeRerankResult(0, 0.5),
+        makeRerankResult(1, 0.1),
       ];
       const blended = blendScores(equalPool, rerankResults, 0.3);
       // When original scores are tied, reranker should fully determine order
@@ -329,7 +321,7 @@ describe("blendScores", () => {
     it("all blended scores are in [0, 1]", () => {
       const rerankResults = [
         makeRerankResult(0, 0.99),
-        makeRerankResult(1, 0.50),
+        makeRerankResult(1, 0.5),
         makeRerankResult(2, 0.01),
       ];
       for (const alpha of [0, 0.1, 0.3, 0.5, 0.7, 1.0]) {
@@ -344,7 +336,7 @@ describe("blendScores", () => {
     it("alpha=0 and alpha=1 are boundary cases", () => {
       const rerankResults = [
         makeRerankResult(0, 0.99),
-        makeRerankResult(1, 0.50),
+        makeRerankResult(1, 0.5),
         makeRerankResult(2, 0.01),
       ];
       const pure = blendScores(pool, rerankResults, 0);
@@ -362,7 +354,7 @@ describe("blendScores", () => {
     it("blended scores change monotonically with alpha", () => {
       const rerankResults = [
         makeRerankResult(0, 0.99),
-        makeRerankResult(1, 0.50),
+        makeRerankResult(1, 0.5),
         makeRerankResult(2, 0.01),
       ];
       // For doc "a" (high vector, high reranker), score should be stable
@@ -424,8 +416,12 @@ describe("alphaOverride (Phase 10B)", () => {
     ];
     const fetchMock = mockRerankResponse(rerankResults);
     // First call = probe, second call = rerank
-    globalThis.fetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ index: 0, relevance_score: 0.5 }] }) } as unknown as Response)
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ results: [{ index: 0, relevance_score: 0.5 }] }),
+      } as unknown as Response)
       .mockImplementation(fetchMock);
 
     const reranker = await createReranker({
@@ -433,7 +429,8 @@ describe("alphaOverride (Phase 10B)", () => {
       spark: { baseUrl: "http://mock:18096", model: "test-model" },
       topN: 5,
       scoreBlendAlpha: 0.3,
-      blendMode: "score", rerankerGate: "off",
+      blendMode: "score",
+      rerankerGate: "off",
     });
 
     const candidates = [makeResult("a", 0.9), makeResult("b", 0.7)];
@@ -451,11 +448,15 @@ describe("alphaOverride (Phase 10B)", () => {
     const rerankResults = [
       { index: 0, relevance_score: 0.95 },
       { index: 1, relevance_score: 0.85 },
-      { index: 2, relevance_score: 0.50 },
+      { index: 2, relevance_score: 0.5 },
     ];
     const fetchMock = mockRerankResponse(rerankResults);
-    globalThis.fetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ index: 0, relevance_score: 0.5 }] }) } as unknown as Response)
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ results: [{ index: 0, relevance_score: 0.5 }] }),
+      } as unknown as Response)
       .mockImplementation(fetchMock);
 
     // Config alpha = 0 (pure reranker), but we override to 0.5
@@ -464,13 +465,16 @@ describe("alphaOverride (Phase 10B)", () => {
       spark: { baseUrl: "http://mock:18096", model: "test-model" },
       topN: 5,
       scoreBlendAlpha: 0,
-      blendMode: "score", rerankerGate: "off",
+      blendMode: "score",
+      rerankerGate: "off",
     });
 
     // Candidates where vector and reranker disagree — a is best vector, c is worst
     const candidates = [makeResult("a", 0.9), makeResult("b", 0.5), makeResult("c", 0.1)];
     const resultNoOverride = await reranker.rerank("test query", candidates, 3);
-    const resultWithOverride = await reranker.rerank("test query", candidates, 3, { alphaOverride: 0.5 });
+    const resultWithOverride = await reranker.rerank("test query", candidates, 3, {
+      alphaOverride: 0.5,
+    });
 
     // The middle candidate (b) should have a different blended score
     // because alpha=0 ignores vector, alpha=0.5 considers vector
@@ -482,11 +486,15 @@ describe("alphaOverride (Phase 10B)", () => {
   it("alphaOverride=0 uses pure reranker even when config alpha > 0", async () => {
     const rerankResults = [
       { index: 1, relevance_score: 0.99 }, // b: highest reranker
-      { index: 0, relevance_score: 0.30 }, // a: lowest reranker
+      { index: 0, relevance_score: 0.3 }, // a: lowest reranker
     ];
     const fetchMock = mockRerankResponse(rerankResults);
-    globalThis.fetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ index: 0, relevance_score: 0.5 }] }) } as unknown as Response)
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ results: [{ index: 0, relevance_score: 0.5 }] }),
+      } as unknown as Response)
       .mockImplementation(fetchMock);
 
     const reranker = await createReranker({
@@ -494,7 +502,8 @@ describe("alphaOverride (Phase 10B)", () => {
       spark: { baseUrl: "http://mock:18096", model: "test-model" },
       topN: 5,
       scoreBlendAlpha: 0.5, // config says blend
-      blendMode: "score", rerankerGate: "off",
+      blendMode: "score",
+      rerankerGate: "off",
     });
 
     const candidates = [makeResult("a", 0.9), makeResult("b", 0.3)];
@@ -510,8 +519,12 @@ describe("alphaOverride (Phase 10B)", () => {
       { index: 1, relevance_score: 0.85 },
     ];
     const fetchMock = mockRerankResponse(rerankResults);
-    globalThis.fetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ index: 0, relevance_score: 0.5 }] }) } as unknown as Response)
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ results: [{ index: 0, relevance_score: 0.5 }] }),
+      } as unknown as Response)
       .mockImplementation(fetchMock);
 
     const reranker = await createReranker({
@@ -519,7 +532,8 @@ describe("alphaOverride (Phase 10B)", () => {
       spark: { baseUrl: "http://mock:18096", model: "test-model" },
       topN: 5,
       scoreBlendAlpha: 0.5,
-      blendMode: "score", rerankerGate: "off",
+      blendMode: "score",
+      rerankerGate: "off",
     });
 
     const candidates = [makeResult("a", 0.9), makeResult("b", 0.7)];
@@ -532,12 +546,14 @@ describe("alphaOverride (Phase 10B)", () => {
   });
 
   it("normalizes queries even with alphaOverride=0", async () => {
-    const rerankResults = [
-      { index: 0, relevance_score: 0.95 },
-    ];
+    const rerankResults = [{ index: 0, relevance_score: 0.95 }];
     const fetchMock = mockRerankResponse(rerankResults);
-    globalThis.fetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ index: 0, relevance_score: 0.5 }] }) } as unknown as Response)
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ results: [{ index: 0, relevance_score: 0.5 }] }),
+      } as unknown as Response)
       .mockImplementation(fetchMock);
 
     const reranker = await createReranker({
@@ -545,12 +561,15 @@ describe("alphaOverride (Phase 10B)", () => {
       spark: { baseUrl: "http://mock:18096", model: "test-model" },
       topN: 5,
       scoreBlendAlpha: 0.5,
-      blendMode: "score", rerankerGate: "off",
+      blendMode: "score",
+      rerankerGate: "off",
     });
 
     const candidates = [makeResult("a", 0.9)];
 
-    await reranker.rerank("BRCA1 mutations increase cancer risk", candidates, 1, { alphaOverride: 0 });
+    await reranker.rerank("BRCA1 mutations increase cancer risk", candidates, 1, {
+      alphaOverride: 0,
+    });
     const call = fetchMock.mock.calls[0];
     const body = JSON.parse(call[1].body as string);
     expect(body.query).toBe("Is it true that bRCA1 mutations increase cancer risk?");
@@ -571,15 +590,25 @@ describe("reranker error handling (Phase 10B)", () => {
   });
 
   it("falls back to input order on HTTP error", async () => {
-    globalThis.fetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ index: 0, relevance_score: 0.5 }] }) } as unknown as Response) // probe
-      .mockResolvedValue({ ok: false, status: 503, statusText: "Service Unavailable", text: async () => "overloaded" } as unknown as Response);
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ results: [{ index: 0, relevance_score: 0.5 }] }),
+      } as unknown as Response) // probe
+      .mockResolvedValue({
+        ok: false,
+        status: 503,
+        statusText: "Service Unavailable",
+        text: async () => "overloaded",
+      } as unknown as Response);
 
     const reranker = await createReranker({
       enabled: true,
       spark: { baseUrl: "http://mock:18096", model: "test-model" },
       topN: 5,
-      blendMode: "score", rerankerGate: "off",
+      blendMode: "score",
+      rerankerGate: "off",
     });
 
     const candidates = [makeResult("a", 0.9), makeResult("b", 0.7), makeResult("c", 0.5)];
@@ -598,8 +627,12 @@ describe("reranker error handling (Phase 10B)", () => {
   });
 
   it("logs error body when available", async () => {
-    globalThis.fetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ index: 0, relevance_score: 0.5 }] }) } as unknown as Response) // probe
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ results: [{ index: 0, relevance_score: 0.5 }] }),
+      } as unknown as Response) // probe
       .mockResolvedValue({
         ok: false,
         status: 500,
@@ -611,7 +644,8 @@ describe("reranker error handling (Phase 10B)", () => {
       enabled: true,
       spark: { baseUrl: "http://mock:18096", model: "test-model" },
       topN: 5,
-      blendMode: "score", rerankerGate: "off",
+      blendMode: "score",
+      rerankerGate: "off",
     });
 
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -622,20 +656,27 @@ describe("reranker error handling (Phase 10B)", () => {
   });
 
   it("handles body read failure gracefully", async () => {
-    globalThis.fetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ index: 0, relevance_score: 0.5 }] }) } as unknown as Response) // probe
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ results: [{ index: 0, relevance_score: 0.5 }] }),
+      } as unknown as Response) // probe
       .mockResolvedValue({
         ok: false,
         status: 502,
         statusText: "Bad Gateway",
-        text: async () => { throw new Error("socket hang up"); },
+        text: async () => {
+          throw new Error("socket hang up");
+        },
       } as unknown as Response);
 
     const reranker = await createReranker({
       enabled: true,
       spark: { baseUrl: "http://mock:18096", model: "test-model" },
       topN: 5,
-      blendMode: "score", rerankerGate: "off",
+      blendMode: "score",
+      rerankerGate: "off",
     });
 
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
@@ -648,14 +689,17 @@ describe("reranker error handling (Phase 10B)", () => {
   });
 
   it("returns empty array for empty candidates", async () => {
-    globalThis.fetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ index: 0, relevance_score: 0.5 }] }) } as unknown as Response);
+    globalThis.fetch = vi.fn().mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ results: [{ index: 0, relevance_score: 0.5 }] }),
+    } as unknown as Response);
 
     const reranker = await createReranker({
       enabled: true,
       spark: { baseUrl: "http://mock:18096", model: "test-model" },
       topN: 5,
-      blendMode: "score", rerankerGate: "off",
+      blendMode: "score",
+      rerankerGate: "off",
     });
 
     const result = await reranker.rerank("test", [], 5);
@@ -670,7 +714,8 @@ describe("passthroughReranker", () => {
     const reranker = await createReranker({
       enabled: false,
       topN: 5,
-      blendMode: "score", rerankerGate: "off",
+      blendMode: "score",
+      rerankerGate: "off",
     });
 
     const candidates = [makeResult("a", 0.9), makeResult("b", 0.7), makeResult("c", 0.5)];
@@ -685,7 +730,8 @@ describe("passthroughReranker", () => {
     const reranker = await createReranker({
       enabled: false,
       topN: 5,
-      blendMode: "score", rerankerGate: "off",
+      blendMode: "score",
+      rerankerGate: "off",
     });
 
     const candidates = [makeResult("a", 0.9)];
@@ -697,7 +743,8 @@ describe("passthroughReranker", () => {
     const reranker = await createReranker({
       enabled: false,
       topN: 5,
-      blendMode: "score", rerankerGate: "off",
+      blendMode: "score",
+      rerankerGate: "off",
     });
 
     expect(await reranker.probe()).toBe(true);
@@ -720,7 +767,7 @@ describe("spread guard", () => {
   it("falls back to input order when logit spread is too narrow", async () => {
     // All reranker scores nearly identical → logit spread ≈ 0
     const tightResults = [
-      { index: 0, relevance_score: 0.950 },
+      { index: 0, relevance_score: 0.95 },
       { index: 1, relevance_score: 0.951 },
       { index: 2, relevance_score: 0.952 },
     ];
@@ -728,8 +775,12 @@ describe("spread guard", () => {
       ok: true,
       json: async () => ({ results: tightResults }),
     } as unknown as Response);
-    globalThis.fetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ index: 0, relevance_score: 0.5 }] }) } as unknown as Response) // probe
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ results: [{ index: 0, relevance_score: 0.5 }] }),
+      } as unknown as Response) // probe
       .mockImplementation(fetchMock);
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -737,7 +788,8 @@ describe("spread guard", () => {
       enabled: true,
       spark: { baseUrl: "http://mock:18096", model: "test-model", minScoreSpread: 0.5 },
       topN: 5,
-      blendMode: "score", rerankerGate: "off",
+      blendMode: "score",
+      rerankerGate: "off",
     });
 
     const candidates = [makeResult("a", 0.9), makeResult("b", 0.7), makeResult("c", 0.5)];
@@ -770,8 +822,8 @@ describe("end-to-end: alphaOverride produces same results as config alpha", () =
   it("config alpha=0.3 matches alphaOverride=0.3 on a zero-config reranker", async () => {
     const rerankResults = [
       { index: 0, relevance_score: 0.95 },
-      { index: 1, relevance_score: 0.70 },
-      { index: 2, relevance_score: 0.40 },
+      { index: 1, relevance_score: 0.7 },
+      { index: 2, relevance_score: 0.4 },
     ];
 
     // Reranker #1: config alpha = 0.3
@@ -779,8 +831,12 @@ describe("end-to-end: alphaOverride produces same results as config alpha", () =
       ok: true,
       json: async () => ({ results: rerankResults }),
     } as unknown as Response);
-    globalThis.fetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ index: 0, relevance_score: 0.5 }] }) } as unknown as Response)
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ results: [{ index: 0, relevance_score: 0.5 }] }),
+      } as unknown as Response)
       .mockImplementation(fetchMock1);
 
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
@@ -799,8 +855,12 @@ describe("end-to-end: alphaOverride produces same results as config alpha", () =
       ok: true,
       json: async () => ({ results: rerankResults }),
     } as unknown as Response);
-    globalThis.fetch = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ results: [{ index: 0, relevance_score: 0.5 }] }) } as unknown as Response)
+    globalThis.fetch = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ results: [{ index: 0, relevance_score: 0.5 }] }),
+      } as unknown as Response)
       .mockImplementation(fetchMock2);
 
     const reranker2 = await createReranker({
@@ -810,7 +870,9 @@ describe("end-to-end: alphaOverride produces same results as config alpha", () =
       scoreBlendAlpha: 0,
     });
 
-    const result2 = await reranker2.rerank("How does DNA repair work?", candidates, 3, { alphaOverride: 0.3 });
+    const result2 = await reranker2.rerank("How does DNA repair work?", candidates, 3, {
+      alphaOverride: 0.3,
+    });
 
     // Results should be identical
     expect(result1).toHaveLength(result2.length);
@@ -850,10 +912,7 @@ describe("logit recovery integration", () => {
   });
 
   it("blendScores uses logits not raw sigmoids for reranker signal", () => {
-    const pool = [
-      makeResult("a", 0.9),
-      makeResult("b", 0.5),
-    ];
+    const pool = [makeResult("a", 0.9), makeResult("b", 0.5)];
 
     // Tight sigmoid scores — if we used raw values, discrimination would be poor
     const rerankResults = [

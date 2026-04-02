@@ -40,22 +40,198 @@ interface BeirResult {
 // ── SciFact results from real BEIR benchmark runs (2026-04-01) ────────────
 // Selected representative configs (not all 36 — chart would be too dense)
 const SCIFACT_RESULTS: BeirResult[] = [
-  { config: "U: Logit α=0.4 ★", dataset: "scifact", metrics: { ndcg_at_10: 0.7889, mrr: 0.7572, recall_at_10: 0.9099, map_at_10: 0.7200, precision_at_10: 0.1027, mean_latency_ms: 1500 } },
-  { config: "V: Logit α=0.6", dataset: "scifact", metrics: { ndcg_at_10: 0.7885, mrr: 0.7527, recall_at_10: 0.9243, map_at_10: 0.7190, precision_at_10: 0.1027, mean_latency_ms: 1500 } },
-  { config: "N: Logit α=0.5", dataset: "scifact", metrics: { ndcg_at_10: 0.7863, mrr: 0.7522, recall_at_10: 0.9143, map_at_10: 0.7150, precision_at_10: 0.1013, mean_latency_ms: 1500 } },
-  { config: "MQ-C: Multi-Query", dataset: "scifact", metrics: { ndcg_at_10: 0.7853, mrr: 0.7500, recall_at_10: 0.9177, map_at_10: 0.7130, precision_at_10: 0.1013, mean_latency_ms: 2200 } },
-  { config: "GATE-D: Soft+RRF", dataset: "scifact", metrics: { ndcg_at_10: 0.7803, mrr: 0.7525, recall_at_10: 0.8924, map_at_10: 0.7044, precision_at_10: 0.1013, mean_latency_ms: 1413 } },
-  { config: "GATE-A: Hard Gate", dataset: "scifact", metrics: { ndcg_at_10: 0.7802, mrr: 0.7455, recall_at_10: 0.9137, map_at_10: 0.7042, precision_at_10: 0.1027, mean_latency_ms: 732 } },
-  { config: "RRF-D: k=20", dataset: "scifact", metrics: { ndcg_at_10: 0.7798, mrr: 0.7514, recall_at_10: 0.8924, map_at_10: 0.7036, precision_at_10: 0.1013, mean_latency_ms: 1452 } },
-  { config: "P: Full Adaptive", dataset: "scifact", metrics: { ndcg_at_10: 0.7797, mrr: 0.7440, recall_at_10: 0.9129, map_at_10: 0.7030, precision_at_10: 0.1013, mean_latency_ms: 1580 } },
-  { config: "A: Vector-Only", dataset: "scifact", metrics: { ndcg_at_10: 0.7709, mrr: 0.7365, recall_at_10: 0.9037, map_at_10: 0.6917, precision_at_10: 0.1013, mean_latency_ms: 528 } },
-  { config: "K: Adaptive MMR", dataset: "scifact", metrics: { ndcg_at_10: 0.7622, mrr: 0.7322, recall_at_10: 0.8803, map_at_10: 0.6850, precision_at_10: 0.0980, mean_latency_ms: 560 } },
-  { config: "I: Adaptive Hybrid", dataset: "scifact", metrics: { ndcg_at_10: 0.7557, mrr: 0.7155, recall_at_10: 0.9054, map_at_10: 0.6800, precision_at_10: 0.0990, mean_latency_ms: 680 } },
-  { config: "D: Full Pipeline", dataset: "scifact", metrics: { ndcg_at_10: 0.7525, mrr: 0.7052, recall_at_10: 0.9101, map_at_10: 0.6756, precision_at_10: 0.0987, mean_latency_ms: 1580 } },
-  { config: "H: Vec→Rerank", dataset: "scifact", metrics: { ndcg_at_10: 0.7395, mrr: 0.6943, recall_at_10: 0.8924, map_at_10: 0.6523, precision_at_10: 0.0977, mean_latency_ms: 1650 } },
-  { config: "C: Hybrid", dataset: "scifact", metrics: { ndcg_at_10: 0.7307, mrr: 0.6895, recall_at_10: 0.8764, map_at_10: 0.6600, precision_at_10: 0.0983, mean_latency_ms: 600 } },
-  { config: "F: Hybrid+HyDE", dataset: "scifact", metrics: { ndcg_at_10: 0.7278, mrr: 0.6844, recall_at_10: 0.8874, map_at_10: 0.6550, precision_at_10: 0.0977, mean_latency_ms: 2800 } },
-  { config: "B: FTS-Only", dataset: "scifact", metrics: { ndcg_at_10: 0.6587, mrr: 0.6240, recall_at_10: 0.7924, map_at_10: 0.5856, precision_at_10: 0.0887, mean_latency_ms: 120 } },
+  {
+    config: "U: Logit α=0.4 ★",
+    dataset: "scifact",
+    metrics: {
+      ndcg_at_10: 0.7889,
+      mrr: 0.7572,
+      recall_at_10: 0.9099,
+      map_at_10: 0.72,
+      precision_at_10: 0.1027,
+      mean_latency_ms: 1500,
+    },
+  },
+  {
+    config: "V: Logit α=0.6",
+    dataset: "scifact",
+    metrics: {
+      ndcg_at_10: 0.7885,
+      mrr: 0.7527,
+      recall_at_10: 0.9243,
+      map_at_10: 0.719,
+      precision_at_10: 0.1027,
+      mean_latency_ms: 1500,
+    },
+  },
+  {
+    config: "N: Logit α=0.5",
+    dataset: "scifact",
+    metrics: {
+      ndcg_at_10: 0.7863,
+      mrr: 0.7522,
+      recall_at_10: 0.9143,
+      map_at_10: 0.715,
+      precision_at_10: 0.1013,
+      mean_latency_ms: 1500,
+    },
+  },
+  {
+    config: "MQ-C: Multi-Query",
+    dataset: "scifact",
+    metrics: {
+      ndcg_at_10: 0.7853,
+      mrr: 0.75,
+      recall_at_10: 0.9177,
+      map_at_10: 0.713,
+      precision_at_10: 0.1013,
+      mean_latency_ms: 2200,
+    },
+  },
+  {
+    config: "GATE-D: Soft+RRF",
+    dataset: "scifact",
+    metrics: {
+      ndcg_at_10: 0.7803,
+      mrr: 0.7525,
+      recall_at_10: 0.8924,
+      map_at_10: 0.7044,
+      precision_at_10: 0.1013,
+      mean_latency_ms: 1413,
+    },
+  },
+  {
+    config: "GATE-A: Hard Gate",
+    dataset: "scifact",
+    metrics: {
+      ndcg_at_10: 0.7802,
+      mrr: 0.7455,
+      recall_at_10: 0.9137,
+      map_at_10: 0.7042,
+      precision_at_10: 0.1027,
+      mean_latency_ms: 732,
+    },
+  },
+  {
+    config: "RRF-D: k=20",
+    dataset: "scifact",
+    metrics: {
+      ndcg_at_10: 0.7798,
+      mrr: 0.7514,
+      recall_at_10: 0.8924,
+      map_at_10: 0.7036,
+      precision_at_10: 0.1013,
+      mean_latency_ms: 1452,
+    },
+  },
+  {
+    config: "P: Full Adaptive",
+    dataset: "scifact",
+    metrics: {
+      ndcg_at_10: 0.7797,
+      mrr: 0.744,
+      recall_at_10: 0.9129,
+      map_at_10: 0.703,
+      precision_at_10: 0.1013,
+      mean_latency_ms: 1580,
+    },
+  },
+  {
+    config: "A: Vector-Only",
+    dataset: "scifact",
+    metrics: {
+      ndcg_at_10: 0.7709,
+      mrr: 0.7365,
+      recall_at_10: 0.9037,
+      map_at_10: 0.6917,
+      precision_at_10: 0.1013,
+      mean_latency_ms: 528,
+    },
+  },
+  {
+    config: "K: Adaptive MMR",
+    dataset: "scifact",
+    metrics: {
+      ndcg_at_10: 0.7622,
+      mrr: 0.7322,
+      recall_at_10: 0.8803,
+      map_at_10: 0.685,
+      precision_at_10: 0.098,
+      mean_latency_ms: 560,
+    },
+  },
+  {
+    config: "I: Adaptive Hybrid",
+    dataset: "scifact",
+    metrics: {
+      ndcg_at_10: 0.7557,
+      mrr: 0.7155,
+      recall_at_10: 0.9054,
+      map_at_10: 0.68,
+      precision_at_10: 0.099,
+      mean_latency_ms: 680,
+    },
+  },
+  {
+    config: "D: Full Pipeline",
+    dataset: "scifact",
+    metrics: {
+      ndcg_at_10: 0.7525,
+      mrr: 0.7052,
+      recall_at_10: 0.9101,
+      map_at_10: 0.6756,
+      precision_at_10: 0.0987,
+      mean_latency_ms: 1580,
+    },
+  },
+  {
+    config: "H: Vec→Rerank",
+    dataset: "scifact",
+    metrics: {
+      ndcg_at_10: 0.7395,
+      mrr: 0.6943,
+      recall_at_10: 0.8924,
+      map_at_10: 0.6523,
+      precision_at_10: 0.0977,
+      mean_latency_ms: 1650,
+    },
+  },
+  {
+    config: "C: Hybrid",
+    dataset: "scifact",
+    metrics: {
+      ndcg_at_10: 0.7307,
+      mrr: 0.6895,
+      recall_at_10: 0.8764,
+      map_at_10: 0.66,
+      precision_at_10: 0.0983,
+      mean_latency_ms: 600,
+    },
+  },
+  {
+    config: "F: Hybrid+HyDE",
+    dataset: "scifact",
+    metrics: {
+      ndcg_at_10: 0.7278,
+      mrr: 0.6844,
+      recall_at_10: 0.8874,
+      map_at_10: 0.655,
+      precision_at_10: 0.0977,
+      mean_latency_ms: 2800,
+    },
+  },
+  {
+    config: "B: FTS-Only",
+    dataset: "scifact",
+    metrics: {
+      ndcg_at_10: 0.6587,
+      mrr: 0.624,
+      recall_at_10: 0.7924,
+      map_at_10: 0.5856,
+      precision_at_10: 0.0887,
+      mean_latency_ms: 120,
+    },
+  },
 ];
 
 function genNdcgBarChart(results: BeirResult[]): string {
@@ -122,7 +298,12 @@ function genLatencyChart(results: BeirResult[]): string {
       const y = 80 + i * (barHeight + gap);
       const w = (r.metrics.mean_latency_ms / maxLatency) * 600;
       const isGate = r.config.startsWith("GATE-A");
-      const color = r.metrics.mean_latency_ms < 800 ? C.accent : r.metrics.mean_latency_ms < 1200 ? C.warning : C.danger;
+      const color =
+        r.metrics.mean_latency_ms < 800
+          ? C.accent
+          : r.metrics.mean_latency_ms < 1200
+            ? C.warning
+            : C.danger;
       return `
     <text x="${labelWidth - 10}" y="${y + barHeight / 2 + 4}" text-anchor="end" fill="${C.text}" font-size="13" font-weight="${isGate ? 700 : 400}">${r.config}</text>
     <rect x="${labelWidth}" y="${y}" width="${w}" height="${barHeight}" rx="4" fill="${color}" opacity="${isGate ? 1 : 0.7}"/>
@@ -179,7 +360,9 @@ function genGateSkipPie(): string {
   const skipTied = 2;
   const fire = 64;
 
-  const cx = 300, cy = 250, r = 180;
+  const cx = 300,
+    cy = 250,
+    r = 180;
 
   // Pie segments
   const angle1 = (skipConfident / total) * 2 * Math.PI;
@@ -226,8 +409,12 @@ function genGateSkipPie(): string {
 
 function genTemporalDecayChart(): string {
   // Plot temporal decay curve: w(t) = 0.8 + 0.2 * exp(-0.03 * t)
-  const width = 1200, height = 500;
-  const padL = 100, padR = 60, padT = 80, padB = 70;
+  const width = 1200,
+    height = 500;
+  const padL = 100,
+    padR = 60,
+    padT = 80,
+    padB = 70;
   const plotW = width - padL - padR;
   const plotH = height - padT - padB;
   const maxDays = 365;
