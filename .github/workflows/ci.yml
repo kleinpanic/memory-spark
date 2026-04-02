@@ -35,19 +35,20 @@ jobs:
       - name: Knip dead code analysis
         run: npx knip
 
-      - name: Unit tests with coverage
-        run: npx vitest run --coverage
+      - name: Unit tests
+        run: npx vitest run --exclude 'tests/integration.test.ts' --exclude 'tests/pdf-parsers.test.ts'
+        env:
+          SKIP_INTEGRATION: "1"
 
       - name: FTS+WHERE validation
         run: npx tsx tests/fts-where-test.ts
 
-      - name: Upload coverage
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage
-          path: coverage/
-          if-no-files-found: warn
+  # ── Integration tests (requires DGX Spark on local network) ────────────
+  # These tests hit real GPU inference endpoints and are NOT runnable on
+  # GitHub-hosted runners. Run locally: npx vitest run tests/integration.test.ts
+  #
+  # PDF tests require pdftotext (poppler-utils) which is not installed on
+  # GitHub runners by default.
 
   benchmark:
     name: Benchmark (requires Spark)
