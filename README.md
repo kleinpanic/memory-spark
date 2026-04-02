@@ -59,47 +59,8 @@ Results below are from `evaluation/results/` generated via `scripts/run-beir-ben
 
 ## Architecture
 
-```mermaid
-flowchart LR
-  A[Agent Turn] --> B[Query Clean]
-  B --> C[HyDE]
-  C --> D[Multi-Query]
-  D --> E[Embed 4096d]
-
-  E --> F[Vector Search]
-  E --> G[FTS Search]
-  F --> H[RRF Merge]
-  G --> H
-
-  H --> I[Source Weight]
-  I --> J[Temporal Decay]
-  J --> K[Source Dedup]
-
-  K --> L{Reranker Gate}
-  L -->|σ > 0.08 SKIP| N[MMR λ=0.9]
-  L -->|σ < 0.02 SKIP| N
-  L -->|0.02 ≤ σ ≤ 0.08| M[Cross-Encoder]
-  M --> N
-
-  N --> O[Parent Expand]
-  O --> P[LCM Dedup]
-  P --> Q[Security + Budget]
-  Q --> R["&lt;relevant-memories&gt;"]
-
-  S[Auto-Capture] --> T[(LanceDB)]
-  E --> T
-  T --> F
-  T --> G
-
-  style L fill:#132a13,stroke:#3fb950,stroke-width:2
-  style M fill:#2d1117,stroke:#f85149
-  style R fill:#1a1f2e,stroke:#58a6ff,stroke-width:2
-```
-
-### Full Architecture Diagram
-
 <p align="center">
-  <img src="docs/figures/architecture-v040.svg" alt="memory-spark v0.4.0 Architecture" width="100%">
+  <img src="docs/figures/architecture-v040.svg" alt="memory-spark v0.4.0 — 15-Stage Retrieval Pipeline" width="100%">
 </p>
 
 ### Infrastructure Stack
