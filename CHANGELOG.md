@@ -13,8 +13,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   - `agent_tools` — per-agent tool definitions (auto-injected for tool context)
   - `shared_knowledge` — cross-agent facts (auto-injected, 0.8x weight)
   - `shared_mistakes` — cross-agent mistakes (auto-injected, 1.6x boost)
-  - `agent_mistakes` — per-agent mistakes (auto-injected, 1.6x boost) ← PENDING
-  - `shared_rules` — global rules & preferences (always injected) ← PENDING
+  - `agent_mistakes` — per-agent mistakes (auto-injected, 1.6x boost)
+  - `shared_rules` — global rules & preferences (always injected)
   - `reference_library` — PDFs, documentation (tool-call only)
   - `reference_code` — code examples (tool-call only)
 - **`resolvePool()`** — auto-routes chunks to correct pool based on content_type and path

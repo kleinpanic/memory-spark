@@ -10,20 +10,19 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["src/**/*.ts"],
+      all: true, // Include files with zero coverage in reports — makes untested modules visible
       exclude: [
         "src/**/*.d.ts",
-        "src/storage/multi-table-backend.ts", // deleted
-        "src/storage/table-manager.ts", // deleted
       ],
       reporter: ["text", "text-summary", "lcov", "json-summary"],
       reportsDirectory: "./coverage",
-      // Unit test thresholds (pure logic only — no Spark/network deps)
-      // Integration tests run separately and cover storage/embed/ingest
+      // Thresholds — raised from placeholder 15% (audit 2026-04-02)
+      // Target: 50%+ as missing test files are added (capture, queue, dims-lock, etc.)
       thresholds: {
-        statements: 15,
-        branches: 18,
-        functions: 12,
-        lines: 15,
+        statements: 35,
+        branches: 30,
+        functions: 30,
+        lines: 35,
       },
     },
     // Global test timeout

@@ -59,53 +59,61 @@ async function getState(
   if (initPromise) return initPromise;
 
   initPromise = (async () => {
-    logger.info("memory-spark: initializing...");
+    try {
+      logger.info("memory-spark: initializing...");
 
-    // Single-table backend with pool-based logical isolation.
-    // LanceDB 0.27+ supports FTS+WHERE natively, so no multi-table workaround needed.
-    // Pool column provides logical separation: agent_memory, shared_mistakes, shared_rules, etc.
-    const backend: StorageBackend = new LanceDBBackend(cfg);
-    await backend.open();
-    logger.info("memory-spark: LanceDB backend initialized (single-table + pool architecture)");
+      // Single-table backend with pool-based logical isolation.
+      // LanceDB 0.27+ supports FTS+WHERE natively, so no multi-table workaround needed.
+      // Pool column provides logical separation: agent_memory, shared_mistakes, shared_rules, etc.
+      const backend: StorageBackend = new LanceDBBackend(cfg);
+      await backend.open();
+      logger.info("memory-spark: LanceDB backend initialized (single-table + pool architecture)");
 
-    const embed = await createEmbedProvider(cfg.embed);
-    logger.info(`memory-spark: embed → ${embed.id}/${embed.model} (${embed.dims}d)`);
+      const embed = await createEmbedProvider(cfg.embed);
+      logger.info(`memory-spark: embed → ${embed.id}/${embed.model} (${embed.dims}d)`);
 
-    // Dimension safety: lock dims on first boot, refuse mismatch on subsequent boots
-    const dimsCheck = await validateDimsLock(cfg.lancedbDir, embed.id, embed.model, embed.dims);
-    if (!dimsCheck.ok) {
-      logger.error(`memory-spark: FATAL — ${dimsCheck.error}`);
-      throw new Error(dimsCheck.error);
+      // Dimension safety: lock dims on first boot, refuse mismatch on subsequent boots
+      const dimsCheck = await validateDimsLock(cfg.lancedbDir, embed.id, embed.model, embed.dims);
+      if (!dimsCheck.ok) {
+        logger.error(`memory-spark: FATAL — ${dimsCheck.error}`);
+        throw new Error(dimsCheck.error);
+      }
+
+      // Queue: serialized embed requests with retry/backoff
+      const queue = new EmbedQueue(
+        embed,
+        {
+          concurrency: 1,
+          maxRetries: 3,
+          baseDelayMs: 2000,
+          maxDelayMs: 30000,
+          timeoutMs: 30000,
+          unhealthyThreshold: 5,
+          unhealthyCooldownMs: 60000,
+        },
+        logger,
+      );
+
+      const reranker = await createReranker(cfg.rerank);
+
+      // Cache wraps the queue for query embeddings only (recall).
+      // Document embeddings (indexing) bypass the cache via queue directly.
+      const cachedEmbed = withCache(queue, {
+        enabled: cfg.embedCache?.enabled ?? true,
+        maxSize: cfg.embedCache?.maxSize ?? 256,
+        ttlMs: cfg.embedCache?.ttlMs ?? 30 * 60 * 1000,
+      });
+
+      state = { cfg, backend, embed, queue, cachedEmbed, reranker, watcher: null };
+      logger.info("memory-spark: ready");
+      return state;
+    } catch (err) {
+      // Clear initPromise so next call retries initialization instead of
+      // returning the cached rejected promise forever. Without this,
+      // a transient Spark outage at cold start permanently bricks the plugin.
+      initPromise = null;
+      throw err;
     }
-
-    // Queue: serialized embed requests with retry/backoff
-    const queue = new EmbedQueue(
-      embed,
-      {
-        concurrency: 1,
-        maxRetries: 3,
-        baseDelayMs: 2000,
-        maxDelayMs: 30000,
-        timeoutMs: 30000,
-        unhealthyThreshold: 5,
-        unhealthyCooldownMs: 60000,
-      },
-      logger,
-    );
-
-    const reranker = await createReranker(cfg.rerank);
-
-    // Cache wraps the queue for query embeddings only (recall).
-    // Document embeddings (indexing) bypass the cache via queue directly.
-    const cachedEmbed = withCache(queue, {
-      enabled: cfg.embedCache?.enabled ?? true,
-      maxSize: cfg.embedCache?.maxSize ?? 256,
-      ttlMs: cfg.embedCache?.ttlMs ?? 30 * 60 * 1000,
-    });
-
-    state = { cfg, backend, embed, queue, cachedEmbed, reranker, watcher: null };
-    logger.info("memory-spark: ready");
-    return state;
   })();
 
   return initPromise;
@@ -209,7 +217,7 @@ const ReindexParams = Type.Object({
 const memorySpark = {
   id: "memory-spark",
   name: "Memory Spark",
-  version: "0.1.0",
+  version: "0.4.0",
   description:
     "Autonomous Spark-powered memory: LanceDB + local embed/rerank + auto-recall/capture.",
   kind: "memory" as const,
@@ -523,7 +531,12 @@ const memorySpark = {
                 details: {},
               };
             }
-            const vector = await s.queue.embedQuery(params.text);
+            let vector: number[];
+            try {
+              vector = await s.queue.embedQuery(params.text);
+            } catch (err) {
+              return { content: [{ type: "text", text: `Embedding service unavailable: ${err instanceof Error ? err.message : String(err)}. Try again later.` }] };
+            }
             // Duplicate check
             const existing = await s.backend
               .vectorSearch(vector, {
@@ -582,7 +595,12 @@ const memorySpark = {
           parameters: ForgetParams,
           execute: async (_toolCallId: string, params: { query: string }) => {
             const s = await getState(cfg, api.logger);
-            const vector = await s.queue.embedQuery(params.query);
+            let vector: number[];
+            try {
+              vector = await s.queue.embedQuery(params.query);
+            } catch (err) {
+              return { content: [{ type: "text", text: `Embedding service unavailable: ${err instanceof Error ? err.message : String(err)}. Try again later.` }] };
+            }
             const matches = await s.backend
               .vectorSearch(vector, {
                 query: params.query,
@@ -1106,7 +1124,12 @@ const memorySpark = {
               };
             }
 
-            const vector = await s.queue.embedQuery(fullText);
+            let vector: number[];
+            try {
+              vector = await s.queue.embedQuery(fullText);
+            } catch (err) {
+              return { content: [{ type: "text", text: `Embedding service unavailable: ${err instanceof Error ? err.message : String(err)}. Try again later.` }] };
+            }
             const crypto = await import("node:crypto");
             const now = new Date();
             const pool = params.shared ? "shared_mistakes" : "agent_mistakes";
@@ -1168,7 +1191,12 @@ const memorySpark = {
               };
             }
 
-            const vector = await s.queue.embedQuery(fullText);
+            let vector: number[];
+            try {
+              vector = await s.queue.embedQuery(fullText);
+            } catch (err) {
+              return { content: [{ type: "text", text: `Embedding service unavailable: ${err instanceof Error ? err.message : String(err)}. Try again later.` }] };
+            }
             const crypto = await import("node:crypto");
             const now = new Date();
             const chunk: import("./src/storage/backend.js").MemoryChunk = {
@@ -1263,7 +1291,12 @@ const memorySpark = {
             const maxR = params.maxResults ?? 10;
 
             // Run vector search
-            const queryVector = await s.embed.embedQuery(params.query);
+            let queryVector: number[];
+            try {
+              queryVector = await s.embed.embedQuery(params.query);
+            } catch (err) {
+              return { content: [{ type: "text", text: `Embedding service unavailable: ${err instanceof Error ? err.message : String(err)}. Try again later.` }] };
+            }
             const vectorResults = await s.backend
               .vectorSearch(queryVector, {
                 query: params.query,
@@ -1378,6 +1411,7 @@ const memorySpark = {
             },
           ) => {
             const s = await getState(cfg, api.logger);
+            const nodesCrypto = await import("node:crypto");
             const results: Array<{ index: number; status: string; id?: string; error?: string }> =
               [];
 
@@ -1386,7 +1420,7 @@ const memorySpark = {
               try {
                 const vector = await s.queue.embedDocument(item.text);
                 const chunk = {
-                  id: `capture-${Date.now()}-${i}-${crypto.randomUUID().slice(0, 8)}`,
+                  id: `capture-${Date.now()}-${i}-${nodesCrypto.randomUUID().slice(0, 8)}`,
                   text: item.text,
                   path: item.path ?? `capture/bulk-${Date.now()}`,
                   source: (item.source ?? "capture") as
@@ -1464,7 +1498,12 @@ const memorySpark = {
           ) => {
             const s = await getState(cfg, api.logger);
             const maxR = params.maxResults ?? 10;
-            const queryVector = await s.embed.embedQuery(params.query);
+            let queryVector: number[];
+            try {
+              queryVector = await s.embed.embedQuery(params.query);
+            } catch (err) {
+              return { content: [{ type: "text", text: `Embedding service unavailable: ${err instanceof Error ? err.message : String(err)}. Try again later.` }] };
+            }
 
             // Vector search with time filter
             const results = await s.backend
@@ -1545,7 +1584,12 @@ const memorySpark = {
 
             const sourceChunk = chunks[0]!;
             // Embed the source chunk's text and search for neighbors
-            const vector = await s.embed.embedDocument(sourceChunk.text);
+            let vector: number[];
+            try {
+              vector = await s.embed.embedDocument(sourceChunk.text);
+            } catch (err) {
+              return { content: [{ type: "text", text: `Embedding service unavailable: ${err instanceof Error ? err.message : String(err)}. Try again later.` }] };
+            }
             const neighbors = await s.backend
               .vectorSearch(vector, {
                 query: sourceChunk.text.slice(0, 200),

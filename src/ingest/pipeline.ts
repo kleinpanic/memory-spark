@@ -201,15 +201,10 @@ export async function ingestFile(opts: IngestFileOptions): Promise<IngestResult>
       const allTexts = [...parentTexts, ...childTexts];
       const allVectors = await opts.embed.embedBatch(allTexts);
 
-      // NER for all chunks (best effort)
-      const allEntities: string[][] = [];
-      for (const text of allTexts) {
-        try {
-          allEntities.push(await tagEntities(text, opts.cfg));
-        } catch {
-          allEntities.push([]);
-        }
-      }
+      // NER for all chunks in parallel (best effort)
+      const allEntities: string[][] = await Promise.all(
+        allTexts.map((text) => tagEntities(text, opts.cfg).catch(() => [] as string[])),
+      );
 
       allChunksToStore = [];
       const parentCount = parentTexts.length;

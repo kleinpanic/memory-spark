@@ -106,7 +106,7 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     //   2. Agent mistakes         → filtered by agent_id, 1.6x boost
     //   3. Shared mistakes        → cross-agent, 1.6x boost
     //   4. Shared knowledge       → cross-agent, 0.8x weight
-    //   5. Shared rules           → cross-agent, ALWAYS injected (no relevance gate)
+    //   5. Shared rules           → cross-agent, relevance-gated (lowThreshold)
     //   6. Reference pools        → NEVER auto-injected (tool-call only)
     //
     // Within each pool: hybrid search (Vector + FTS) → merge

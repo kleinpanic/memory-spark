@@ -401,7 +401,7 @@ export class LanceDBBackend implements StorageBackend {
     try {
       // FTS + WHERE is now supported (LanceDB 0.27+, previously caused Arrow panic).
       // Proper implementation: build WHERE clause from search options, apply natively.
-      const q = this.table.search(query, "fts", "text").limit(limit);
+      let q = this.table.search(query, "fts", "text").limit(limit);
 
       const filters: string[] = [];
       if (opts.agentId) {
@@ -425,7 +425,7 @@ export class LanceDBBackend implements StorageBackend {
       }
 
       if (filters.length > 0) {
-        q.where(filters.join(" AND "));
+        q = q.where(filters.join(" AND "));
       }
 
       const t0fts = performance.now();
@@ -516,7 +516,12 @@ export class LanceDBBackend implements StorageBackend {
     if (!this.table || ids.length === 0) return [];
     const escaped = ids.map((id) => `'${escapeSql(id)}'`).join(", ");
     const rows = await this.table.query().where(`id IN (${escaped})`).toArray();
-    return rows as MemoryChunk[];
+    // Convert Arrow Vector objects to plain JS number[] — same as rowToSearchResult.
+    // Without this, any code using .vector from getByIds results gets NaN cosine similarity.
+    return rows.map((row: Record<string, unknown>) => ({
+      ...row,
+      vector: row.vector ? toJsNumberArray(row.vector) : undefined,
+    })) as MemoryChunk[];
   }
 
   async readFile(params: {
