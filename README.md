@@ -60,70 +60,64 @@ Results below are from `evaluation/results/` generated via `scripts/run-beir-ben
 ## Architecture
 
 ```mermaid
-flowchart TD
-  subgraph INPUT["① Input & Embedding"]
-    direction LR
-    A["🔄 Agent Turn"] --> B["1·Clean"] --> C["2·HyDE"] --> D["3·Multi-Query"] --> E["4·Embed 4096d"]
+flowchart LR
+  subgraph PREP["Prepare"]
+    A["🔄 Agent Turn"]
+    B["1·Clean"]
+    C["2·HyDE"]
+    D["3·Multi-Query"]
+    E["4·Embed 4096d"]
+    A --> B --> C --> D --> E
   end
 
-  subgraph ROW2[" "]
-    direction LR
-    subgraph SEARCH["④ Search"]
-      direction TB
-      F["Vector\nIVF_PQ"]
-      G["FTS\nBM25"]
-    end
-    subgraph FUSION["⑤–⑧ Fusion"]
-      direction TB
-      H["5·RRF k=60"]
-      I["6·Source Wt"]
-      J["7·Decay"]
-      K["8·Dedup"]
-      H --> I --> J --> K
-    end
-    subgraph GATE["⑨–⑪ Reranker Gate"]
-      direction TB
-      L{"9·Gate σ?"}
-      M["10·Cross-Encoder\nrerank-1b-v2"]
-      N["11·RRF Blend"]
-      L -->|"FIRE 22%"| M --> N
-    end
+  subgraph RETRIEVE["Retrieve"]
+    F["Vector IVF_PQ"]
+    G["FTS BM25"]
+    H["5·RRF Merge k=60"]
+    F --> H
+    G --> H
   end
 
-  E --> F & G
-  F & G --> H
+  subgraph SCORE["Score"]
+    I["6·Source Wt 1.5×"]
+    J["7·Temporal Decay"]
+    K["8·Dedup"]
+    I --> J --> K
+  end
+
+  subgraph RERANK["⚡ Reranker Gate"]
+    L{"9·Gate σ?"}
+    M["10·Cross-Encoder"]
+    N["11·RRF Blend"]
+    L -->|"FIRE 22%"| M --> N
+  end
+
+  subgraph DELIVER["Deliver"]
+    O["12·MMR λ=0.9"]
+    P["13·Expand"]
+    Q["14·Dedup"]
+    R["15·Security"]
+    S["📦 Output"]
+    O --> P --> Q --> R --> S
+  end
+
+  E --> F
+  E --> G
+  H --> I
   K --> L
-
-  subgraph ROW3[" "]
-    direction LR
-    subgraph OUTPUT["⑫–⑮ Output"]
-      direction LR
-      O["12·MMR λ=0.9"] --> P["13·Parent Expand"] --> Q["14·Dedup"] --> R["15·Security"]
-    end
-    S["📦 relevant-memories"]
-    subgraph SIDE["Storage & Capture"]
-      direction TB
-      T[("LanceDB")]
-      U["Auto-Capture\nagent_end → extract → dedup"]
-      U -.-> T
-    end
-  end
-
   L -->|"SKIP 78%"| O
   N --> O
-  R --> S
 
+  T[("LanceDB\n7 pools")]
   E -.->|index| T
-  T -.->|query| F
-  T -.->|query| G
+  T -.-> F
+  T -.-> G
 
-  style GATE fill:#0d1a0d,stroke:#3fb950,stroke-width:2
-  style L fill:#132a13,stroke:#3fb950,stroke-width:2,color:#e6edf3
-  style M fill:#2d1117,stroke:#f85149,color:#e6edf3
-  style S fill:#1a1f2e,stroke:#58a6ff,stroke-width:2,color:#e6edf3
-  style T fill:#1a1a2e,stroke:#58a6ff,color:#e6edf3
-  style ROW2 fill:none,stroke:none
-  style ROW3 fill:none,stroke:none
+  style RERANK fill:#0d1a0d,stroke:#3fb950,stroke-width:2
+  style L fill:#132a13,stroke:#3fb950,stroke-width:2
+  style M fill:#2d1117,stroke:#f85149
+  style S fill:#1a1f2e,stroke:#58a6ff,stroke-width:2
+  style T fill:#1a1a2e,stroke:#58a6ff
 ```
 
 <details>
