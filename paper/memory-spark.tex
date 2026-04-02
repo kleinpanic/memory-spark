@@ -124,8 +124,8 @@ All ML inference runs on a local NVIDIA DGX Spark node with no cloud API depende
 \toprule
 \textbf{Component} & \textbf{Model} & \textbf{Dims/Port} \\
 \midrule
-Embeddings & llama-embed-nemotron-8b & 4096d / 18081 \\
-Reranker & llama-nemotron-rerank-1b-v2 & -- / 18098 \\
+Embeddings & llama-embed-nemotron-8b & 4096d / 18091 \\
+Reranker & llama-nemotron-rerank-1b-v2 & -- / 18096 \\
 LLM (HyDE) & Nemotron-Super-120B & -- / 18080 \\
 Storage & LanceDB (IVF\_PQ + FTS) & local \\
 \bottomrule
@@ -371,10 +371,10 @@ FTS-Only & 0.6587 & 0.7924 & $-15.6\%$ \\
 \label{tab:ablation}
 \end{table}
 
-\subsection{Bug Archaeology}
-\label{sec:bugs}
+\subsection{Failure Modes in Production RAG}
+\label{sec:failure-modes}
 
-Several critical bugs were discovered and fixed during the iterative remediation cycle (Phases 7--12). These are documented because they represent failure modes likely present in other RAG systems:
+Several critical failure modes were discovered and resolved during the iterative remediation cycle (Phases 7--12). We document these because they represent systemic failure patterns likely present in other RAG implementations:
 
 \begin{enumerate}[leftmargin=*,itemsep=2pt]
   \item \textbf{Arrow Vector Type Mismatch}: LanceDB returns Apache Arrow \texttt{Vector} objects where bracket indexing (\texttt{vec[0]}) returns \texttt{undefined}. This caused all cosine similarity calculations in MMR to return \texttt{NaN}, rendering the diversity stage a complete no-op for months. Fix: explicit \texttt{.toArray()} conversion at the storage boundary.
@@ -394,7 +394,7 @@ memory-spark is deployed in production serving 6 concurrent OpenClaw agents with
   \item \textbf{18 plugin tools}: Search, store, forget, debug, bulk ingest, temporal search, related memories, gate status, and more.
   \item \textbf{Auto-recall}: Memories injected before every agent turn (token-budgeted to 2000 tokens).
   \item \textbf{Auto-capture}: Facts, decisions, and preferences extracted from agent turns with dedup (0.92 cosine threshold) and self-poisoning prevention.
-  \item \textbf{483 unit + integration tests}: Comprehensive coverage across all pipeline stages.
+  \item \textbf{483 unit + integration tests}: Covering security, metrics, config resolution, RRF/MMR/gate logic, and chunking. Coverage expansion for auto-capture and circuit breaker modules is ongoing.
 \end{itemize}
 
 \subsection{Lessons Learned}

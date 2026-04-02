@@ -124,9 +124,11 @@ export function mapAtK(qrels: Qrels, results: Results, k: number): Record<string
         ap += relevantSoFar / (i + 1);
       }
     }
-    // Bug fix (2026-03-27): was `ap / totalRelevant`, should be
-    // min(totalRelevant, k) for cut-based AP semantics per BEIR standard.
-    scores[queryId] = ap / Math.min(totalRelevant, k);
+    // BEIR uses pytrec_eval which divides by totalRelevant (not min(R,k)).
+    // A 2026-03-27 "fix" changed this to min(R,k) but that was a regression:
+    // it inflates MAP ~3.8x on high-R datasets like NFCorpus (avg 38 relevant/query).
+    // Reverted 2026-04-02 after audit confirmed pytrec_eval uses R.
+    scores[queryId] = ap / totalRelevant;
   }
   return scores;
 }

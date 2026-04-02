@@ -84,9 +84,9 @@ flowchart LR
 
   subgraph GATE["③ ⚡ Reranker Gate"]
     L{"9·Confidence\nσ = s₁ − s₅"}
-    M["10·Cross-Encoder\nrerank-1b-v2\n:18098"]
+    M["10·Cross-Encoder\nrerank-1b-v2\n:18096"]
     N["11·RRF Blend\nvec ⊕ rerank"]
-    L -->|"σ ∈ [0.02, 0.08]\nFIRE 22%"| M --> N
+    L -->|"σ ∈ [0.02, 0.08]\nFIRE 21%"| M --> N
   end
 
   subgraph OUT["④ Output"]
@@ -137,8 +137,8 @@ flowchart LR
 
 | Component | Model | Port |
 |-----------|-------|------|
-| Embeddings | nvidia/llama-embed-nemotron-8b (4096d) | 18081 |
-| Reranker | nvidia/llama-nemotron-rerank-1b-v2 | 18098 |
+| Embeddings | nvidia/llama-embed-nemotron-8b (4096d) | 18091 |
+| Reranker | nvidia/llama-nemotron-rerank-1b-v2 | 18096 |
 | LLM (HyDE) | Nemotron-Super-120B-A12B (NVFP4) | 18080 |
 | NER | bert-large-NER | 18112 |
 | Zero-shot | bart-large-mnli | 8013 |
@@ -204,7 +204,7 @@ In `~/.openclaw/openclaw.json`:
           "embed": {
             "provider": "spark",
             "spark": {
-              "baseUrl": "http://SPARK_HOST:18081/v1",
+              "baseUrl": "http://SPARK_HOST:18091/v1",
               "apiKey": "${SPARK_BEARER_TOKEN}",
               "model": "nvidia/llama-embed-nemotron-8b"
             }
@@ -214,7 +214,7 @@ In `~/.openclaw/openclaw.json`:
             "rerankerGate": "hard",
             "blendMode": "rrf",
             "spark": {
-              "baseUrl": "http://SPARK_HOST:18098/v1",
+              "baseUrl": "http://SPARK_HOST:18096/v1",
               "apiKey": "${SPARK_BEARER_TOKEN}",
               "model": "nvidia/llama-nemotron-rerank-1b-v2"
             }
