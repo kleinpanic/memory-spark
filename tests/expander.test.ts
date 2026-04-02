@@ -103,11 +103,7 @@ describe("parseReformulations", () => {
   });
 
   it("rejects lines shorter than 10 chars", () => {
-    const raw = [
-      "short",
-      "How does glucose metabolism become impaired?",
-      "ok query?",
-    ].join("\n");
+    const raw = ["short", "How does glucose metabolism become impaired?", "ok query?"].join("\n");
 
     const result = parseReformulations(raw, original, 3);
     expect(result).toHaveLength(1);
@@ -116,10 +112,7 @@ describe("parseReformulations", () => {
 
   it("rejects lines longer than 300 chars", () => {
     const longLine = "A".repeat(301);
-    const raw = [
-      longLine,
-      "How does glucose metabolism become impaired?",
-    ].join("\n");
+    const raw = [longLine, "How does glucose metabolism become impaired?"].join("\n");
 
     const result = parseReformulations(raw, original, 3);
     expect(result).toHaveLength(1);
@@ -143,9 +136,9 @@ describe("parseReformulations", () => {
 
   it("rejects lines that duplicate the original query", () => {
     const raw = [
-      "What causes insulin resistance?",  // exact duplicate
+      "What causes insulin resistance?", // exact duplicate
       "How does glucose metabolism become impaired?",
-      "what causes insulin resistance",    // case-insensitive duplicate
+      "what causes insulin resistance", // case-insensitive duplicate
     ].join("\n");
 
     const result = parseReformulations(raw, original, 3);
@@ -156,7 +149,7 @@ describe("parseReformulations", () => {
   it("deduplicates near-identical reformulations", () => {
     const raw = [
       "How does glucose metabolism become impaired?",
-      "How does glucose metabolism become impaired?",  // exact dupe
+      "How does glucose metabolism become impaired?", // exact dupe
       "How does  glucose  metabolism  become  impaired?", // whitespace dupe
       "Mechanisms of cellular insulin signaling failure",
     ].join("\n");
@@ -184,12 +177,7 @@ describe("parseReformulations", () => {
   });
 
   it("handles input with only garbage", () => {
-    const raw = [
-      "ab",
-      "",
-      "   ",
-      "Note: these are queries",
-    ].join("\n");
+    const raw = ["ab", "", "   ", "Note: these are queries"].join("\n");
 
     const result = parseReformulations(raw, original, 3);
     expect(result).toHaveLength(0);
@@ -357,11 +345,11 @@ describe("expandQuery", () => {
 
   it("filters garbage from mixed LLM output", async () => {
     const llmOutput = [
-      "Here are the queries:",                          // meta-commentary → filtered
+      "Here are the queries:", // meta-commentary → filtered
       "1. How does glucose metabolism become impaired?", // numbered → stripped
-      "ab",                                              // too short → filtered
+      "ab", // too short → filtered
       "2. Mechanisms of insulin signaling failure in cells", // numbered → stripped
-      "",                                                // empty → filtered
+      "", // empty → filtered
     ].join("\n");
 
     fetchSpy.mockResolvedValueOnce(mockLlmResponse(llmOutput));
@@ -378,7 +366,9 @@ describe("expandQuery", () => {
       ok: true,
       status: 200,
       text: async () => "not json",
-      json: async () => { throw new SyntaxError("Unexpected token"); },
+      json: async () => {
+        throw new SyntaxError("Unexpected token");
+      },
     } as unknown as Response;
 
     fetchSpy.mockResolvedValueOnce(badResponse);
@@ -406,7 +396,7 @@ describe("expandQuery", () => {
     const llmOutput = [
       "Reformulation one of the search query",
       "Reformulation two of the search query",
-      "Reformulation three of the search query",  // should be trimmed
+      "Reformulation three of the search query", // should be trimmed
     ].join("\n");
 
     fetchSpy.mockResolvedValueOnce(mockLlmResponse(llmOutput));

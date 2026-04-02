@@ -33,7 +33,9 @@ function toJsNumberArray(vec: unknown): number[] {
     if (process.env.VERBOSE || process.env.DEBUG_PIPELINE) {
       // Warn if any element is undefined — indicates Arrow nullability issue
       if (arr.length > 0 && typeof arr[0] === "undefined") {
-        console.warn(`[lancedb] Arrow vector conversion: arr[0] is undefined (length=${arr.length}) — vec constructor=${Object.getPrototypeOf(vec)?.constructor?.name ?? "unknown"}`);
+        console.warn(
+          `[lancedb] Arrow vector conversion: arr[0] is undefined (length=${arr.length}) — vec constructor=${Object.getPrototypeOf(vec)?.constructor?.name ?? "unknown"}`,
+        );
       }
     }
     return arr;
@@ -45,7 +47,9 @@ function toJsNumberArray(vec: unknown): number[] {
     }
     return Array.from(vec as Iterable<number>);
   }
-  console.warn(`[lancedb] Arrow vector: could not convert vector of type ${typeof vec} — returning empty`);
+  console.warn(
+    `[lancedb] Arrow vector: could not convert vector of type ${typeof vec} — returning empty`,
+  );
   return [];
 }
 
@@ -360,13 +364,19 @@ export class LanceDBBackend implements StorageBackend {
     const rows = await q.toArray();
     const elapsedMs = (performance.now() - t0).toFixed(1);
 
-    const results = rows.map(rowToSearchResult).filter((r) => !(opts.minScore && r.score < opts.minScore));
-    console.log(`[lancedb] vector: ${results.length} results in ${elapsedMs}ms (limit=${limit} filters=${filters.length})`);
+    const results = rows
+      .map(rowToSearchResult)
+      .filter((r) => !(opts.minScore && r.score < opts.minScore));
+    console.log(
+      `[lancedb] vector: ${results.length} results in ${elapsedMs}ms (limit=${limit} filters=${filters.length})`,
+    );
 
     const verbose = process.env.VERBOSE || process.env.DEBUG_PIPELINE;
     if (verbose && results.length > 0) {
       for (const r of results.slice(0, 3)) {
-        console.log(`[lancedb]   vec score=${r.score.toFixed(4)} pool=${r.chunk.pool ?? "?"} id=${r.chunk.id.slice(0, 20)}`);
+        console.log(
+          `[lancedb]   vec score=${r.score.toFixed(4)} pool=${r.chunk.pool ?? "?"} id=${r.chunk.id.slice(0, 20)}`,
+        );
       }
     }
 
@@ -423,7 +433,9 @@ export class LanceDBBackend implements StorageBackend {
       const elapsedFts = (performance.now() - t0fts).toFixed(1);
 
       const results = rows.map(rowToSearchResult);
-      console.log(`[lancedb] fts: ${results.length} results in ${elapsedFts}ms (limit=${limit} filters=${filters.length})`);
+      console.log(
+        `[lancedb] fts: ${results.length} results in ${elapsedFts}ms (limit=${limit} filters=${filters.length})`,
+      );
 
       const verbose = process.env.VERBOSE || process.env.DEBUG_PIPELINE;
       if (verbose && results.length > 0) {
@@ -431,16 +443,21 @@ export class LanceDBBackend implements StorageBackend {
           // Log raw BM25 score alongside the sigmoid-normalized score for calibration
           const rawRow = rows[results.indexOf(r)] as Record<string, unknown>;
           const bm25Raw = rawRow._score as number | undefined;
-          const sigmoidDetail = bm25Raw != null
-            ? ` bm25_raw=${bm25Raw.toFixed(3)} sigmoid_mid=${BM25_SIGMOID_MIDPOINT}`
-            : "";
-          console.log(`[lancedb]   fts score=${r.score.toFixed(4)} pool=${r.chunk.pool ?? "?"} id=${r.chunk.id.slice(0, 20)}${sigmoidDetail}`);
+          const sigmoidDetail =
+            bm25Raw != null
+              ? ` bm25_raw=${bm25Raw.toFixed(3)} sigmoid_mid=${BM25_SIGMOID_MIDPOINT}`
+              : "";
+          console.log(
+            `[lancedb]   fts score=${r.score.toFixed(4)} pool=${r.chunk.pool ?? "?"} id=${r.chunk.id.slice(0, 20)}${sigmoidDetail}`,
+          );
         }
       }
 
       return results;
     } catch (err) {
-      console.log(`[lancedb] fts: query failed — ${err instanceof Error ? err.message : String(err)}`);
+      console.log(
+        `[lancedb] fts: query failed — ${err instanceof Error ? err.message : String(err)}`,
+      );
       // FTS search failed — return empty (non-fatal)
       return [];
     }
@@ -633,7 +650,15 @@ export class LanceDBBackend implements StorageBackend {
       let agentBreakdown: Record<string, number> | undefined;
       if (this.schemaHasNewColumns) {
         try {
-          const pools = ["agent_memory", "agent_tools", "agent_mistakes", "shared_knowledge", "shared_mistakes", "shared_rules", "reference"];
+          const pools = [
+            "agent_memory",
+            "agent_tools",
+            "agent_mistakes",
+            "shared_knowledge",
+            "shared_mistakes",
+            "shared_rules",
+            "reference",
+          ];
           const poolCounts = await Promise.all(
             pools.map(async (pool) => {
               const pf = filter ? `${filter} AND pool = '${pool}'` : `pool = '${pool}'`;
@@ -644,7 +669,9 @@ export class LanceDBBackend implements StorageBackend {
           for (const { pool, count } of poolCounts) {
             if (count > 0) poolBreakdown[pool] = count;
           }
-        } catch { /* non-fatal */ }
+        } catch {
+          /* non-fatal */
+        }
 
         // Agent-level breakdown
         if (!agentId) {
@@ -661,7 +688,9 @@ export class LanceDBBackend implements StorageBackend {
             for (const { agent, count } of agentCounts) {
               if (count > 0) agentBreakdown[agent] = count;
             }
-          } catch { /* non-fatal */ }
+          } catch {
+            /* non-fatal */
+          }
         }
       }
 

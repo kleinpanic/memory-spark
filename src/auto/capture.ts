@@ -237,7 +237,8 @@ const CAPTURE_GARBAGE_PATTERNS: RegExp[] = [
   /^(assistant|user|system):\s/m,
 ];
 
-export function looksLikeCaptureGarbage(text: string): boolean {
+/** @internal — used internally by auto-capture; tested via integration tests */
+function looksLikeCaptureGarbage(text: string): boolean {
   return CAPTURE_GARBAGE_PATTERNS.some((p) => p.test(text));
 }
 

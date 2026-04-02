@@ -31,7 +31,12 @@ export interface RerankOptions {
 }
 
 export interface Reranker {
-  rerank(query: string, candidates: SearchResult[], topN?: number, options?: RerankOptions): Promise<SearchResult[]>;
+  rerank(
+    query: string,
+    candidates: SearchResult[],
+    topN?: number,
+    options?: RerankOptions,
+  ): Promise<SearchResult[]>;
   probe(): Promise<boolean>;
 }
 
@@ -80,13 +85,19 @@ function sparkReranker(cfg: RerankConfig): Reranker {
       const effectiveRerankerWeight = options?.rerankerWeightOverride ?? defaultRerankerWeight;
       const effectiveGateMode = options?.gateOverride ?? defaultGateMode;
       const effectiveGateThreshold = options?.gateThresholdOverride ?? defaultGateThreshold;
-      const effectiveGateLowThreshold = options?.gateLowThresholdOverride ?? defaultGateLowThreshold;
+      const effectiveGateLowThreshold =
+        options?.gateLowThresholdOverride ?? defaultGateLowThreshold;
 
       // Phase 5B: Limit candidate pool to prevent unbounded reranker input
       const pool = candidates.slice(0, MAX_RERANK_CANDIDATES);
 
       // Phase 12 Fix 2: Dynamic Reranker Gate
-      const gate = computeRerankerGate(pool, effectiveGateMode, effectiveGateThreshold, effectiveGateLowThreshold);
+      const gate = computeRerankerGate(
+        pool,
+        effectiveGateMode,
+        effectiveGateThreshold,
+        effectiveGateLowThreshold,
+      );
       if (!gate.shouldRerank) {
         console.log(`[reranker] GATE SKIP: ${gate.reason} — returning vector order`);
         return pool.slice(0, topN);
@@ -95,7 +106,9 @@ function sparkReranker(cfg: RerankConfig): Reranker {
         // Soft gate: scale vector weight
         effectiveVectorWeight *= gate.vectorWeightMultiplier;
         if (process.env.VERBOSE || process.env.DEBUG_PIPELINE) {
-          console.log(`[reranker] GATE SOFT: ${gate.reason} → effectiveVectorWeight=${effectiveVectorWeight.toFixed(3)}`);
+          console.log(
+            `[reranker] GATE SOFT: ${gate.reason} → effectiveVectorWeight=${effectiveVectorWeight.toFixed(3)}`,
+          );
         }
       }
 
@@ -128,7 +141,7 @@ function sparkReranker(cfg: RerankConfig): Reranker {
         const body = await resp.text().catch(() => "");
         console.error(
           `[reranker] ERROR: ${resp.status} ${resp.statusText} — falling back to input order` +
-          (body ? ` | body: ${body.slice(0, 200)}` : ""),
+            (body ? ` | body: ${body.slice(0, 200)}` : ""),
         );
         return pool.slice(0, topN);
       }
@@ -155,13 +168,19 @@ function sparkReranker(cfg: RerankConfig): Reranker {
       let results: SearchResult[];
       if (effectiveBlendMode === "rrf") {
         // Phase 12 Fix 1: Rank-based fusion — scale-invariant, no normalization needed
-        results = blendByRank(pool, data.results, effectiveRrfK, effectiveVectorWeight, effectiveRerankerWeight)
-          .slice(0, topN);
+        results = blendByRank(
+          pool,
+          data.results,
+          effectiveRrfK,
+          effectiveVectorWeight,
+          effectiveRerankerWeight,
+        ).slice(0, topN);
       } else {
         // Legacy score-based blending (Phase 9A/10A)
-        results = effectiveAlpha > 0
-          ? blendScores(pool, data.results, effectiveAlpha).slice(0, topN)
-          : blendScores(pool, data.results, effectiveAlpha);
+        results =
+          effectiveAlpha > 0
+            ? blendScores(pool, data.results, effectiveAlpha).slice(0, topN)
+            : blendScores(pool, data.results, effectiveAlpha);
       }
 
       // Phase 10A: Telemetry — log both sigmoid and logit-space metrics
@@ -195,10 +214,14 @@ function sparkReranker(cfg: RerankConfig): Reranker {
           }
 
           // Per-candidate scoring trace
-          console.log(`[reranker]   --- per-candidate scores (top ${Math.min(results.length, 10)}) ---`);
+          console.log(
+            `[reranker]   --- per-candidate scores (top ${Math.min(results.length, 10)}) ---`,
+          );
           for (let ci = 0; ci < Math.min(results.length, 10); ci++) {
             const res = results[ci]!;
-            const rerankEntry = data.results.find((dr) => pool[dr.index]?.chunk.id === res.chunk.id);
+            const rerankEntry = data.results.find(
+              (dr) => pool[dr.index]?.chunk.id === res.chunk.id,
+            );
             const origScore = pool.find((p) => p.chunk.id === res.chunk.id)?.score ?? 0;
             const sigmoidScore = rerankEntry?.relevance_score ?? 0;
             const logit = recoverLogit(sigmoidScore);
@@ -532,10 +555,31 @@ export function blendByRank(
 // BEIR-style claim inputs.
 
 const QUESTION_STARTERS = new Set([
-  "who","what","which","when","where","why","how",
-  "is","are","was","were","do","does","did",
-  "can","could","will","would","should","shall",
-  "has","have","had","may","might",
+  "who",
+  "what",
+  "which",
+  "when",
+  "where",
+  "why",
+  "how",
+  "is",
+  "are",
+  "was",
+  "were",
+  "do",
+  "does",
+  "did",
+  "can",
+  "could",
+  "will",
+  "would",
+  "should",
+  "shall",
+  "has",
+  "have",
+  "had",
+  "may",
+  "might",
 ]);
 const ENDS_WITH_QUESTION = /\?\s*$/;
 

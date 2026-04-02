@@ -8,11 +8,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import {
-  blendScores,
-  blendByRank,
-  recoverLogit,
-} from "../src/rerank/reranker.js";
+import { blendScores, blendByRank, recoverLogit } from "../src/rerank/reranker.js";
 import type { SearchResult } from "../src/storage/backend.js";
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -56,28 +52,28 @@ describe("BEFORE: blendScores with recoverLogit is a no-op", () => {
     const pool = [
       makeResult("doc1", 0.45),
       makeResult("doc2", 0.42),
-      makeResult("doc3", 0.40),
+      makeResult("doc3", 0.4),
       makeResult("doc4", 0.38),
       makeResult("doc5", 0.36),
       makeResult("doc6", 0.34),
       makeResult("doc7", 0.32),
-      makeResult("doc8", 0.30),
+      makeResult("doc8", 0.3),
       makeResult("doc9", 0.28),
       makeResult("doc10", 0.26),
     ];
 
     // Reranker disagrees significantly — moves doc8 to top
     const rerankResults = [
-      makeRerankResult(7, 0.995),  // doc8: reranker's top pick
-      makeRerankResult(0, 0.980),  // doc1
-      makeRerankResult(4, 0.965),  // doc5
-      makeRerankResult(2, 0.950),  // doc3
-      makeRerankResult(1, 0.935),  // doc2
-      makeRerankResult(3, 0.920),  // doc4
-      makeRerankResult(5, 0.905),  // doc6
-      makeRerankResult(6, 0.890),  // doc7
-      makeRerankResult(8, 0.875),  // doc9
-      makeRerankResult(9, 0.860),  // doc10
+      makeRerankResult(7, 0.995), // doc8: reranker's top pick
+      makeRerankResult(0, 0.98), // doc1
+      makeRerankResult(4, 0.965), // doc5
+      makeRerankResult(2, 0.95), // doc3
+      makeRerankResult(1, 0.935), // doc2
+      makeRerankResult(3, 0.92), // doc4
+      makeRerankResult(5, 0.905), // doc6
+      makeRerankResult(6, 0.89), // doc7
+      makeRerankResult(8, 0.875), // doc9
+      makeRerankResult(9, 0.86), // doc10
     ];
 
     // blendScores with alpha=0.3 uses recoverLogit internally
@@ -111,17 +107,13 @@ describe("BEFORE: blendScores with recoverLogit is a no-op", () => {
   });
 
   it("min-max normalization destroys confidence gaps", () => {
-    const pool = [
-      makeResult("confident", 0.50),
-      makeResult("tie1", 0.48),
-      makeResult("tie2", 0.47),
-    ];
+    const pool = [makeResult("confident", 0.5), makeResult("tie1", 0.48), makeResult("tie2", 0.47)];
 
     // Reranker: "confident" has a HUGE gap vs the ties
     const rerankResults = [
-      makeRerankResult(0, 0.999),  // confident: very high
-      makeRerankResult(1, 0.840),  // tie1: much lower
-      makeRerankResult(2, 0.835),  // tie2: barely below tie1
+      makeRerankResult(0, 0.999), // confident: very high
+      makeRerankResult(1, 0.84), // tie1: much lower
+      makeRerankResult(2, 0.835), // tie2: barely below tie1
     ];
 
     const result = blendScores(pool, rerankResults, 0);
@@ -164,15 +156,15 @@ describe("AFTER: blendByRank (RRF) preserves rank information", () => {
   it("agreement bonus: docs ranked high by BOTH systems get boosted", () => {
     // doc1 is ranked #1 by vector AND #1 by reranker
     const pool = [
-      makeResult("doc1", 0.50), // vector rank 1
+      makeResult("doc1", 0.5), // vector rank 1
       makeResult("doc2", 0.45), // vector rank 2
-      makeResult("doc3", 0.40), // vector rank 3
+      makeResult("doc3", 0.4), // vector rank 3
     ];
 
     const rerankResults = [
       makeRerankResult(0, 0.99), // doc1: reranker rank 1
       makeRerankResult(2, 0.95), // doc3: reranker rank 2
-      makeRerankResult(1, 0.90), // doc2: reranker rank 3
+      makeRerankResult(1, 0.9), // doc2: reranker rank 3
     ];
 
     const result = blendByRank(pool, rerankResults);
@@ -191,16 +183,16 @@ describe("AFTER: blendByRank (RRF) preserves rank information", () => {
     // In RRF, vector's #3 rank still contributes significant score.
 
     const pool = [
-      makeResult("irrelevant1", 0.50),
+      makeResult("irrelevant1", 0.5),
       makeResult("irrelevant2", 0.48),
-      makeResult("relevant", 0.47),    // vector rank 3 — this is the relevant doc
+      makeResult("relevant", 0.47), // vector rank 3 — this is the relevant doc
       makeResult("irrelevant3", 0.46),
       makeResult("irrelevant4", 0.45),
       makeResult("irrelevant5", 0.44),
       makeResult("irrelevant6", 0.43),
       makeResult("irrelevant7", 0.42),
       makeResult("irrelevant8", 0.41),
-      makeResult("irrelevant9", 0.40),
+      makeResult("irrelevant9", 0.4),
     ];
 
     // Reranker pushes "relevant" all the way to rank 10 (last)
@@ -214,7 +206,7 @@ describe("AFTER: blendByRank (RRF) preserves rank information", () => {
       makeRerankResult(8, 0.993),
       makeRerankResult(9, 0.992),
       makeRerankResult(1, 0.991),
-      makeRerankResult(2, 0.850),  // "relevant" → reranker rank 10
+      makeRerankResult(2, 0.85), // "relevant" → reranker rank 10
     ];
 
     // BEFORE: score-based blend at α=0 puts "relevant" dead last
@@ -236,19 +228,19 @@ describe("AFTER: blendByRank (RRF) preserves rank information", () => {
   it("still allows reranker to promote correct docs (the 9 winner queries)", () => {
     // Scenario: vector has doc_relevant at #5, reranker correctly promotes to #1
     const pool = [
-      makeResult("ok1", 0.50),
+      makeResult("ok1", 0.5),
       makeResult("ok2", 0.48),
       makeResult("ok3", 0.46),
       makeResult("ok4", 0.44),
-      makeResult("relevant", 0.42),  // vector rank 5
+      makeResult("relevant", 0.42), // vector rank 5
     ];
 
     const rerankResults = [
-      makeRerankResult(4, 0.999),  // "relevant" → reranker rank 1!
-      makeRerankResult(0, 0.900),
-      makeRerankResult(1, 0.850),
-      makeRerankResult(2, 0.800),
-      makeRerankResult(3, 0.750),
+      makeRerankResult(4, 0.999), // "relevant" → reranker rank 1!
+      makeRerankResult(0, 0.9),
+      makeRerankResult(1, 0.85),
+      makeRerankResult(2, 0.8),
+      makeRerankResult(3, 0.75),
     ];
 
     // BEFORE: score-based blend at α=0 promotes "relevant" to #1
@@ -264,23 +256,19 @@ describe("AFTER: blendByRank (RRF) preserves rank information", () => {
   });
 
   it("is scale-invariant — works with any reranker score range", () => {
-    const pool = [
-      makeResult("a", 0.50),
-      makeResult("b", 0.40),
-      makeResult("c", 0.30),
-    ];
+    const pool = [makeResult("a", 0.5), makeResult("b", 0.4), makeResult("c", 0.3)];
 
     // Same ranking, different score scales
     const narrowScores = [
-      makeRerankResult(2, 0.999),  // c: rank 1
-      makeRerankResult(0, 0.998),  // a: rank 2
-      makeRerankResult(1, 0.997),  // b: rank 3
+      makeRerankResult(2, 0.999), // c: rank 1
+      makeRerankResult(0, 0.998), // a: rank 2
+      makeRerankResult(1, 0.997), // b: rank 3
     ];
 
     const wideScores = [
-      makeRerankResult(2, 0.999),  // c: rank 1
-      makeRerankResult(0, 0.500),  // a: rank 2
-      makeRerankResult(1, 0.001),  // b: rank 3
+      makeRerankResult(2, 0.999), // c: rank 1
+      makeRerankResult(0, 0.5), // a: rank 2
+      makeRerankResult(1, 0.001), // b: rank 3
     ];
 
     const resultNarrow = blendByRank(pool, narrowScores);
@@ -296,16 +284,12 @@ describe("AFTER: blendByRank (RRF) preserves rank information", () => {
     // the mathematical property: for ANY set of sigmoid scores, applying
     // recoverLogit before minMaxNormalize yields the same [0,1] ordering.
 
-    const pool = [
-      makeResult("a", 0.50),
-      makeResult("b", 0.40),
-      makeResult("c", 0.30),
-    ];
+    const pool = [makeResult("a", 0.5), makeResult("b", 0.4), makeResult("c", 0.3)];
 
     const rerankResults = [
-      makeRerankResult(2, 0.99),  // c: reranker top
-      makeRerankResult(0, 0.85),  // a: mid
-      makeRerankResult(1, 0.83),  // b: low
+      makeRerankResult(2, 0.99), // c: reranker top
+      makeRerankResult(0, 0.85), // a: mid
+      makeRerankResult(1, 0.83), // b: low
     ];
 
     // blendScores internally does: recoverLogit → minMaxNormalize
@@ -331,11 +315,7 @@ describe("AFTER: blendByRank (RRF) preserves rank information", () => {
   it("score-based blending IS scale-dependent (inconsistent behavior)", () => {
     // Different reranker score RANGES produce different blend outcomes,
     // even when the reranker RANKING is the same. This is a flaw, not a feature.
-    const pool = [
-      makeResult("a", 0.50),
-      makeResult("b", 0.40),
-      makeResult("c", 0.30),
-    ];
+    const pool = [makeResult("a", 0.5), makeResult("b", 0.4), makeResult("c", 0.3)];
 
     // Same ranking (c>b>a) but narrow vs wide scores
     const narrowScores = [
@@ -345,7 +325,7 @@ describe("AFTER: blendByRank (RRF) preserves rank information", () => {
     ];
     const wideScores = [
       makeRerankResult(2, 0.999),
-      makeRerankResult(1, 0.500),
+      makeRerankResult(1, 0.5),
       makeRerankResult(0, 0.001),
     ];
 
@@ -389,20 +369,20 @@ describe("AFTER: blendByRank (RRF) preserves rank information", () => {
 
 describe("RRF hyperparameter sensitivity", () => {
   const pool = [
-    makeResult("vec1", 0.50),  // vector rank 1
-    makeResult("vec2", 0.45),  // vector rank 2
-    makeResult("vec3", 0.40),  // vector rank 3
-    makeResult("vec4", 0.35),  // vector rank 4
-    makeResult("vec5", 0.30),  // vector rank 5
+    makeResult("vec1", 0.5), // vector rank 1
+    makeResult("vec2", 0.45), // vector rank 2
+    makeResult("vec3", 0.4), // vector rank 3
+    makeResult("vec4", 0.35), // vector rank 4
+    makeResult("vec5", 0.3), // vector rank 5
   ];
 
   // Reranker completely reverses the order
   const reversedRerank = [
-    makeRerankResult(4, 0.99),  // vec5: reranker rank 1
-    makeRerankResult(3, 0.95),  // vec4: reranker rank 2
-    makeRerankResult(2, 0.90),  // vec3: reranker rank 3
-    makeRerankResult(1, 0.85),  // vec2: reranker rank 4
-    makeRerankResult(0, 0.80),  // vec1: reranker rank 5
+    makeRerankResult(4, 0.99), // vec5: reranker rank 1
+    makeRerankResult(3, 0.95), // vec4: reranker rank 2
+    makeRerankResult(2, 0.9), // vec3: reranker rank 3
+    makeRerankResult(1, 0.85), // vec2: reranker rank 4
+    makeRerankResult(0, 0.8), // vec1: reranker rank 5
   ];
 
   it("k=60 (standard): with full disagreement, RRF scores converge", () => {
@@ -451,11 +431,11 @@ describe("RRF hyperparameter sensitivity", () => {
   it("equal weights with total agreement: preserves input order", () => {
     // When both systems agree on ranking, RRF should preserve it
     const agreedRerank = [
-      makeRerankResult(0, 0.99),  // vec1: reranker rank 1 (agrees with vector)
-      makeRerankResult(1, 0.95),  // vec2: reranker rank 2
-      makeRerankResult(2, 0.90),  // vec3: reranker rank 3
-      makeRerankResult(3, 0.85),  // vec4: reranker rank 4
-      makeRerankResult(4, 0.80),  // vec5: reranker rank 5
+      makeRerankResult(0, 0.99), // vec1: reranker rank 1 (agrees with vector)
+      makeRerankResult(1, 0.95), // vec2: reranker rank 2
+      makeRerankResult(2, 0.9), // vec3: reranker rank 3
+      makeRerankResult(3, 0.85), // vec4: reranker rank 4
+      makeRerankResult(4, 0.8), // vec5: reranker rank 5
     ];
 
     const result = blendByRank(pool, agreedRerank);
@@ -479,16 +459,9 @@ describe("blendByRank edge cases", () => {
   });
 
   it("handles reranker returning subset of pool", () => {
-    const pool = [
-      makeResult("a", 0.5),
-      makeResult("b", 0.4),
-      makeResult("c", 0.3),
-    ];
+    const pool = [makeResult("a", 0.5), makeResult("b", 0.4), makeResult("c", 0.3)];
     // Reranker only scored 2 of 3 docs
-    const rerank = [
-      makeRerankResult(2, 0.99),
-      makeRerankResult(0, 0.80),
-    ];
+    const rerank = [makeRerankResult(2, 0.99), makeRerankResult(0, 0.8)];
     const result = blendByRank(pool, rerank);
     // All 3 docs should appear — b has vector contribution only
     expect(result).toHaveLength(3);
@@ -498,15 +471,11 @@ describe("blendByRank edge cases", () => {
   });
 
   it("handles tied reranker scores (same relevance_score)", () => {
-    const pool = [
-      makeResult("a", 0.5),
-      makeResult("b", 0.4),
-      makeResult("c", 0.3),
-    ];
+    const pool = [makeResult("a", 0.5), makeResult("b", 0.4), makeResult("c", 0.3)];
     const rerank = [
       makeRerankResult(0, 0.95),
-      makeRerankResult(1, 0.95),  // tied with a
-      makeRerankResult(2, 0.80),
+      makeRerankResult(1, 0.95), // tied with a
+      makeRerankResult(2, 0.8),
     ];
     const result = blendByRank(pool, rerank);
     // With tied reranker scores, vector order should break the tie
@@ -527,30 +496,30 @@ describe("head-to-head: realistic SciFact scenario", () => {
     //   doc_31715818 gets pushed below rank 10 by reranker
 
     const pool = [
-      makeResult("21456232", 0.277),   // vector rank 1
-      makeResult("43990286", 0.236),   // vector rank 2
-      makeResult("31715818", 0.229),   // vector rank 3 — RELEVANT
-      makeResult("25435456", 0.227),   // vector rank 4
-      makeResult("19855358", 0.226),   // vector rank 5
-      makeResult("14082855", 0.220),   // vector rank 6
-      makeResult("9122283", 0.215),    // vector rank 7
-      makeResult("39532074", 0.210),   // vector rank 8
-      makeResult("16532419", 0.205),   // vector rank 9
-      makeResult("8290953", 0.200),    // vector rank 10
+      makeResult("21456232", 0.277), // vector rank 1
+      makeResult("43990286", 0.236), // vector rank 2
+      makeResult("31715818", 0.229), // vector rank 3 — RELEVANT
+      makeResult("25435456", 0.227), // vector rank 4
+      makeResult("19855358", 0.226), // vector rank 5
+      makeResult("14082855", 0.22), // vector rank 6
+      makeResult("9122283", 0.215), // vector rank 7
+      makeResult("39532074", 0.21), // vector rank 8
+      makeResult("16532419", 0.205), // vector rank 9
+      makeResult("8290953", 0.2), // vector rank 10
     ];
 
     // Reranker completely reshuffles — pushes relevant doc to last
     const rerankResults = [
-      makeRerankResult(5, 0.999),  // 14082855: reranker rank 1
-      makeRerankResult(6, 0.995),  // 9122283: reranker rank 2
-      makeRerankResult(7, 0.990),  // 39532074: reranker rank 3
-      makeRerankResult(8, 0.985),  // 16532419: reranker rank 4
-      makeRerankResult(9, 0.980),  // 8290953: reranker rank 5
-      makeRerankResult(0, 0.975),  // 21456232: reranker rank 6
-      makeRerankResult(3, 0.970),  // 25435456: reranker rank 7
-      makeRerankResult(1, 0.965),  // 43990286: reranker rank 8
-      makeRerankResult(4, 0.960),  // 19855358: reranker rank 9
-      makeRerankResult(2, 0.850),  // 31715818: reranker rank 10 — CATASTROPHIC DEMOTION
+      makeRerankResult(5, 0.999), // 14082855: reranker rank 1
+      makeRerankResult(6, 0.995), // 9122283: reranker rank 2
+      makeRerankResult(7, 0.99), // 39532074: reranker rank 3
+      makeRerankResult(8, 0.985), // 16532419: reranker rank 4
+      makeRerankResult(9, 0.98), // 8290953: reranker rank 5
+      makeRerankResult(0, 0.975), // 21456232: reranker rank 6
+      makeRerankResult(3, 0.97), // 25435456: reranker rank 7
+      makeRerankResult(1, 0.965), // 43990286: reranker rank 8
+      makeRerankResult(4, 0.96), // 19855358: reranker rank 9
+      makeRerankResult(2, 0.85), // 31715818: reranker rank 10 — CATASTROPHIC DEMOTION
     ];
 
     // BEFORE: score-based blend at α=0 → relevant doc at rank 10 (last)
@@ -583,19 +552,19 @@ describe("head-to-head: realistic SciFact scenario", () => {
   it("simulates vector-confident query where reranker agrees", () => {
     // When both systems agree, RRF should preserve the good ranking
     const pool = [
-      makeResult("relevant1", 0.65),   // vector rank 1 — RELEVANT
-      makeResult("relevant2", 0.55),   // vector rank 2 — RELEVANT
-      makeResult("irrelevant1", 0.40),
+      makeResult("relevant1", 0.65), // vector rank 1 — RELEVANT
+      makeResult("relevant2", 0.55), // vector rank 2 — RELEVANT
+      makeResult("irrelevant1", 0.4),
       makeResult("irrelevant2", 0.35),
-      makeResult("irrelevant3", 0.30),
+      makeResult("irrelevant3", 0.3),
     ];
 
     const rerankResults = [
-      makeRerankResult(0, 0.999),  // relevant1: reranker rank 1 ✓
-      makeRerankResult(1, 0.980),  // relevant2: reranker rank 2 ✓
-      makeRerankResult(2, 0.900),
-      makeRerankResult(3, 0.850),
-      makeRerankResult(4, 0.800),
+      makeRerankResult(0, 0.999), // relevant1: reranker rank 1 ✓
+      makeRerankResult(1, 0.98), // relevant2: reranker rank 2 ✓
+      makeRerankResult(2, 0.9),
+      makeRerankResult(3, 0.85),
+      makeRerankResult(4, 0.8),
     ];
 
     const scoreBased = blendScores(pool, rerankResults, 0.5);
@@ -610,19 +579,19 @@ describe("head-to-head: realistic SciFact scenario", () => {
     // All vector scores within 0.05 — a near-tie
     const pool = [
       makeResult("a", 0.252),
-      makeResult("b", 0.250),
-      makeResult("c", 0.248),   // RELEVANT
+      makeResult("b", 0.25),
+      makeResult("c", 0.248), // RELEVANT
       makeResult("d", 0.246),
       makeResult("e", 0.244),
     ];
 
     // Reranker arbitrarily picks e as best and puts c last
     const rerankResults = [
-      makeRerankResult(4, 0.999),  // e: rank 1
-      makeRerankResult(3, 0.998),  // d: rank 2
-      makeRerankResult(1, 0.997),  // b: rank 3
-      makeRerankResult(0, 0.996),  // a: rank 4
-      makeRerankResult(2, 0.850),  // c: rank 5 — DEMOTED
+      makeRerankResult(4, 0.999), // e: rank 1
+      makeRerankResult(3, 0.998), // d: rank 2
+      makeRerankResult(1, 0.997), // b: rank 3
+      makeRerankResult(0, 0.996), // a: rank 4
+      makeRerankResult(2, 0.85), // c: rank 5 — DEMOTED
     ];
 
     // Score-based α=0: c drops to rank 5
