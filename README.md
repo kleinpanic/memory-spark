@@ -59,9 +59,85 @@ Results below are from `evaluation/results/` generated via `scripts/run-beir-ben
 
 ## Architecture
 
+```mermaid
+flowchart TD
+  subgraph INPUT["① Input"]
+    direction LR
+    A["🔄 Agent Turn"] --> B["1 · Query Clean"]
+    B --> C["2 · HyDE ⚡"]
+    C --> D["3 · Multi-Query"]
+    D --> E["4 · Embed\n4096d nemotron-8b"]
+  end
+
+  subgraph SEARCH["④ Parallel Search"]
+    direction LR
+    F["Vector Search\nIVF_PQ"]
+    G["FTS Search\ntantivy BM25"]
+  end
+
+  E --> F
+  E --> G
+
+  subgraph FUSION["⑤–⑧ Fusion & Scoring"]
+    direction LR
+    H["5 · RRF Merge\nk=60"] --> I["6 · Source Weight\ncaptures 1.5× · mistakes 1.6×"]
+    I --> J["7 · Temporal Decay\n0.8 + 0.2·e⁻⁰·⁰³ᵗ"]
+    J --> K["8 · Source Dedup\nJaccard > 0.85"]
+  end
+
+  F --> H
+  G --> H
+
+  subgraph GATE["⑨–⑪ Dynamic Reranker Gate"]
+    direction TB
+    L{"9 · Gate\nσ = s₁ − s₅"}
+    M["10 · Cross-Encoder\nrerank-1b-v2"]
+    N["11 · RRF Blend\nvec_rank ⊕ rerank_rank"]
+    L -->|"σ ∈ [0.02, 0.08]\nFIRE 22%"| M
+    M --> N
+    L -->|"σ > 0.08 or σ < 0.02\nSKIP 78%"| O
+  end
+
+  K --> L
+
+  subgraph OUTPUT["⑫–⑮ Output"]
+    direction LR
+    O["12 · MMR\nλ=0.9 cosine"] --> P["13 · Parent\nExpand"]
+    P --> Q["14 · LCM\nDedup"]
+    Q --> R["15 · Security\n+ Budget"]
+    R --> S["📦 relevant-memories\nXML → agent prompt"]
+  end
+
+  N --> O
+
+  subgraph STORAGE["Storage"]
+    T[("LanceDB\nIVF_PQ + FTS\nsingle table · pool column")]
+  end
+
+  E -.->|index| T
+  T -.->|query| F
+  T -.->|query| G
+
+  subgraph CAPTURE["Auto-Capture"]
+    U["agent_end hook"] --> V["Extract facts\n+ decisions"]
+    V --> W["Quality gate\n+ dedup 0.92"]
+  end
+
+  W -.->|store| T
+
+  style GATE fill:#0d1a0d,stroke:#3fb950,stroke-width:2
+  style L fill:#132a13,stroke:#3fb950,stroke-width:2,color:#e6edf3
+  style M fill:#2d1117,stroke:#f85149,color:#e6edf3
+  style S fill:#1a1f2e,stroke:#58a6ff,stroke-width:2,color:#e6edf3
+  style T fill:#1a1a2e,stroke:#58a6ff,color:#e6edf3
+```
+
+<details>
+<summary>📐 Full Architecture Diagram (SVG)</summary>
 <p align="center">
   <img src="docs/figures/architecture-v040.svg" alt="memory-spark v0.4.0 — 15-Stage Retrieval Pipeline" width="100%">
 </p>
+</details>
 
 ### Infrastructure Stack
 
