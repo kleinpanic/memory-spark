@@ -642,7 +642,15 @@ function expandHome(p: string): string {
 export function resolveConfig(userConfig?: Partial<MemorySparkConfig>): MemorySparkConfig {
   // Resolve host and token with proper precedence
   const sparkHost = userConfig?.sparkHost ?? process.env["SPARK_HOST"] ?? FALLBACK_SPARK_HOST;
-  const sparkToken = userConfig?.sparkBearerToken ?? loadSparkToken(); // checks process.env then ~/.openclaw/.env
+  let sparkToken = userConfig?.sparkBearerToken ?? loadSparkToken(); // checks process.env then ~/.openclaw/.env
+  // Guard: detect unexpanded OpenClaw ${...} template variables (M12 audit fix)
+  if (sparkToken?.startsWith("${")) {
+    console.warn(
+      `[memory-spark] sparkBearerToken looks like an unexpanded template: "${sparkToken}". ` +
+        `Falling back to env. Ensure secrets.providers or env.shellEnv is configured.`,
+    );
+    sparkToken = loadSparkToken(); // retry from env only
+  }
 
   // Build defaults using the resolved host/token
   const defaults = buildDefaults(sparkHost, sparkToken);
