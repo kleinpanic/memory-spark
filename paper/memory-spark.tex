@@ -1224,7 +1224,7 @@ unavailable. The configuration is exposed via the plugin config schema:
       "hyde": {
         "enabled": true,
         "model": "nvidia/Nemotron-Mini-4B-Instruct",
-        "llmUrl": "http://127.0.0.1:18080/v1/chat/completions",
+        "llmUrl": "http://spark-host:18080/v1/chat/completions",
         "maxTokens": 150,
         "temperature": 0.7,
         "timeoutMs": 5000
@@ -1492,9 +1492,9 @@ a single NVIDIA DGX Spark node. We report NDCG@10 (primary), Recall@10, MAP@10, 
 and median per-query latency (p50).
 
 \paragraph{Isolated test harness.}
-To prevent configuration drift and port conflicts on the production \texttt{user}
-host, all BEIR benchmarks were executed in an isolated Docker harness at
-\texttt{\textasciitilde/codeWS/Docker/openclaw-plugin-test/}. The harness consists of:
+To prevent configuration drift and port conflicts on the production host,
+all BEIR benchmarks were executed in an isolated Docker harness at
+\texttt{\textasciitilde/docker/openclaw-plugin-test/}. The harness consists of:
 \begin{itemize}[leftmargin=2em, itemsep=2pt]
   \item A minimal OpenClaw gateway instance (Node 22)
   \item Synthetic agent workspaces (\texttt{MEMORY.md}, \texttt{TOOLS.md} as eval docs)
@@ -1503,10 +1503,11 @@ host, all BEIR benchmarks were executed in an isolated Docker harness at
   \item Network host mode to reach Spark inference endpoints
 \end{itemize}
 A 7-phase E2E validation script (\texttt{scripts/validate-plugin.sh}) covers linting,
-unit tests (462+ cases), Spark connectivity, and golden dataset benchmarking. The
-golden dataset (\texttt{evaluation/golden-dataset.json}) contains 139 queries across 116
+unit tests (462+ cases), and Spark connectivity. A golden dataset
+(\texttt{evaluation/golden-dataset.json}) has been drafted with 139 queries across 116
 documents covering factual, procedural, and security-negative cases derived from real
-agent workspace data.
+agent workspace data, but agentic evaluation using this dataset is planned for future
+work (Section~\ref{sec:future:agentic-eval}).
 
 \subsection{Main Results}
 \label{sec:eval:main}
@@ -1906,7 +1907,7 @@ configurable parameters:
 {
   "plugins": {
     "memory-spark": {
-      "sparkHost": "127.0.0.1",
+      "sparkHost": "spark-host",
       "autoRecall": {
         "enabled": true,
         "maxResults": 5,
