@@ -1,0 +1,52 @@
+version: 2
+
+updates:
+  # ═══════════════════════════════════════════════════════════════════════
+  # NPM Dependencies - Weekly updates
+  # ═══════════════════════════════════════════════════════════════════════
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 10
+    labels:
+      - "dependencies"
+      - "npm"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+    reviewers:
+      - "kleinpanic"
+    assignees:
+      - "kleinpanic"
+    # Group minor/patch updates together
+    groups:
+      minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # GitHub Actions - Monthly updates
+  # ═══════════════════════════════════════════════════════════════════════
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "06:00"
+      timezone: "America/New_York"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "github-actions"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    reviewers:
+      - "kleinpanic"

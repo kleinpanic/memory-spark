@@ -7,12 +7,17 @@ on:
     branches: [main]
 
 jobs:
+  # ═══════════════════════════════════════════════════════════════════════
+  # QUALITY GATE - Must pass before any merge
+  # ═══════════════════════════════════════════════════════════════════════
   quality:
     name: Quality Gate
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history for SonarQube/analysis
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -23,6 +28,7 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # ── Static Analysis ─────────────────────────────────────────────────
       - name: TypeScript type check
         run: npx tsc --noEmit
 
@@ -35,25 +41,57 @@ jobs:
       - name: Knip dead code analysis
         run: npx knip
 
+      # ── Unit Tests with Coverage ────────────────────────────────────────
       - name: Unit tests
-        run: npx vitest run --exclude 'tests/integration.test.ts' --exclude 'tests/pdf-parsers.test.ts'
+        run: npx vitest run --coverage --exclude 'tests/integration.test.ts' --exclude 'tests/pdf-parsers.test.ts'
         env:
           SKIP_INTEGRATION: "1"
 
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: ./coverage/lcov.info
+          fail_ci_if_error: false
+          verbose: true
+
+      # ── FTS Validation ───────────────────────────────────────────────────
       - name: FTS+WHERE validation
         run: npx tsx tests/fts-where-test.ts
 
-  # ── Integration tests (requires DGX Spark on local network) ────────────
-  # These tests hit real GPU inference endpoints and are NOT runnable on
-  # GitHub-hosted runners. Run locally: npx vitest run tests/integration.test.ts
-  #
-  # PDF tests require pdftotext (poppler-utils) which is not installed on
-  # GitHub runners by default.
-
-  benchmark:
-    name: Benchmark (requires Spark)
+  # ═══════════════════════════════════════════════════════════════════════
+  # SECURITY SCAN - CodeQL + npm audit
+  # ═══════════════════════════════════════════════════════════════════════
+  security:
+    name: Security Scan
     runs-on: ubuntu-latest
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: quality
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: npm audit
+        run: npm audit --audit-level=moderate
+        continue-on-error: true
+
+      - name: Run CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: typescript
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # BUILD VERIFICATION
+  # ═══════════════════════════════════════════════════════════════════════
+  build:
+    name: Build
+    runs-on: ubuntu-latest
     needs: quality
 
     steps:
@@ -71,18 +109,70 @@ jobs:
       - name: Build
         run: npm run build
 
-      # Benchmark job requires Spark access — only runs on main branch push
-      # In self-hosted runner with Spark access, uncomment:
-      # - name: Run retrieval benchmark
-      #   run: npx tsx evaluation/benchmark.ts --tier 1
-      #   env:
-      #     SPARK_HOST: ${{ secrets.SPARK_HOST }}
-      #     SPARK_BEARER_TOKEN: ${{ secrets.SPARK_BEARER_TOKEN }}
-
-      - name: Upload benchmark results
-        if: always()
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: benchmark-results
-          path: evaluation/results/
-          if-no-files-found: warn
+          name: dist
+          path: dist/
+          retention-days: 7
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # DOCS VERIFICATION - Ensure LaTeX compiles
+  # ═══════════════════════════════════════════════════════════════════════
+  docs:
+    name: Docs Build
+    runs-on: ubuntu-latest
+    needs: quality
+    # Only run on main branch pushes to save resources
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install TeX Live
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y texlive-latex-base texlive-latex-extra texlive-science
+
+      - name: Compile LaTeX paper
+        run: |
+          cd paper
+          pdflatex -interaction=nonstopmode memory-spark.tex || true
+          pdflatex -interaction=nonstopmode memory-spark.tex
+
+      - name: Upload paper PDF
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper
+          path: paper/memory-spark.pdf
+          retention-days: 30
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # BENCHMARK - Requires Spark infrastructure (self-hosted runner)
+  # ═══════════════════════════════════════════════════════════════════════
+  # Uncomment when self-hosted runner is available:
+  #
+  # benchmark:
+  #   name: Benchmark
+  #   runs-on: [self-hosted, spark]
+  #   needs: [quality, build]
+  #   if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  #
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Setup Node.js
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: "22"
+  #     - name: Install dependencies
+  #       run: npm ci
+  #     - name: Run BEIR benchmark (Tier 1 - quick)
+  #       run: npx tsx evaluation/benchmark.ts --tier 1
+  #       env:
+  #         SPARK_HOST: ${{ secrets.SPARK_HOST }}
+  #         SPARK_BEARER_TOKEN: ${{ secrets.SPARK_BEARER_TOKEN }}
+  #     - name: Upload benchmark results
+  #       uses: actions/upload-artifact@v4
+  #       with:
+  #         name: benchmark-results
+  #         path: evaluation/results/
