@@ -43,3 +43,4 @@ paper/*.blg
 paper/*.fdb_latexmk
 paper/*.fls
 paper/*.synctex.gz
+golden-dataset.json
