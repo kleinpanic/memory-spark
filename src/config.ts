@@ -543,17 +543,19 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
       tags: {},
     },
     hyde: {
-      // P1-C fix: disabled by default — requires Nemotron-Super on port 18080.
-      // During benchmarks HyDE failed 100% of queries due to timeouts, adding 15s
-      // of wasted latency per agent turn. Enable explicitly when Spark LLM is running.
-      enabled: false,
+      // HyDE is enabled by default when Spark is configured.
+      // Set hyde.enabled: false in plugin config (openclaw.json) to disable.
+      // Requires an LLM at sparkHost:18080 (Nemotron-Super or any OpenAI-compat model).
+      // If the LLM is unavailable, HyDE fails silently and falls back to direct embed.
+      enabled: true,
       llmUrl: `http://${sparkHost}:18080/v1/chat/completions`,
       model: "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
       maxTokens: 150,
       temperature: 0.7,
-      // P1-C fix: reduced from 15000ms. HyDE is a best-effort enrichment,
-      // not a critical path. If the LLM is slow, fall back fast.
-      timeoutMs: 4000,
+      // Configurable via hyde.timeoutMs in plugin config.
+      // Default 30s — HyDE is best-effort; if LLM doesn't respond in time, skip it.
+      // Reduce to 4000 for faster local models, increase for large remote models.
+      timeoutMs: 30000,
       apiKey: sparkToken,
     },
     fts: {
