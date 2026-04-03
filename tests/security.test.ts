@@ -200,7 +200,7 @@ describe("escapeMemoryText — nested HTML entity handling", () => {
   });
 
   it("handles text with both < and & (compound)", () => {
-    const input = "<a href=\"test&value\">link</a>";
+    const input = '<a href="test&value">link</a>';
     const result = escapeMemoryText(input);
     expect(result).toContain("&lt;");
     expect(result).toContain("&amp;");

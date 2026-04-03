@@ -101,22 +101,22 @@ describe("classifyForCapture", () => {
   // ── Score thresholding ────────────────────────────────────────────────────
 
   it("returns label=none when top score is below default minConfidence (0.75)", async () => {
-    mockFetchOk(["fact", "preference"], [0.60, 0.40]);
+    mockFetchOk(["fact", "preference"], [0.6, 0.4]);
 
     const result = await classifyForCapture("Some text.", makeConfig());
 
     expect(result.label).toBe("none");
-    expect(result.score).toBeCloseTo(0.60);
+    expect(result.score).toBeCloseTo(0.6);
   });
 
   it("returns label=none when top score is below a custom minConfidence", async () => {
-    mockFetchOk(["fact", "preference"], [0.80, 0.20]);
+    mockFetchOk(["fact", "preference"], [0.8, 0.2]);
 
     // Pass a higher threshold than the returned score
-    const result = await classifyForCapture("Some text.", makeConfig(), 0.90);
+    const result = await classifyForCapture("Some text.", makeConfig(), 0.9);
 
     expect(result.label).toBe("none");
-    expect(result.score).toBeCloseTo(0.80);
+    expect(result.score).toBeCloseTo(0.8);
   });
 
   it("returns the label when score equals minConfidence exactly", async () => {
@@ -168,9 +168,7 @@ describe("classifyForCapture", () => {
       string,
       RequestInit,
     ];
-    expect((init.headers as Record<string, string>)["Authorization"]).toBe(
-      "Bearer test-token-123",
-    );
+    expect((init.headers as Record<string, string>)["Authorization"]).toBe("Bearer test-token-123");
   });
 
   it("does NOT include Authorization header when apiKey is absent", async () => {
@@ -192,7 +190,9 @@ describe("classifyForCapture", () => {
 
     await classifyForCapture("Some text.", makeConfig({ zeroShotUrl: "http://custom:19000" }));
 
-    const [url] = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
+    const [url] = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+    ];
     expect(url).toBe("http://custom:19000/v1/classify");
   });
 

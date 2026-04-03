@@ -94,11 +94,11 @@ describe("tagEntities", () => {
   });
 
   it("strips leading ## from sub-word tokens", async () => {
-    (globalThis as any).fetch = vi.fn().mockResolvedValueOnce(
-      makeNerResponse([
-        { entity_group: "ORG", score: 0.88, word: "##Corp", start: 5, end: 10 },
-      ]),
-    );
+    (globalThis as any).fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        makeNerResponse([{ entity_group: "ORG", score: 0.88, word: "##Corp", start: 5, end: 10 }]),
+      );
 
     const result = await tagEntities("BigCorp is here.", makeConfig());
 
@@ -136,11 +136,11 @@ describe("tagEntities", () => {
   });
 
   it("trims whitespace from entity words", async () => {
-    (globalThis as any).fetch = vi.fn().mockResolvedValueOnce(
-      makeNerResponse([
-        { entity_group: "PER", score: 0.92, word: "  Bob  ", start: 0, end: 7 },
-      ]),
-    );
+    (globalThis as any).fetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        makeNerResponse([{ entity_group: "PER", score: 0.92, word: "  Bob  ", start: 0, end: 7 }]),
+      );
 
     const result = await tagEntities("Bob was here.", makeConfig());
 
@@ -151,9 +151,7 @@ describe("tagEntities", () => {
   // ── Empty results ─────────────────────────────────────────────────────────
 
   it("returns an empty array when API returns no entities", async () => {
-    (globalThis as any).fetch = vi.fn().mockResolvedValueOnce(
-      makeNerResponse([]),
-    );
+    (globalThis as any).fetch = vi.fn().mockResolvedValueOnce(makeNerResponse([]));
 
     const result = await tagEntities("Nothing to tag here.", makeConfig());
 
@@ -163,8 +161,8 @@ describe("tagEntities", () => {
   it("returns an empty array when all entities have low scores", async () => {
     (globalThis as any).fetch = vi.fn().mockResolvedValueOnce(
       makeNerResponse([
-        { entity_group: "PER", score: 0.50, word: "Dave", start: 0, end: 4 },
-        { entity_group: "ORG", score: 0.60, word: "Acme", start: 8, end: 12 },
+        { entity_group: "PER", score: 0.5, word: "Dave", start: 0, end: 4 },
+        { entity_group: "ORG", score: 0.6, word: "Acme", start: 8, end: 12 },
       ]),
     );
 
@@ -220,9 +218,7 @@ describe("tagEntities", () => {
       string,
       RequestInit,
     ];
-    expect((init.headers as Record<string, string>)["Authorization"]).toBe(
-      "Bearer my-secret-key",
-    );
+    expect((init.headers as Record<string, string>)["Authorization"]).toBe("Bearer my-secret-key");
   });
 
   it("does NOT include Authorization header when apiKey is absent", async () => {
@@ -244,7 +240,9 @@ describe("tagEntities", () => {
 
     await tagEntities("Test.", makeConfig({ nerUrl: "http://custom-ner:19001" }));
 
-    const [url] = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [string];
+    const [url] = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls[0] as [
+      string,
+    ];
     expect(url).toBe("http://custom-ner:19001/v1/extract");
   });
 

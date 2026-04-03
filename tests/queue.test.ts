@@ -13,7 +13,10 @@ function makeProvider(overrides: Partial<EmbedProvider> = {}): EmbedProvider {
     dims: 128,
     embedQuery: vi.fn().mockResolvedValue([0.1, 0.2, 0.3]),
     embedDocument: vi.fn().mockResolvedValue([0.4, 0.5, 0.6]),
-    embedBatch: vi.fn().mockResolvedValue([[0.1, 0.2], [0.3, 0.4]]),
+    embedBatch: vi.fn().mockResolvedValue([
+      [0.1, 0.2],
+      [0.3, 0.4],
+    ]),
     probe: vi.fn().mockResolvedValue(true),
     ...overrides,
   };
@@ -119,10 +122,11 @@ describe("EmbedQueue — serialization (concurrency=1)", () => {
   it("tracks active/queued counts correctly", async () => {
     let resolveEmbed!: () => void;
     const provider = makeProvider({
-      embedQuery: vi.fn().mockImplementation(() =>
-        new Promise<number[]>((resolve) => {
-          resolveEmbed = () => resolve([1]);
-        }),
+      embedQuery: vi.fn().mockImplementation(
+        () =>
+          new Promise<number[]>((resolve) => {
+            resolveEmbed = () => resolve([1]);
+          }),
       ),
     });
 
@@ -328,10 +332,7 @@ describe("EmbedQueue — circuit breaker (threshold)", () => {
 
   it("resets consecutive failures on success", async () => {
     const provider = makeProvider({
-      embedQuery: vi
-        .fn()
-        .mockRejectedValueOnce(new Error("fail"))
-        .mockResolvedValue([1, 2]),
+      embedQuery: vi.fn().mockRejectedValueOnce(new Error("fail")).mockResolvedValue([1, 2]),
     });
 
     const queue = new EmbedQueue(provider, {
@@ -510,9 +511,10 @@ describe("EmbedQueue — timeout", () => {
   it("rejects with timeout error when provider hangs", async () => {
     const provider = makeProvider({
       embedQuery: vi.fn().mockImplementation(
-        () => new Promise(() => {
-          /* never resolves */
-        }),
+        () =>
+          new Promise(() => {
+            /* never resolves */
+          }),
       ),
     });
 
@@ -535,7 +537,10 @@ describe("EmbedQueue — timeout", () => {
     let resolve!: (v: number[]) => void;
     const provider = makeProvider({
       embedQuery: vi.fn().mockImplementation(
-        () => new Promise<number[]>((res) => { resolve = res; }),
+        () =>
+          new Promise<number[]>((res) => {
+            resolve = res;
+          }),
       ),
     });
 
@@ -665,7 +670,9 @@ describe("EmbedQueue — drain", () => {
     const provider = makeProvider({
       embedQuery: vi.fn().mockImplementation((text: string) => {
         if (text === "active") {
-          return new Promise<number[]>((res) => { activeResolve = () => res([1]); });
+          return new Promise<number[]>((res) => {
+            activeResolve = () => res([1]);
+          });
         }
         return new Promise<number[]>(() => {
           /* queued, never resolves */
@@ -717,7 +724,11 @@ describe("EmbedQueue — embedBatch", () => {
   });
 
   it("delegates to provider.embedBatch for a small batch", async () => {
-    const vectors = [[1, 2], [3, 4], [5, 6]];
+    const vectors = [
+      [1, 2],
+      [3, 4],
+      [5, 6],
+    ];
     const provider = makeProvider({
       embedBatch: vi.fn().mockResolvedValue(vectors),
     });
@@ -733,9 +744,9 @@ describe("EmbedQueue — embedBatch", () => {
     // 20 texts → ceil(20/8) = 3 chunks: [8, 8, 4]
     const texts = Array.from({ length: 20 }, (_, i) => `text${i}`);
     const provider = makeProvider({
-      embedBatch: vi.fn().mockImplementation((batch: string[]) =>
-        Promise.resolve(batch.map(() => [0.1, 0.2])),
-      ),
+      embedBatch: vi
+        .fn()
+        .mockImplementation((batch: string[]) => Promise.resolve(batch.map(() => [0.1, 0.2]))),
     });
 
     const queue = new EmbedQueue(provider, { maxRetries: 0 });

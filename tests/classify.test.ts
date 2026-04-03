@@ -62,7 +62,7 @@ describe("heuristicClassify — edge cases", () => {
   });
 
   it("handles very long text (1000+ words) without throwing", () => {
-    const longText = ("This is a very long text that repeats. I prefer clarity. ").repeat(50);
+    const longText = "This is a very long text that repeats. I prefer clarity. ".repeat(50);
     expect(() => heuristicClassify(longText)).not.toThrow();
     const result = heuristicClassify(longText);
     expect(result.label).toBeTruthy();
@@ -195,7 +195,11 @@ This runs in under 100ms for small datasets.
   });
 
   it("returns score=0 for i18n paths", () => {
-    const { score, flags } = scoreChunkQuality("Some content here that looks normal.", "/docs/zh-CN/guide.md", SRC);
+    const { score, flags } = scoreChunkQuality(
+      "Some content here that looks normal.",
+      "/docs/zh-CN/guide.md",
+      SRC,
+    );
     expect(score).toBe(0);
     expect(flags).toContain("excluded-path-i18n");
   });
@@ -207,7 +211,8 @@ This runs in under 100ms for small datasets.
   });
 
   it("returns score=0 for non-English (CJK-heavy) content", () => {
-    const cjk = "これはテストのテキストです。品質スコアは低くなるはずです。日本語のコンテンツはインデックスされません。";
+    const cjk =
+      "これはテストのテキストです。品質スコアは低くなるはずです。日本語のコンテンツはインデックスされません。";
     const { score, flags } = scoreChunkQuality(cjk, FILE, SRC);
     expect(score).toBe(0);
     expect(flags).toContain("non-english-content");
@@ -254,14 +259,16 @@ This runs in under 100ms for small datasets.
   });
 
   it("penalizes archive/ path", () => {
-    const text = "This is a well-written document with plenty of meaningful content about databases.";
+    const text =
+      "This is a well-written document with plenty of meaningful content about databases.";
     const archiveResult = scoreChunkQuality(text, "archive/old-notes.md", SRC);
     const normalResult = scoreChunkQuality(text, "docs/notes.md", SRC);
     expect(archiveResult.score).toBeLessThan(normalResult.score);
   });
 
   it("penalizes memory/learnings.md path", () => {
-    const text = "This is a well-written document with plenty of meaningful content about databases.";
+    const text =
+      "This is a well-written document with plenty of meaningful content about databases.";
     const learnings = scoreChunkQuality(text, "memory/learnings.md", SRC);
     const normal = scoreChunkQuality(text, "memory/notes.md", SRC);
     expect(learnings.score).toBeLessThan(normal.score);
@@ -272,8 +279,16 @@ This runs in under 100ms for small datasets.
       ["", FILE, SRC],
       ["Hello", FILE, SRC],
       ["lol lmao lol lmao lol lmao lol lmao lol lmao", FILE, SRC],
-      ["HEARTBEAT_OK\nNO_REPLY\nlol\nlmao\nsession=abc123\nBackfilled by meta for continuity", FILE, SRC],
-      ["A well-structured document with many meaningful words about software engineering and databases.", FILE, SRC],
+      [
+        "HEARTBEAT_OK\nNO_REPLY\nlol\nlmao\nsession=abc123\nBackfilled by meta for continuity",
+        FILE,
+        SRC,
+      ],
+      [
+        "A well-structured document with many meaningful words about software engineering and databases.",
+        FILE,
+        SRC,
+      ],
     ] as [string, string, string][];
 
     for (const [text, filePath, source] of texts) {
@@ -380,8 +395,7 @@ Use this for all recall queries.
   });
 
   it("agent bootstrap spam: heuristic=none, quality=0 (agent-bootstrap flag)", () => {
-    const text =
-      "## 2024-03-10T08:00:00Z — agent bootstrap\nSession initialized for agent:meta.";
+    const text = "## 2024-03-10T08:00:00Z — agent bootstrap\nSession initialized for agent:meta.";
     const classify = heuristicClassify(text);
     const quality = scoreChunkQuality(text, FILE, SRC);
 
