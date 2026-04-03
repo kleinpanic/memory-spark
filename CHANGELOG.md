@@ -3,6 +3,40 @@
 All notable changes to memory-spark are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## [0.4.0] — 2026-04-02
+
+### Added
+- **Dynamic Reranker Gate (GATE-A)**: Skips reranker on 78% of queries, +0.94% NDCG, 50% latency reduction
+- **Reciprocal Rank Fusion (RRF)**: Scale-invariant hybrid merging (replaces sigmoid-based fusion)
+- **Multi-Query Expansion**: 3-way LLM reformulation for recall improvement
+- **5 new plugin tools**: `memory_recall_debug`, `memory_bulk_ingest`, `memory_temporal`, `memory_related`, `memory_gate_status`
+- **10-page technical paper**: `paper/memory-spark.pdf`
+- **36-configuration BEIR benchmark suite**: SciFact, FiQA, NFCorpus
+
+### Fixed
+- **FTS WHERE filter bypass (C1/Security)**: Cross-agent data leakage via immutable LanceDB query API
+- **Init deadlock (C2)**: Plugin permanently bricked if Spark was down at cold start
+- **MAP@k metric (C4)**: Reverted to BEIR-standard `totalRelevant` denominator
+- **Arrow Vector NaN (M1)**: `getByIds()` now converts Arrow vectors to JS arrays
+- **~80 silent test failures (M6)**: Converted `return bool` patterns to proper `expect()` assertions
+- **Capture error logging (H3)**: Silent catch blocks now log warnings
+- **Embed error handling (H2)**: 7 tool calls wrapped in try/catch with graceful errors
+
+### Changed
+- Port numbers corrected: embed 18091, rerank 18096
+- Version bumped from 0.1.0 → 0.4.0
+- NER tagging parallelized via `Promise.all()`
+- Vitest coverage thresholds raised from 15% → 35%, `coverage.all: true`
+- "Bug Archaeology" → "Failure Modes in Production RAG" in paper
+
+### Removed
+- Dead code: `evaluation/run.ts`, `evaluation/charts.ts` (978 lines)
+
+### Security
+- Sanitized PII from `evaluation/golden-dataset.json` (emails, IPs, names, locations)
+
+---
+
 ## [Unreleased] — v1.0.0 Development
 
 ### 2026-03-27 — Session: Architecture Overhaul
