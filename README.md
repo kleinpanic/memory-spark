@@ -260,27 +260,31 @@ graph TB
         C[Embedding Service<br/>:18091]
         D[Reranker Service<br/>:18096]
         E[LLM Service<br/>:18080<br/>Nemotron-120B]
-        F[OCR Service<br/>:18101<br/>GLM-OCR]
-        G[NER Service<br/>:18112<br/>bert-large-NER]
-        H[Zero-Shot Classifier<br/>:8013<br/>bart-large-mnli]
-        I[STT Service<br/>:18094<br/>Whisper-large-v3]
+        F[OCR Service<br/>:18097<br/>EasyOCR]
+        G[GLM-OCR Service<br/>:18080<br/>vLLM vision]
+        H[NER Service<br/>:18112<br/>bert-large-NER]
+        I[Zero-Shot Classifier<br/>:18113<br/>bart-large-mnli]
+        J[Summarizer Service<br/>:18110<br/>bart-large-cnn]
+        K[STT Service<br/>:18094<br/>Whisper-large-v3]
     end
     
     subgraph STORAGE["Local Storage"]
-        J[(LanceDB<br/>IVF_PQ + FTS)]
-        K[File Watcher]
+        L[(LanceDB<br/>IVF_PQ + FTS)]
+        M[File Watcher]
     end
     
     A --> B
-    B -->|"memory_search<br/>memory_store"| J
+    B -->|"memory_search<br/>memory_store"| L
     B -->|"embed()"| C
     B -->|"rerank()"| D
     B -->|"HyDE generate"| E
     B -->|"OCR parse"| F
-    B -->|"entity extract"| G
-    B -->|"intent classify"| H
-    B -->|"speech-to-text"| I
-    K -->|"ingest"| J
+    B -->|"GLM-OCR parse"| G
+    B -->|"entity extract"| H
+    B -->|"intent classify"| I
+    B -->|"summarize"| J
+    B -->|"speech-to-text"| K
+    M -->|"ingest"| L
     
     style SPARK fill:#0d1a0d,stroke:#3fb950
     style STORAGE fill:#1a1a2e,stroke:#58a6ff
@@ -292,10 +296,11 @@ graph TB
 |-----------|-------|------|---------|
 | Embeddings | nvidia/llama-embed-nemotron-8b (4096d) | 18091 | Dense vector encoding |
 | Reranker | nvidia/llama-nemotron-rerank-1b-v2 | 18096 | Cross-encoder scoring |
-| LLM | Nemotron-Super-120B-A12B (NVFP4) | 18080 | HyDE generation |
-| OCR | zai-org/GLM-OCR (0.9B) | 18101 | Scanned PDF parsing |
+| LLM | Nemotron-Super-120B-A12B (NVFP4) | 18080 | HyDE + GLM-OCR |
+| OCR (legacy) | EasyOCR | 18097 | Scanned PDF fallback |
 | NER | bert-large-NER | 18112 | Named entity extraction |
-| Zero-shot | bart-large-mnli | 8013 | Intent classification |
+| Zero-shot | bart-large-mnli | 18113 | Intent classification |
+| Summarizer | bart-large-cnn | 18110 | Document summarization |
 | STT | Whisper-large-v3 | 18094 | Speech-to-text |
 | Storage | LanceDB (IVF_PQ + FTS) | local | Vector + keyword index |
 
@@ -452,10 +457,12 @@ In `~/.openclaw/openclaw.json`:
           "spark": {
             "embed": "http://SPARK_HOST:18091/v1",
             "rerank": "http://SPARK_HOST:18096/v1",
-            "ocr": "http://SPARK_HOST:18101/v1",
-            "glmOcr": "http://SPARK_HOST:18101/v1",
-            "ner": "http://SPARK_HOST:18112/v1",
-            "stt": "http://SPARK_HOST:18094/v1"
+            "ocr": "http://SPARK_HOST:18097",          // EasyOCR (legacy)
+            "glmOcr": "http://SPARK_HOST:18080/v1",   // GLM-OCR via LLM
+            "ner": "http://SPARK_HOST:18112",
+            "zeroShot": "http://SPARK_HOST:18113",
+            "summarizer": "http://SPARK_HOST:18110",
+            "stt": "http://SPARK_HOST:18094"
           }
         }
       }
@@ -475,7 +482,7 @@ In `~/.openclaw/openclaw.json`:
 | `chunk` | Document chunking | `maxTokens`, `hierarchical`, `parentMaxTokens`, `childMaxTokens` |
 | `autoRecall` | Memory injection | `enabled`, `agents`, `maxResults`, `mmrLambda`, `temporalDecay` |
 | `autoCapture` | Fact extraction | `enabled`, `agents`, `qualityThreshold`, `dedupThreshold` |
-| `spark` | Service endpoints | `embed`, `rerank`, `ocr`, `glmOcr`, `ner`, `stt` |
+| `spark` | Service endpoints | `embed`, `rerank`, `ocr`, `glmOcr`, `ner`, `zeroShot`, `summarizer`, `stt` |
 
 > **Full Schema:** [`src/config.ts`](src/config.ts) is the authoritative source with detailed JSDoc comments.
 
