@@ -3,9 +3,34 @@
 All notable changes to memory-spark are documented here.
 Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
+## [0.4.1] — 2026-04-03
+
+### Fixed
+
+- **P1-A: Score clamping killed reranker gate signal** (`recall.ts`): `applySourceWeighting` was calling `Math.min(1.0, score * weight)`, clamping boosted mistake/capture chunks to 1.0. With 2+ relevant chunks clamped, the gate's top-5 spread collapsed to 0.0, triggering the "tied set → skip reranker" branch and bypassing reranking exactly when it would help most. Fix: removed clamp, allow scores to exceed 1.0, added `normalizeScores()` post-weighting to rescale to [0,1] while preserving real spread.
+- **P1-C: HyDE enabled by default with 15s timeout**: HyDE fired on every recall query, blocking for up to 15s when Spark LLM was unavailable. During benchmarks HyDE failed 100% of the time. Fix: default `enabled: false`, timeout reduced from 15000ms → 4000ms.
+- **P2-B: Source dedup ran after weighting (wrong order)**: `deduplicateSources` compared inflated scores rather than raw cosine similarities, producing arbitrary dedup outcomes. Fix: dedup now runs on raw scores before `applySourceWeighting`.
+- **P2-A: MAX_RERANK_CANDIDATES hardcoded at 30**: Silently dropped candidates ranked 31-40 after scoring. Fix: now uses `cfg.rerank.topN` (default raised from 20 → 40).
+- **P3-C: Integration tests failed with ECONNREFUSED in dev**: Tests used `describe.skipIf(SKIP_INTEGRATION)` but ECONNREFUSED errors still surfaced without that env var. Fix: added runtime Spark reachability probe at test startup — suite skips cleanly if Spark is unreachable.
+
+### Changed
+
+- `normalizeScores()` added as exported utility in `recall.ts` (rescales result array top score to 1.0)
+- `rerank.topN` default: 20 → 40
+- `hyde.timeoutMs` default: 15000 → 4000
+- Pipeline stage order: dedup → source weighting → temporal decay → normalize → reranker (was: source weighting → temporal decay → dedup)
+
+### Documentation
+
+- `docs/PLAN-phase13.md`: Full Phase 13 audit (11 issues, root causes, fix complexity, recommended order)
+- `docs/BENCHMARKS.md`: SOTA comparison vs BM25/DPR/ANCE/TAS-B/Contriever; cross-dataset variance analysis
+- `paper/memory-spark.tex`: §6.2 SOTA table, §6.3 cross-dataset variance, Contriever citation
+- `README.md`: SOTA comparison table inline
+
 ## [0.4.0] — 2026-04-02
 
 ### Added
+
 - **Dynamic Reranker Gate (GATE-A)**: Skips reranker on 78% of queries, +0.94% NDCG, 50% latency reduction
 - **Reciprocal Rank Fusion (RRF)**: Scale-invariant hybrid merging (replaces sigmoid-based fusion)
 - **Multi-Query Expansion**: 3-way LLM reformulation for recall improvement
@@ -14,6 +39,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **36-configuration BEIR benchmark suite**: SciFact, FiQA, NFCorpus
 
 ### Fixed
+
 - **FTS WHERE filter bypass (C1/Security)**: Cross-agent data leakage via immutable LanceDB query API
 - **Init deadlock (C2)**: Plugin permanently bricked if Spark was down at cold start
 - **MAP@k metric (C4)**: Reverted to BEIR-standard `totalRelevant` denominator
@@ -23,6 +49,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **Embed error handling (H2)**: 7 tool calls wrapped in try/catch with graceful errors
 
 ### Changed
+
 - Port numbers corrected: embed 18091, rerank 18096
 - Version bumped from 0.1.0 → 0.4.0
 - NER tagging parallelized via `Promise.all()`
@@ -30,9 +57,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - "Bug Archaeology" → "Failure Modes in Production RAG" in paper
 
 ### Removed
+
 - Dead code: `evaluation/run.ts`, `evaluation/charts.ts` (978 lines)
 
 ### Security
+
 - Sanitized PII from `evaluation/golden-dataset.json` (emails, IPs, names, locations)
 
 ---
@@ -42,6 +71,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### 2026-03-27 — Session: Architecture Overhaul
 
 #### Added
+
 - **Pool column** on MemoryChunk — logical sections within single LanceDB table
   - `agent_memory` — per-agent workspace files, captures (auto-injected)
   - `agent_tools` — per-agent tool definitions (auto-injected for tool context)
@@ -63,6 +93,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **ARCHITECTURE.md** — comprehensive v1.0 design document
 
 #### Fixed
+
 - **FTS scoring** — detect `_score` vs `_distance`, normalize BM25 via sigmoid (Bug #1)
 - **NaN poison** — guard temporal decay against invalid timestamps (Bug #2)
 - **Concurrent search** — sequential Vector→FTS to prevent connection corruption (Bug #3)
@@ -78,6 +109,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **BM25 sigmoid** — extracted constant with calibration docs
 
 #### Changed
+
 - **LanceDB upgraded** 0.14.1 → 0.27.1 (FTS+WHERE panic fixed)
 - **FTS search** — replaced 3x overfetch workaround with proper WHERE clauses
 - **Pool-based filtering** — both vector search and FTS support pool/pools options
@@ -86,6 +118,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **mistakes_search** — uses pool-based filtering instead of `instanceof MultiTableBackend`
 
 #### Removed
+
 - `src/storage/multi-table-backend.ts` — ~450 LOC, pool column replaces physical table routing
 - `src/storage/table-manager.ts` — ~350 LOC, table lifecycle management no longer needed
 - `tests/table-manager.test.ts` — 17 tests removed (tested deleted code)
@@ -93,15 +126,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - `cfg.tables` — from MemorySparkConfig (no longer applicable)
 
 #### Closed Investigations
+
 - **Embedding model vision/multimodal** — investigated, determined not viable. Sticking with text-only `llama-embed-nemotron-8b` (4096-dim).
 
 #### Removed
+
 - `src/storage/sqlite-vec.ts` — unused migration adapter (193 LOC)
 - `src/sync-rag.ts` — legacy sync code (97 LOC)
 - FTS 3x overfetch workaround — replaced with proper WHERE implementation
 - Stale `sqlite-vec` references in backend type + config schema
 
 ### Pre-Session State (v0.3.0)
+
 - 37k chunks in single `memory_chunks` table
 - No pool-based data separation
 - FTS broken (3x overfetch workaround)
@@ -110,11 +146,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - LanceDB 0.14.1
 
 ## [0.3.0] — 2026-03-26
+
 - Production-grade repo restructure
 - Comprehensive pipeline eval (37 tests)
 - First real BEIR results (unreliable — bugs found post-eval)
 
 ## [0.2.0] — 2026-03-25
+
 - Hybrid search (Vector + FTS)
 - Contextual retrieval config
 - Auto-capture with quality gates

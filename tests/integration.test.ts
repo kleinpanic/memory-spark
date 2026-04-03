@@ -87,9 +87,29 @@ let backend: LanceDBBackend;
 let embed: EmbedProvider;
 let queue: EmbedQueue;
 
+// P3-C fix: runtime Spark reachability check — skip entire suite gracefully
+// instead of failing with ECONNREFUSED when running in dev without Spark.
+let SPARK_REACHABLE = false;
+try {
+  const probe = await fetch(`http://${SPARK_HOST}:18091/v1/models`, {
+    headers: { Authorization: `Bearer ${SPARK_TOKEN}` },
+    signal: AbortSignal.timeout(2000),
+  }).catch(() => null);
+  SPARK_REACHABLE = probe?.ok === true;
+} catch {
+  SPARK_REACHABLE = false;
+}
+
+const SKIP_SUITE = SKIP || !SPARK_REACHABLE;
+if (!SPARK_REACHABLE && !SKIP) {
+  console.log(
+    `[integration] Spark unreachable at ${SPARK_HOST}:18091 — skipping all integration tests. Set SPARK_HOST to run against a live node.`,
+  );
+}
+
 // ── Tests ───────────────────────────────────────────────────────────────────
 
-describe.skipIf(SKIP)("Integration: Spark Connectivity", () => {
+describe.skipIf(SKIP_SUITE)("Integration: Spark Connectivity", () => {
   it("embed endpoint responds", async () => {
     const resp = await fetch(`http://${SPARK_HOST}:18091/v1/models`, {
       headers: { Authorization: `Bearer ${SPARK_TOKEN}` },
@@ -136,7 +156,7 @@ describe.skipIf(SKIP)("Integration: Spark Connectivity", () => {
   });
 });
 
-describe.skipIf(SKIP)("Integration: Ingest + Search Pipeline", { timeout: 120_000 }, () => {
+describe.skipIf(SKIP_SUITE)("Integration: Ingest + Search Pipeline", { timeout: 120_000 }, () => {
   beforeAll(async () => {
     fs.mkdirSync(TEST_DB, { recursive: true });
     cfg = buildConfig();

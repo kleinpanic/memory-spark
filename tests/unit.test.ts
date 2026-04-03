@@ -20,6 +20,7 @@ import { shouldProcessAgent } from "../src/config.js";
 import {
   hybridMerge,
   applySourceWeighting,
+  normalizeScores,
   mmrRerank,
   cosineSimilarity,
   deduplicateSources,
@@ -1724,12 +1725,12 @@ describe("Quality Score Defaults", () => {
     assert.equal(merged[0]!.chunk.id, "mistakes-doc");
     assert.equal(merged[0]!.score, 1.0);
 
-    // Apply source weighting
+    // Apply source weighting (P1-A fix: no clamping, scores can exceed 1.0)
     applySourceWeighting(merged);
-    // MISTAKES.md gets 1.6x pattern boost → 1.0 * 1.6 = 1.6 → capped at 1.0
-    assert.equal(merged[0]!.score, 1.0, "Capped at 1.0 after boost");
-    // regular-doc: normalized RRF * 1.0 (no path boost)
-    assert.ok(merged[1]!.score < 1.0);
+    // MISTAKES.md gets 1.6x pattern boost → 1.0 * 1.6 = 1.6 (not clamped)
+    assert.ok(merged[0]!.score > 1.0, "Boosted score should exceed 1.0 before normalization");
+    // regular-doc: normalized RRF * 1.0 (no path boost) — still less than mistakes
+    assert.ok(merged[1]!.score < merged[0]!.score, "mistakes-doc should outscore regular-doc");
   });
 
   it("RRF → temporalDecay pipeline: decay applies to normalized scores", () => {
@@ -1935,13 +1936,18 @@ describe("Quality Score Defaults", () => {
     );
   });
 
-  it("applySourceWeighting caps at 1.0", () => {
+  it("applySourceWeighting allows scores above 1.0 (P1-A: no clamping)", () => {
     const results = [makeSearchResult("high score", 0.9, "capture", "MISTAKES.md")];
     applySourceWeighting(results);
-    // 0.9 * 1.5 (capture source) * 1.6 (mistakes pattern) = 2.16 → capped at 1.0
+    // P1-A fix: 0.9 * 1.5 (capture) * 1.6 (mistakes pattern) = 2.16 — NOT clamped
+    // normalizeScores() is called separately in the pipeline to rescale to [0,1]
     assert.ok(
-      results[0]!.score === 1.0,
-      `Score should be capped at 1.0 (got ${results[0]!.score})`,
+      results[0]!.score > 1.0,
+      `Score should exceed 1.0 after boosting (got ${results[0]!.score}, expected ~2.16)`,
+    );
+    assert.ok(
+      Math.abs(results[0]!.score - 2.16) < 0.01,
+      `Exact score should be ~2.16 (got ${results[0]!.score})`,
     );
   });
 

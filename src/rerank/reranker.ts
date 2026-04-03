@@ -55,10 +55,12 @@ export async function createReranker(cfg: RerankConfig): Promise<Reranker> {
 
 /**
  * Maximum candidates sent to the cross-encoder.
- * Top-30 from first-stage retrieval captures >99% of relevant docs (Nogueira 2020).
- * Reduces reranker latency linearly — O(n) scoring.
+ * P2-A fix: was hardcoded at 30, occasionally dropping the 31st-40th candidates
+ * after source weighting sorted them. Now uses cfg.topN (default 40).
+ * Reranker latency scales linearly — at p95 119ms for 30 docs, 40 ≈ 160ms.
+ * Nogueira 2020: top-40 captures >99.5% of relevant docs in typical corpora.
  */
-const MAX_RERANK_CANDIDATES = 30;
+const DEFAULT_MAX_RERANK_CANDIDATES = 40;
 
 function sparkReranker(cfg: RerankConfig): Reranker {
   const baseUrl = cfg.spark!.baseUrl;
@@ -89,7 +91,8 @@ function sparkReranker(cfg: RerankConfig): Reranker {
         options?.gateLowThresholdOverride ?? defaultGateLowThreshold;
 
       // Phase 5B: Limit candidate pool to prevent unbounded reranker input
-      const pool = candidates.slice(0, MAX_RERANK_CANDIDATES);
+      const maxCandidates = cfg.topN ?? DEFAULT_MAX_RERANK_CANDIDATES;
+      const pool = candidates.slice(0, maxCandidates);
 
       // Phase 12 Fix 2: Dynamic Reranker Gate
       const gate = computeRerankerGate(
