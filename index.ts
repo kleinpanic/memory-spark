@@ -535,7 +535,14 @@ const memorySpark = {
             try {
               vector = await s.queue.embedQuery(params.text);
             } catch (err) {
-              return { content: [{ type: "text", text: `Embedding service unavailable: ${err instanceof Error ? err.message : String(err)}. Try again later.` }] };
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: `Embedding service unavailable: ${err instanceof Error ? err.message : String(err)}. Try again later.`,
+                  },
+                ],
+              };
             }
             // Duplicate check
             const existing = await s.backend
@@ -599,7 +606,14 @@ const memorySpark = {
             try {
               vector = await s.queue.embedQuery(params.query);
             } catch (err) {
-              return { content: [{ type: "text", text: `Embedding service unavailable: ${err instanceof Error ? err.message : String(err)}. Try again later.` }] };
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: `Embedding service unavailable: ${err instanceof Error ? err.message : String(err)}. Try again later.`,
+                  },
+                ],
+              };
             }
             const matches = await s.backend
               .vectorSearch(vector, {
@@ -1128,7 +1142,14 @@ const memorySpark = {
             try {
               vector = await s.queue.embedQuery(fullText);
             } catch (err) {
-              return { content: [{ type: "text", text: `Embedding service unavailable: ${err instanceof Error ? err.message : String(err)}. Try again later.` }] };
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: `Embedding service unavailable: ${err instanceof Error ? err.message : String(err)}. Try again later.`,
+                  },
+                ],
+              };
             }
             const crypto = await import("node:crypto");
             const now = new Date();
@@ -1195,7 +1216,14 @@ const memorySpark = {
             try {
               vector = await s.queue.embedQuery(fullText);
             } catch (err) {
-              return { content: [{ type: "text", text: `Embedding service unavailable: ${err instanceof Error ? err.message : String(err)}. Try again later.` }] };
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: `Embedding service unavailable: ${err instanceof Error ? err.message : String(err)}. Try again later.`,
+                  },
+                ],
+              };
             }
             const crypto = await import("node:crypto");
             const now = new Date();
@@ -1295,7 +1323,14 @@ const memorySpark = {
             try {
               queryVector = await s.embed.embedQuery(params.query);
             } catch (err) {
-              return { content: [{ type: "text", text: `Embedding service unavailable: ${err instanceof Error ? err.message : String(err)}. Try again later.` }] };
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: `Embedding service unavailable: ${err instanceof Error ? err.message : String(err)}. Try again later.`,
+                  },
+                ],
+              };
             }
             const vectorResults = await s.backend
               .vectorSearch(queryVector, {
@@ -1502,7 +1537,14 @@ const memorySpark = {
             try {
               queryVector = await s.embed.embedQuery(params.query);
             } catch (err) {
-              return { content: [{ type: "text", text: `Embedding service unavailable: ${err instanceof Error ? err.message : String(err)}. Try again later.` }] };
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: `Embedding service unavailable: ${err instanceof Error ? err.message : String(err)}. Try again later.`,
+                  },
+                ],
+              };
             }
 
             // Vector search with time filter
@@ -1588,7 +1630,14 @@ const memorySpark = {
             try {
               vector = await s.embed.embedDocument(sourceChunk.text);
             } catch (err) {
-              return { content: [{ type: "text", text: `Embedding service unavailable: ${err instanceof Error ? err.message : String(err)}. Try again later.` }] };
+              return {
+                content: [
+                  {
+                    type: "text",
+                    text: `Embedding service unavailable: ${err instanceof Error ? err.message : String(err)}. Try again later.`,
+                  },
+                ],
+              };
             }
             const neighbors = await s.backend
               .vectorSearch(vector, {
