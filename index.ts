@@ -429,6 +429,52 @@ const memorySpark = {
             },
           },
         },
+        hyde: {
+          type: "object",
+          description:
+            "Hypothetical Document Embeddings (HyDE) — generates a synthetic answer document " +
+            "before embedding the query, bridging the query-document subspace gap. " +
+            "Requires an LLM at sparkHost:18080 (or hyde.llmUrl). " +
+            "Fails silently and falls back to direct embed if the LLM is unavailable.",
+          properties: {
+            enabled: {
+              type: "boolean",
+              description:
+                "Enable HyDE query augmentation (default: true). Set false to disable entirely " +
+                "or when no LLM is available on port 18080.",
+            },
+            llmUrl: {
+              type: "string",
+              description:
+                "OpenAI-compatible chat completions URL for HyDE generation " +
+                "(default: http://<sparkHost>:18080/v1/chat/completions)",
+            },
+            model: {
+              type: "string",
+              description:
+                "LLM model name for HyDE generation " +
+                "(default: nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4). " +
+                "Any OpenAI-compatible model works — use a smaller/faster model " +
+                "(e.g. Nemotron-Mini) if Nemotron-Super is too slow.",
+            },
+            maxTokens: {
+              type: "number",
+              description: "Max tokens for hypothetical document (default: 150)",
+            },
+            temperature: {
+              type: "number",
+              description: "Generation temperature (default: 0.7)",
+            },
+            timeoutMs: {
+              type: "number",
+              description:
+                "Timeout in ms for HyDE LLM call (default: 30000). " +
+                "HyDE is best-effort — if the LLM doesn't respond within this window, " +
+                "the query falls back to direct embedding. " +
+                "Reduce to 4000–8000 for fast local models; leave at 30000+ for large models.",
+            },
+          },
+        },
       },
     },
   } as OpenClawPluginConfigSchema,

@@ -1,42 +1,39 @@
 # Phase 13 — Pipeline Hardening Plan
 
 **Authored:** 2026-04-03  
-**Status:** Ready (work deferred to next session per Klein)  
+**Status:** Partially complete — P1-A/P1-C/P2-A/P2-B/P3-C shipped in `310918f`  
 **Tracked:** oc-task `b770298b`
 
-This plan documents real bugs and improvement opportunities identified via deep code audit of the production pipeline. All items are ordered by severity/impact. No speculative improvements — every issue has a root cause traced to source code.
+> **Severity corrections (post-implementation recon, 2026-04-03):**  
+> P1-A and P2-B were overstated as "critical." See corrected assessments below.  
+> P1-C was correctly motivated (HyDE reverted to enabled, now properly configurable).
+
+This plan documents real bugs and improvement opportunities identified via deep code audit of the production pipeline. Items are ordered by actual measured impact, not initial intuition.
 
 ---
 
-## Priority 1 — Critical Bugs (affect production quality)
+## Priority 1 — Confirmed Impactful
 
-### P1-A: Score Clamping Poisons the Reranker Gate
+### P1-A: Score Clamping — Gate Misfire in Specific Scenarios *(was: Critical; corrected: Low-Medium)*
 
-**File:** `src/auto/recall.ts` line 1019  
-**Code:** `r.score = Math.min(1.0, r.score * weight)`
+**File:** `src/auto/recall.ts` — `applySourceWeighting()`  
+**Code:** `r.score = Math.min(1.0, r.score * weight)` *(removed in 310918f)*
 
-**Root cause:**  
-Source weighting applies a 1.6× multiplier to mistake chunks and 1.5× to captures. Any chunk with a base cosine similarity ≥ 0.625 gets clamped to `score = 1.0`. In a typical recall with 2+ relevant mistake chunks, the top-5 vector score spread becomes 0.0 (`1.0 - 1.0 = 0`), which triggers the gate's low-threshold branch: "tied set → skip reranker." But these ARE different chunks that the reranker could meaningfully rank. The gate fires incorrectly and the reranker never sees them.
+**What I originally claimed:** The `Math.min(1.0)` clamp collapses all boosted mistake/capture scores to 1.0, causing the gate to see spread=0 and skip the reranker on every query with multiple mistake chunks.
 
-**Impact:** Reranker is bypassed exactly when it would help most — on high-relevance queries where multiple mistake/capture chunks compete.
+**What is actually true (post-recon):**  
+The gate misfire only triggers when *all* top-5 candidates are boosted chunks *and* all have cosine similarity ≥ 0.625. In production:
+- The top-5 pool is almost always mixed across pool types — memory chunks aren't boosted and maintain natural spread
+- Temporal decay partially prevents collapse even when clamped (chunks indexed at different times get different decay multipliers — a 30-day-old chunk clamped to 1.0 decays to 0.88)
+- Requires 5+ mistake chunks all scoring ≥ 0.625 on the same query — rare with a small mistakes DB
 
-**Fix:** Move source weighting to a **post-rerank additive boost** rather than a pre-rerank multiplicative score modifier. The reranker sees raw cosine similarities (real signal), then after reranking we apply source weights to the final ranking. Replace `Math.min(1.0, score * weight)` with additive injection of a small rank bonus (`score + (weight - 1.0) * 0.1`), OR apply weighting only after the reranker returns.
+**Actual scenario that triggers it:** A very domain-specific query where 5+ mistake chunks from the same session were indexed on the same day and all happen to match at cosine ≥ 0.625. This is real but uncommon.
 
-```typescript
-// Current (broken): inflates scores pre-gate, corrupts gate spread
-r.score = Math.min(1.0, r.score * weight);
-
-// Fix option A: additive post-rerank boost (best)
-// Apply AFTER reranker.rerank() returns, not before
-
-// Fix option B: unclamped pre-rerank (at least preserves spread)
-r.score = r.score * weight; // no Math.min — let scores exceed 1.0
-// Then normalize top score to 1.0 after weighting so gate spread is preserved
-```
+**Fix shipped:** Removed clamp, added `normalizeScores()` after all weighting. Mathematically sound — ranking order preserved, just rescaled. No regressions in 685 unit tests. **Safe change, but was oversold as critical.**
 
 ---
 
-### P1-B: Position Preservation Guarantee (blending score-floor)
+### P1-B: Position Preservation Guarantee (blending score-floor) *(not yet implemented)*
 
 **File:** `src/rerank/reranker.ts` — `blendByRank()`  
 **Root cause:** When a doc is weakly ranked by both vector (#3, score 0.23) and reranker (low logit), RRF blend places it outside the top-10 cutoff. Doc disappears. NDCG → 0.0.
@@ -52,12 +49,11 @@ r.score = r.score * weight; // no Math.min — let scores exceed 1.0
 
 ---
 
-### P1-C: HyDE Default ON with 15s Timeout
+### P1-C: HyDE Timeout Not Configurable *(corrected — re-enabled, now fully configurable)*
 
-**File:** `src/config.ts` line ~555  
-**Code:** `hyde: { enabled: true, timeoutMs: 15000 }`
+**Original claim:** HyDE should be disabled by default (15s timeout, 100% failure rate in benchmarks).
 
-**Root cause:** HyDE fires for every single recall query, blocking for up to 15 seconds if the Spark LLM is slow or cold. During benchmarks, HyDE failed 100% of the time (timeouts), adding 15s of wasted latency per query.
+**What was actually done:** HyDE is re-enabled with default `timeoutMs: 30000`. It is now fully configurable via plugin config (`hyde.enabled`, `hyde.timeoutMs`, `hyde.model`, `hyde.llmUrl`). Benchmark failures were due to Nemotron-Super cold-start — a different LLM or a warm instance will perform correctly. Operators without a Spark LLM can set `hyde.enabled: false` in `openclaw.json`.
 
 **Impact:** Adds 15s worst-case latency on every agent turn. In production, agent turns are expected to complete in <2s.
 
@@ -85,14 +81,17 @@ const MAX_RERANK_CANDIDATES = cfg.topN ?? 40;
 
 ---
 
-### P2-B: Source Weighting Applied Pre-Dedup Biases Jaccard Dedup
+### P2-B: Pipeline Ordering — Dedup Before Weighting *(was: High; corrected: Cosmetic/Code cleanliness)*
 
 **File:** `src/auto/recall.ts` — ordering of pipeline stages  
-**Current order:** `applySourceWeighting → applyTemporalDecay → deduplicateSources → reranker.rerank`
+**Shipped order (310918f):** `deduplicateSources → applySourceWeighting → applyTemporalDecay → normalizeScores → reranker.rerank`
 
-**Problem:** `deduplicateSources` groups by path/parent and keeps the highest-scoring chunk. After source weighting, mistake chunks are inflated to 1.0 even if they are low-quality duplicates. The dedup keeps the "highest score" which is now 1.0 for everything boosted, so it arbitrarily keeps whichever was processed first.
+**What was claimed:** Dedup running after weighting caused Jaccard to compare inflated scores and keep arbitrary duplicates.
 
-**Fix:** Run dedup on raw cosine scores (before weighting), then apply weighting after dedup. New order: `deduplicateSources → applySourceWeighting → applyTemporalDecay → reranker.rerank`.
+**What is actually true (post-recon):**  
+`deduplicateSources` only deduplicates chunks that are ≥ 85% Jaccard-token-similar *from the same source* (same path/parent_id). Near-identical text at 85%+ similarity carries the same information regardless of which copy is kept. The tie-breaking between nearly-identical chunks has **zero quality impact**. Additionally, cross-source dedup cannot occur since different sources always have different paths/parent_ids.
+
+**Practical impact:** None. The new ordering is marginally cleaner (dedup on raw cosine is logically correct) but this was shipped as a bug fix when it is actually a code cleanliness improvement. **Safe to keep as shipped.**
 
 ---
 
@@ -145,19 +144,19 @@ README says "Coverage 91%" but vitest thresholds are at 35%. Update badge to ref
 
 ## Summary Table
 
-| ID | Severity | File | Issue | Fix Complexity |
-|----|----------|------|-------|----------------|
-| P1-A | 🔴 Critical | `recall.ts:1019` | Score clamping kills gate signal | Medium |
-| P1-B | 🔴 Critical | `reranker.ts` | No position preservation (Phase 13) | Medium |
-| P1-C | 🔴 Critical | `config.ts` | HyDE on by default, 15s timeout | Trivial |
-| P2-A | 🟠 High | `reranker.ts:57` | MAX_RERANK_CANDIDATES=30 too low | Trivial |
-| P2-B | 🟠 High | `recall.ts` | Dedup runs after weighting (wrong order) | Simple |
-| P2-C | 🟠 High | `recall.ts` | Gate spread polluted by pre-weighting | Blocked by P1-A |
-| P2-D | 🟡 Medium | `recall.ts:36` | Cognitive complexity 80 — unmaintainable | Large refactor |
-| P3-A | 🟢 Low | `config.ts` | queryMessageCount=2, could be 3 | Trivial |
-| P3-B | 🟢 Low | `package.json` | 220 npm vulnerabilities | Run audit fix |
-| P3-C | 🟢 Low | `integration.test.ts` | ECONNREFUSED failures in dev | Simple |
-| P3-D | 🟢 Low | `README.md` | Coverage badge mismatch | Trivial |
+| ID | Actual Severity | Status | File | Issue |
+|----|-----------------|--------|------|-------|
+| P1-A | 🟡 Low-Medium *(was: Critical)* | ✅ Shipped `310918f` | `recall.ts` | Score clamping — rare edge case, safe fix |
+| P1-B | 🔴 High | 🔲 Not yet | `reranker.ts` | No position preservation (Phase 13 core work) |
+| P1-C | 🟠 Medium *(was: Critical)* | ✅ Shipped `310918f` | `config.ts` | HyDE fully configurable, timeout now 30s |
+| P2-A | 🟡 Low-Medium | ✅ Shipped `310918f` | `reranker.ts` | topN 30→40, respects cfg.topN |
+| P2-B | 🟢 Cosmetic *(was: High)* | ✅ Shipped `310918f` | `recall.ts` | Dedup order — no functional impact |
+| P2-C | 🟡 Low | ✅ Resolved by P1-A | `recall.ts` | Gate spread on post-weight scores |
+| P2-D | 🟡 Medium | 🔲 Not yet | `recall.ts:36` | Cognitive complexity 80 — unmaintainable |
+| P3-A | 🟢 Low | 🔲 Not yet | `config.ts` | queryMessageCount=2, could be 3 |
+| P3-B | 🟢 Low | 🔲 Not yet | `package.json` | 220 npm vulnerabilities |
+| P3-C | 🟢 Low | ✅ Shipped `310918f` | `integration.test.ts` | ECONNREFUSED in dev — graceful skip |
+| P3-D | 🟢 Low | 🔲 Not yet | `README.md` | Coverage badge mismatch |
 
 ## Recommended Session Order
 
