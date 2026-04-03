@@ -21,6 +21,14 @@
   <img src="https://img.shields.io/badge/Tools-18-58a6ff" alt="Tools">
 </p>
 
+<p align="center">
+  <img src="https://img.shields.io/badge/Version-0.4.0-blue" alt="Version">
+  <img src="https://img.shields.io/badge/Model-Nemotron--8B-orange" alt="Model">
+  <img src="https://img.shields.io/badge/GPU-Required-9cf" alt="GPU Required">
+  <a href="paper/memory-spark.pdf"><img src="https://img.shields.io/badge/Paper-PDF-red" alt="Paper"></a>
+  <a href="https://github.com/exampleuser/memory-spark/stargazers"><img src="https://img.shields.io/github/stars/exampleuser/memory-spark?style=social" alt="GitHub Stars"></a>
+</p>
+
 ---
 
 memory-spark is a production memory substrate for [OpenClaw](https://github.com/openclaw/openclaw) agents: it continuously ingests workspace knowledge, indexes it in LanceDB with hybrid dense+sparse retrieval, reranks candidates with a cross-encoder, and injects high-value context before each turn. The result is materially better recall of deployment-specific facts, safety constraints, and historical incidents while staying within low-latency budgets.
@@ -152,6 +160,130 @@ flowchart LR
 </p>
 </details>
 
+### Recall Flow Sequence
+
+```mermaid
+sequenceDiagram
+    participant Agent
+    participant Hook as before_prompt_build
+    participant Pipeline as 15-Stage Pipeline
+    participant Vector as Vector Search
+    participant FTS as BM25 Search
+    participant Gate as Reranker Gate
+    participant Reranker as Cross-Encoder
+    participant LCM as LCM Dedup
+    participant Prompt as XML Injection
+
+    Agent->>Hook: Query text
+    Hook->>Pipeline: recall(query)
+    
+    Pipeline->>Pipeline: 1·Clean query
+    Pipeline->>Pipeline: 2·HyDE (optional)
+    Pipeline->>Pipeline: 3·Multi-query expand
+    Pipeline->>Pipeline: 4·Embed (4096d)
+    
+    par Parallel Search
+        Pipeline->>Vector: IVF_PQ ANN
+        Vector-->>Pipeline: Top-K candidates
+    and
+        Pipeline->>FTS: BM25 tantivy
+        FTS-->>Pipeline: Top-K matches
+    end
+    
+    Pipeline->>Pipeline: 5·RRF Merge
+    Pipeline->>Pipeline: 6·Source weighting
+    Pipeline->>Pipeline: 7·Temporal decay
+    Pipeline->>Pipeline: 8·Dedup sources
+    
+    Pipeline->>Gate: Check σ = s₁ − s₅
+    
+    alt σ > 0.08 or σ < 0.02 (78%)
+        Gate->>Pipeline: SKIP reranker
+    else 0.02 ≤ σ ≤ 0.08 (22%)
+        Gate->>Reranker: Cross-encode
+        Reranker-->>Pipeline: Re-ranked scores
+        Pipeline->>Pipeline: 11·RRF blend
+    end
+    
+    Pipeline->>Pipeline: 12·MMR diversity
+    Pipeline->>Pipeline: 13·Parent expand
+    Pipeline->>Pipeline: 14·LCM dedup
+    Pipeline->>Pipeline: 15·Security filter
+    
+    Pipeline-->>Hook: Top-N memories
+    Hook->>Prompt: Inject XML context
+    Prompt-->>Agent: Enriched prompt
+```
+
+### Data Model
+
+```mermaid
+erDiagram
+    MEMORY_CHUNK {
+        string id PK "ULID"
+        string path "File path"
+        int start_line
+        int end_line
+        string content "Raw text"
+        float[] vector "4096d embedding"
+        string content_type "memory|capture|reference"
+        string source "agent_name"
+        string pool "agent_memory|mistakes|rules"
+        json metadata "tags, priority, version"
+        timestamp created_at
+        timestamp updated_at
+    }
+    
+    AGENT_WORKSPACE {
+        string agent_id PK
+        string memory_pool FK
+        string mistakes_pool FK
+        string rules_pool FK
+    }
+    
+    REFERENCE_LIBRARY {
+        string path PK
+        string content_type
+        json metadata
+    }
+    
+    MEMORY_CHUNK ||--o{ AGENT_WORKSPACE : "belongs_to_pool"
+    REFERENCE_LIBRARY ||--o{ MEMORY_CHUNK : "indexed_as"
+```
+
+### Deployment Topology
+
+```mermaid
+graph TB
+    subgraph OPENCLAW["OpenClaw Gateway"]
+        A[Agent Session]
+        B[Plugin Host]
+    end
+    
+    subgraph SPARK["NVIDIA DGX Spark"]
+        C[Embedding Service<br/>:18091]
+        D[Reranker Service<br/>:18096]
+        E[LLM Service<br/>:18080<br/>Nemotron-120B]
+        F[OCR Service<br/>:18101<br/>GLM-OCR]
+    end
+    
+    subgraph STORAGE["Local Storage"]
+        G[(LanceDB<br/>IVF_PQ + FTS)]
+        H[File Watcher]
+    end
+    
+    A --> B
+    B -->|"memory_search<br/>memory_store"| G
+    B -->|"embed()"| C
+    B -->|"rerank()"| D
+    B -->|"HyDE generate"| E
+    B -->|"OCR parse"| F
+    H -->|"ingest"| G
+    
+    style SPARK fill:#0d1a0d,stroke:#3fb950
+    style STORAGE fill:#1a1a2e,stroke:#58a6ff
+```
+
 ### Infrastructure Stack
 
 | Component | Model | Port |
@@ -263,9 +395,82 @@ Key configuration blocks:
 - **autoRecall**: Memory injection controls (maxResults, minScore, agents)
 - **autoCapture**: Autonomous memory extraction (agents, quality thresholds)
 
-Full schema: [`src/config.ts`](src/config.ts).
+### Full Configuration Reference
+
+memory-spark supports extensive configuration across 19 top-level blocks. Below is a complete reference:
+
+| Block | Purpose | Key Options |
+|-------|---------|-------------|
+| `backend` | Storage engine | `"lancedb"` (only option) |
+| `lancedbDir` | Database path | Default: `~/.openclaw/data/memory-spark/lancedb` |
+| `embed` | Embedding provider | `provider`, `spark.baseUrl`, `spark.model`, `spark.dimensions`, `spark.queryInstruction` |
+| `rerank` | Cross-encoder reranking | `enabled`, `rerankerGate`, `blendMode`, `rrfK`, `rrfVectorWeight`, `rrfRerankerWeight`, `minScoreSpread`, `scoreBlendAlpha`, `topN` |
+| `autoRecall` | Memory injection | `enabled`, `agents`, `ignoreAgents`, `maxResults`, `minScore`, `queryMessageCount`, `maxInjectionTokens`, `mmrLambda`, `hybridVectorWeight`, `hybridFtsWeight`, `temporalDecay`, `contextDedupOverlap` |
+| `autoCapture` | Fact extraction | `enabled`, `agents`, `qualityThreshold`, `minTokens`, `maxTokens`, `dedupThreshold` |
+| `watch` | File watching | `enabled`, `paths[]`, `debounceMs` |
+| `ingest` | Document ingestion | `maxFileSizeBytes`, `supportedExtensions[]`, `excludePatterns[]` |
+| `migrate` | Schema migration | `autoMigrate`, `backupBeforeMigrate` |
+| `spark` | Spark endpoints | `embed`, `rerank`, `ocr`, `glmOcr`, `ner`, `zeroShot`, `summarizer`, `stt` |
+| `reference` | Reference library | `enabled`, `paths[]`, `contentTypes[]` |
+| `fts` | Full-text search | `enabled`, `sigmoidMidpoint` |
+| `chunk` | Document chunking | `maxTokens`, `overlapTokens`, `minTokens`, `hierarchical`, `parentMaxTokens`, `childMaxTokens` |
+| `embedCache` | Embedding cache | `enabled`, `maxSize`, `ttlMs` |
+| `search` | Vector search tuning | `refineFactor`, `maxWriteRetries`, `ivfPartitions`, `ivfSubVectors` |
+| `hyde` | HyDE generation | `enabled`, `llmUrl`, `model`, `maxTokens`, `temperature`, `timeoutMs` |
+| `sparkHost` | Override SPARK_HOST | Custom host for Spark inference |
+| `sparkBearerToken` | Override token | Custom auth token |
+
+#### Embedding Provider Options
+
+```jsonc
+"embed": {
+  "provider": "spark",  // or "openai" | "gemini"
+  "spark": {
+    "baseUrl": "http://SPARK_HOST:18091/v1",
+    "apiKey": "${SPARK_BEARER_TOKEN}",
+    "model": "nvidia/llama-embed-nemotron-8b",
+    "dimensions": 4096,  // optional, model default
+    "queryInstruction": "Given a question, retrieve relevant passages that answer the query"
+    // ↑ Required for instruction-tuned models like Nemotron-8B
+  }
+}
+```
+
+#### Reranker Gate Modes
+
+| Mode | Behavior | Use Case |
+|------|----------|----------|
+| `"off"` | Always call reranker | Baseline comparison |
+| `"hard"` | Skip if σ > 0.08 or σ < 0.02 | **Production default** — 78% skip rate |
+| `"soft"` | Dynamically weight vector vs reranker | Experimental — adaptive blending |
+
+#### Temporal Decay Formula
+
+$$\text{score}_{\text{temporal}} = \text{floor} + (1 - \text{floor}) \times e^{-\text{rate} \times \text{ageDays}}$$
+
+Default: `floor=0.8`, `rate=0.03` → 30-day content retains ~88% of original score.
+
+#### Source Weighting Presets
+
+| Source | Default Weight | Effect |
+|--------|---------------|--------|
+| `capture` | 1.5× | Agent-initiated facts |
+| `mistakes` | 1.6× | Error patterns (highest priority) |
+| `memory` | 1.0× | Baseline workspace memories |
+| `sessions` | 0.5× | Lower priority ephemeral content |
+| `reference` | 1.0× | Shared knowledge base |
+
+> **Full Schema:** [`src/config.ts`](src/config.ts) is the authoritative source. The TypeScript interfaces include detailed JSDoc comments for every option.
 
 ## Plugin Tools (18)
+
+### Quick Reference Card
+
+| Category | Tools | Purpose |
+|----------|-------|---------|
+| 🧠 **Core Memory** | `search`, `get`, `store`, `forget`, `forget_by_path`, `bulk_ingest` | CRUD operations on agent knowledge |
+| 🔍 **Discovery** | `reference_search`, `temporal`, `related`, `mistakes_search`, `rules_search` | Specialized search across pools |
+| ⚙️ **Admin** | `mistakes_store`, `rules_store`, `inspect`, `reindex`, `index_status`, `recall_debug`, `gate_status` | Diagnostics & configuration |
 
 ### Core Memory
 | Tool | Purpose |
@@ -324,7 +529,71 @@ cd paper && pdflatex memory-spark.tex
 | − Source weighting | 0.7307 | 0.8764 | −6.3% |
 | FTS-Only | 0.6587 | 0.7924 | −15.6% |
 
+### Performance vs. SOTA (2021)
+
+```mermaid
+xychart-beta
+    title "NDCG@10 Comparison: memory-spark vs. Contriever (2021 SOTA)"
+    x-axis ["SciFact", "FiQA", "NFCorpus"]
+    y-axis "NDCG@10" 0 --> 1
+    bar [0.677, 0.329, 0.328]
+    bar [0.7889, 0.5526, 0.4443]
+    line [0.7802, 0.5479, 0.4256]
+```
+
+| Dataset | Contriever (2021) | memory-spark: Vector | memory-spark: GATE-A | Δ Improvement |
+|---------|-------------------|---------------------|----------------------|---------------|
+| **SciFact** | 0.677 | 0.7709 | **0.7802** | **+15.2%** |
+| **FiQA** | 0.329 | 0.5469 | **0.5479** | **+66.5%** |
+| **NFCorpus** | 0.328 | **0.4443** | 0.4256 | **+35.5%** |
+
+> **Note:** NFCorpus shows vector-only outperforming reranked configs due to cross-domain semantic gap (3-word video titles vs. PubMed abstracts). See paper §7 for analysis.
+
 ## Key Innovations
+
+### 15-Stage Pipeline Visual Summary
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  PREPARE (5 stages)                    │  QUERY: "What agents run loops?"   │
+├─────────────────────────────────────────┼─────────────────────────────────────┤
+│  1· Clean   │ Strip metadata/session IDs │ "What agents run loops?"            │
+│  2· HyDE    │ Generate hypothetical doc   │ (Optional: LLM → proxy answer)    │
+│  3· Expand  │ Multi-query reformulation   │ → "Which agents have heartbeats?"  │
+│  4· Embed    │ Nemotron-8B (4096d)         │ → [0.23, 0.87, ...]               │
+│  5· Search   │ Vector IVF_PQ + BM25        │ → Top-100 candidates              │
+└─────────────────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  FUSE (4 stages)                                                   [78% SKIP] │
+├───────────────────────────────────────────────────────────────────────────────┤
+│  6· RRF Merge    │ k=60 rank fusion          │ → Interleaved results         │
+│  7· Source Wt    │ mistakes=1.6×, sessions=0.5×│ → Boosted relevant pools     │
+│  8· Temporal     │ 0.8 + 0.2·e^(-0.03·t)     │ → Recent content prioritized   │
+│  9· Dedup        │ Jaccard > 0.85            │ → One chunk per source         │
+│  10· Gate Check  │ σ = s₁ − s₅               │ → σ > 0.08 or σ < 0.02? SKIP   │
+└─────────────────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  RERANK (2 stages)                                          [22% FIRE] │
+├───────────────────────────────────────────────────────────────────────────────┤
+│  11· Cross-Encoder │ Nemotron-1B-rerank       │ → [0.987, 0.876, ...]        │
+│  12· RRF Blend     │ vec ⊕ rerank             │ → Final ranking               │
+└─────────────────────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────────────────────┐
+│  OUTPUT (4 stages)                                                         │
+├───────────────────────────────────────────────────────────────────────────────┤
+│  13· MMR Diversity  │ λ=0.9 relevance bias    │ → Diverse top-10             │
+│  14· Parent Expand  │ child → parent context  │ → Full paragraphs            │
+│  15· LCM Dedup      │ Overlap > 40%           │ → No duplicate context       │
+│  16· Security       │ Injection filter        │ → Safe XML injection         │
+└─────────────────────────────────────────────────────────────────────────────┘
+                              ↓
+                       <memory_context>
+                         ... 10 facts ...
+                       </memory_context>
+```
 
 ### Dynamic Reranker Gate (§5 in paper)
 
