@@ -431,7 +431,7 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
         apiKey: sparkToken,
         model: "nvidia/llama-nemotron-rerank-1b-v2",
       },
-      topN: 20,
+      topN: 40, // P2-A fix: raised from 20 to match DEFAULT_MAX_RERANK_CANDIDATES
     },
     autoRecall: {
       enabled: true,
@@ -543,12 +543,17 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
       tags: {},
     },
     hyde: {
-      enabled: true,
+      // P1-C fix: disabled by default — requires Nemotron-Super on port 18080.
+      // During benchmarks HyDE failed 100% of queries due to timeouts, adding 15s
+      // of wasted latency per agent turn. Enable explicitly when Spark LLM is running.
+      enabled: false,
       llmUrl: `http://${sparkHost}:18080/v1/chat/completions`,
       model: "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
       maxTokens: 150,
       temperature: 0.7,
-      timeoutMs: 15000,
+      // P1-C fix: reduced from 15000ms. HyDE is a best-effort enrichment,
+      // not a critical path. If the LLM is slow, fall back fast.
+      timeoutMs: 4000,
       apiKey: sparkToken,
     },
     fts: {
