@@ -136,14 +136,11 @@ compression, and pipeline stage ordering bugs. We argue that the gap between ben
 RAG and production agentic RAG is larger than commonly acknowledged, and that iterative
 quantitative evaluation (not intuition) is the only reliable guide to system improvement.
 
-The complete system serves 6 concurrent AI agents in production with 18 self-service
+The complete system serves the meta agent in production with 18 self-service
 memory tools, 37,000+ indexed chunks, and a 483-test validation suite. All code,
 benchmarks, and evaluation scripts are open-source at
 \url{https://github.com/exampleuser/memory-spark}.
 \end{abstract}
-
-\tableofcontents
-\clearpage
 
 % ══════════════════════════════════════════════════════════════════════════════
 \section{Introduction}
@@ -2390,3 +2387,190 @@ Xiong, L., Xiong, C., Li, Y., Tang, K., Liu, J., Bennett, P., Ahmed, J., and
 \end{thebibliography}
 
 \end{document}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\appendix
+\section{Full BEIR Benchmark Results}
+\label{sec:appendix-beir}
+% ══════════════════════════════════════════════════════════════════════════════
+
+All 36 configurations evaluated on BEIR SciFact, FiQA, and NFCorpus. Latency measured as median per-query time over the full query set.
+
+\subsection{SciFact (300 queries)}
+
+\begin{longtable}{llccccc}
+\toprule
+\textbf{ID} & \textbf{Configuration} & \textbf{NDCG@10} & \textbf{Recall@10} & \textbf{MAP@10} & \textbf{MRR} & \textbf{p50(ms)} \\
+\midrule
+\endfirsthead
+\multicolumn{7}{l}{\emph{(continued)}} \\
+\toprule
+\textbf{ID} & \textbf{Configuration} & \textbf{NDCG@10} & \textbf{Recall@10} & \textbf{MAP@10} & \textbf{MRR} & \textbf{p50(ms)} \\
+\midrule
+\endhead
+\midrule
+\multicolumn{7}{r}{\emph{(continued next page)}} \\
+\endfoot
+\bottomrule
+\endlastfoot
+U & Logit Blend $\alpha$=0.4 & 0.7889 & 0.9099 & 0.7391 & 0.8447 & 1506 \\
+V & Logit Blend $\alpha$=0.6 & 0.7885 & 0.9074 & 0.7384 & 0.8440 & 1457 \\
+W & Logit Blend $\alpha$=0.7 & 0.7883 & 0.9062 & 0.7379 & 0.8435 & 1467 \\
+N & Logit Blend $\alpha$=0.5 & 0.7863 & 0.9111 & 0.7375 & 0.8428 & 1466 \\
+X & Logit Blend $\alpha$=0.8 & 0.7847 & 0.9049 & 0.7362 & 0.8412 & 1454 \\
+MQ-B & Multi-Query $\to$ Logit $\alpha$=0.4 & 0.7889 & 0.8890 & 0.7403 & 0.8451 & 8690 \\
+MQ-D & Multi-Query $\to$ Cond Logit & 0.7827 & 0.8793 & 0.7337 & 0.8392 & 7626 \\
+MQ-C & Multi-Query $\to$ Logit $\alpha$=0.5 & 0.7843 & 0.8871 & 0.7356 & 0.8406 & 7945 \\
+GATE-A & RRF + Hard Gate & 0.7802 & 0.9137 & 0.7308 & 0.8363 & 626 \\
+GATE-D & RRF (vec=1.5) + Soft Gate & 0.7803 & 0.9086 & 0.7307 & 0.8362 & 1452 \\
+O & Conditional Rerank $\alpha$=0.3 & 0.7792 & 0.9111 & 0.7294 & 0.8351 & 930 \\
+S & Logit Blend + Cond $\alpha$=0.3 & 0.7792 & 0.9111 & 0.7294 & 0.8351 & 1066 \\
+P & Full 9A+9B Pipeline & 0.7797 & 0.9099 & 0.7297 & 0.8354 & 1539 \\
+RRF-D & Vector $\oplus$ Reranker RRF $k$=20 & 0.7798 & 0.9074 & 0.7300 & 0.8356 & 1502 \\
+RRF-A & Vector $\oplus$ Reranker RRF $k$=60 & 0.7797 & 0.9074 & 0.7299 & 0.8355 & 1458 \\
+GATE-B & RRF + Soft Gate & 0.7802 & 0.9074 & 0.7300 & 0.8357 & 1465 \\
+GATE-C & RRF + Soft Gate thresh=0.12 & 0.7782 & 0.9049 & 0.7285 & 0.8345 & 1490 \\
+RRF-B & Vector $\oplus$ Reranker RRF vec=1.5 & 0.7788 & 0.9062 & 0.7287 & 0.8349 & 1468 \\
+MQ-C & Multi-Query $\to$ Logit $\alpha$=0.5 & 0.7843 & 0.8871 & 0.7356 & 0.8406 & 7945 \\
+T & Logit Blend $\alpha$=0.3 & 0.7756 & 0.9137 & 0.7267 & 0.8323 & 1624 \\
+M & Logit Blend $\alpha$=0.3 & 0.7756 & 0.9137 & 0.7267 & 0.8323 & 1525 \\
+RRF-C & Vector $\oplus$ Reranker RRF rerank=1.5 & 0.7770 & 0.9037 & 0.7272 & 0.8333 & 1454 \\
+A & Vector-Only & 0.7709 & 0.9037 & 0.7231 & 0.8293 & 516 \\
+K & Vector $\to$ Adaptive MMR & 0.7622 & 0.8890 & 0.7156 & 0.8224 & 699 \\
+MQ-A & Multi-Query $\to$ Vector-Only & 0.7619 & 0.8615 & 0.7150 & 0.8218 & 7550 \\
+L & Full Adaptive Pipeline & 0.7515 & 0.8690 & 0.7035 & 0.8107 & 2057 \\
+D & Hybrid + Reranker & 0.7525 & 0.8516 & 0.7047 & 0.8120 & 1486 \\
+G & Full Pipeline & 0.7525 & 0.8516 & 0.7047 & 0.8120 & 1628 \\
+I & Adaptive Hybrid & 0.7557 & 0.8641 & 0.7075 & 0.8148 & 1069 \\
+H & Vector $\to$ Reranker & 0.7395 & 0.8340 & 0.6929 & 0.7990 & 1543 \\
+R & Vector $\to$ Pure Logit $\alpha$=0 & 0.7395 & 0.8340 & 0.6929 & 0.7990 & 2381 \\
+F & Hybrid + HyDE & 0.7278 & 0.8217 & 0.6809 & 0.7864 & 8828 \\
+J & Reranker-as-Fusioner & 0.6993 & 0.7902 & 0.6527 & 0.7562 & 2113 \\
+C & Hybrid RRF & 0.7307 & 0.8315 & 0.6838 & 0.7891 & 950 \\
+E & Hybrid + MMR & 0.7113 & 0.8019 & 0.6659 & 0.7705 & 1179 \\
+B & FTS-Only & 0.6587 & 0.7663 & 0.6159 & 0.7149 & 588 \\
+\end{longtable}
+
+\subsection{FiQA (648 queries)}
+
+\begin{longtable}{llcccc}
+\toprule
+\textbf{ID} & \textbf{Configuration} & \textbf{NDCG@10} & \textbf{Recall@10} & \textbf{MAP@10} & \textbf{p50(ms)} \\
+\midrule
+\endfirsthead
+\multicolumn{6}{l}{\emph{(continued)}} \\
+\toprule
+\textbf{ID} & \textbf{Configuration} & \textbf{NDCG@10} & \textbf{Recall@10} & \textbf{MAP@10} & \textbf{p50(ms)} \\
+\midrule
+\endhead
+\bottomrule
+\endlastfoot
+U & Logit Blend $\alpha$=0.4 & 0.5526 & 0.6654 & 0.4311 & 1506 \\
+V & Logit Blend $\alpha$=0.6 & 0.5526 & 0.6639 & 0.4309 & 1457 \\
+N & Logit Blend $\alpha$=0.5 & 0.5526 & 0.6654 & 0.4309 & 1466 \\
+GATE-A & RRF + Hard Gate & 0.5479 & 0.6543 & 0.4268 & 626 \\
+A & Vector-Only & 0.5469 & 0.6512 & 0.4257 & 516 \\
+H & Vector $\to$ Reranker & 0.5481 & 0.6481 & 0.4266 & 1543 \\
+GATE-D & RRF (vec=1.5) + Soft Gate & 0.5409 & 0.6395 & 0.4207 & 1452 \\
+GATE-B & RRF + Soft Gate & 0.5369 & 0.6327 & 0.4172 & 1465 \\
+GATE-C & RRF + Soft Gate thresh=0.12 & 0.5371 & 0.6319 & 0.4173 & 1490 \\
+RRF-D & Vector $\oplus$ Reranker RRF $k$=20 & 0.5479 & 0.6528 & 0.4265 & 1502 \\
+RRF-A & Vector $\oplus$ Reranker RRF $k$=60 & 0.5479 & 0.6528 & 0.4265 & 1458 \\
+RRF-B & Vector $\oplus$ Reranker RRF vec=1.5 & 0.5465 & 0.6497 & 0.4252 & 1468 \\
+I & Adaptive Hybrid & 0.5045 & 0.5941 & 0.3913 & 1069 \\
+C & Hybrid RRF & 0.4364 & 0.5077 & 0.3373 & 950 \\
+D & Hybrid + Reranker & 0.4513 & 0.5173 & 0.3488 & 1486 \\
+G & Full Pipeline & 0.4513 & 0.5173 & 0.3488 & 1628 \\
+F & Hybrid + HyDE & 0.4196 & 0.4753 & 0.3234 & 8828 \\
+B & FTS-Only & 0.2421 & 0.2669 & 0.1816 & 588 \\
+\end{longtable}
+
+\subsection{NFCorpus (323 queries)}
+
+\begin{longtable}{llcccc}
+\toprule
+\textbf{ID} & \textbf{Configuration} & \textbf{NDCG@10} & \textbf{Recall@10} & \textbf{MAP@10} & \textbf{p50(ms)} \\
+\midrule
+\endfirsthead
+\multicolumn{6}{l}{\emph{(continued)}} \\
+\toprule
+\textbf{ID} & \textbf{Configuration} & \textbf{NDCG@10} & \textbf{Recall@10} & \textbf{MAP@10} & \textbf{p50(ms)} \\
+\midrule
+\endhead
+\bottomrule
+\endlastfoot
+A & Vector-Only & 0.4443 & 0.2212 & 0.2373 & 516 \\
+I & Adaptive Hybrid & 0.4356 & 0.2169 & 0.2326 & 1069 \\
+MQ-A & Multi-Query $\to$ Vector & 0.4341 & 0.2126 & 0.2318 & 7550 \\
+K & Vector $\to$ Adaptive MMR & 0.4277 & 0.2042 & 0.2274 & 699 \\
+MQ-C & Multi-Query $\to$ Logit $\alpha$=0.5 & 0.4292 & 0.2129 & 0.2291 & 7945 \\
+U & Logit Blend $\alpha$=0.4 & 0.4344 & 0.2139 & 0.2317 & 1506 \\
+RRF-B & Vector $\oplus$ Reranker RRF vec=1.5 & 0.4264 & 0.2068 & 0.2271 & 1468 \\
+H & Vector $\to$ Reranker & 0.4256 & 0.2050 & 0.2263 & 1543 \\
+GATE-A & RRF + Hard Gate & 0.4256 & 0.2050 & 0.2263 & 626 \\
+RRF-D & Vector $\oplus$ Reranker RRF $k$=20 & 0.4255 & 0.2051 & 0.2262 & 1502 \\
+RRF-A & Vector $\oplus$ Reranker RRF $k$=60 & 0.4256 & 0.2050 & 0.2263 & 1458 \\
+L & Full Adaptive Pipeline & 0.4290 & 0.2086 & 0.2285 & 2057 \\
+MQ-D & Multi-Query $\to$ Cond Logit & 0.4273 & 0.2096 & 0.2280 & 7626 \\
+RRF-C & Vector $\oplus$ Reranker RRF rerank=1.5 & 0.4236 & 0.2033 & 0.2254 & 1454 \\
+MQ-B & Multi-Query $\to$ Logit $\alpha$=0.4 & 0.4254 & 0.2096 & 0.2269 & 8690 \\
+F & Hybrid + HyDE & 0.4171 & 0.2018 & 0.2220 & 8828 \\
+C & Hybrid RRF & 0.4142 & 0.1965 & 0.2198 & 950 \\
+G & Full Pipeline & 0.4105 & 0.1944 & 0.2180 & 1628 \\
+D & Hybrid + Reranker & 0.4113 & 0.1947 & 0.2184 & 1486 \\
+E & Hybrid + MMR & 0.4044 & 0.1893 & 0.2145 & 1179 \\
+J & Reranker-as-Fusioner & 0.4072 & 0.1920 & 0.2162 & 2113 \\
+GATE-D & RRF (vec=1.5) + Soft Gate & 0.4006 & 0.1876 & 0.2127 & 1452 \\
+GATE-B & RRF + Soft Gate & 0.3996 & 0.1865 & 0.2118 & 1465 \\
+GATE-C & RRF + Soft Gate thresh=0.12 & 0.3992 & 0.1859 & 0.2116 & 1490 \\
+B & FTS-Only & 0.3146 & 0.1348 & 0.1648 & 588 \\
+\end{longtable}
+
+% ══════════════════════════════════════════════════════════════════════════════
+\section{Pipeline Implementation Details}
+\label{sec:appendix-pipeline}
+% ══════════════════════════════════════════════════════════════════════════════
+
+The following excerpts from \texttt{src/auto/recall.ts} show the actual implementation of key pipeline stages.
+
+\subsection{Query Building (Lines 82--95)}
+
+\begin{lstlisting}[language=bash, caption={Query construction from recent messages}]
+function buildQuery(messages: unknown[], count: number): string {
+  const lastN = messages.slice(-count);
+  const parts: string[] = [];
+  for (const msg of lastN) {
+    const content = (msg as {content?: string}).content;
+    if (typeof content === "string") {
+      parts.push(content);
+    }
+  }
+  return parts.join(" ").slice(0, 1000);
+}
+\end{lstlisting}
+
+The query is built from the last $n_q$ agent messages (default: 2), truncated to 1000 characters. Previously injected memory blocks are stripped via \texttt{cleanQueryText()} to prevent querying for memories the system already injected.
+
+\subsection{HyDE Integration (Lines 63--90)}
+
+\begin{lstlisting}[language=bash, caption={HyDE: Hypothetical document generation}]
+const hydeConfig = deps.hyde;
+if (hydeConfig?.enabled) {
+  console.log(`[recall] HyDE: generating hypothetical document...`);
+  const hypothetical = await generateHypotheticalDocument(queryText, hydeConfig);
+  if (hypothetical) {
+    // HyDE: embed the hypothetical as a DOCUMENT (no instruction prefix).
+    // The hypothetical is a pseudo-document and must land in document embedding
+    // space, not query space. Per Gao et al. 2022.
+    queryVector = await embed.embedDocument(hypothetical);
+  } else {
+    // HyDE failed (timeout, too short, etc.)
+    queryVector = await embed.embedQuery(queryText);
+  }
+} else {
+  queryVector = await embed.embedQuery(queryText);
+}
+\end{lstlisting}
+
+Note the critical distinction: \texttt{embedDocument()} not \texttt{embedQuery()}. The hypothetical must land in document embedding space, with no instruction prefix. This is the correct implementation per Gao et al.\ (2023).
+
