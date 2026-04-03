@@ -110,7 +110,7 @@ jobs:
         run: npm run build
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: dist
           path: dist/
@@ -141,7 +141,7 @@ jobs:
           pdflatex -interaction=nonstopmode memory-spark.tex
 
       - name: Upload paper PDF
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: paper
           path: paper/memory-spark.pdf
@@ -172,7 +172,7 @@ jobs:
   #         SPARK_HOST: ${{ secrets.SPARK_HOST }}
   #         SPARK_BEARER_TOKEN: ${{ secrets.SPARK_BEARER_TOKEN }}
   #     - name: Upload benchmark results
-  #       uses: actions/upload-artifact@v4
+  #       uses: actions/upload-artifact@v7
   #       with:
   #         name: benchmark-results
   #         path: evaluation/results/
