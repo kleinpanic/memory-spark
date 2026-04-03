@@ -89,10 +89,7 @@ function makeDeps(overrides: Partial<AutoCaptureDeps> = {}): AutoCaptureDeps {
   };
 }
 
-function makeEvent(
-  messages: unknown[],
-  success = true,
-): { messages: unknown[]; success: boolean } {
+function makeEvent(messages: unknown[], success = true): { messages: unknown[]; success: boolean } {
   return { messages, success };
 }
 
@@ -144,20 +141,16 @@ describe("createAutoCaptureHandler", () => {
     it("does nothing when cfg.enabled is false", async () => {
       const deps = makeDeps({ cfg: { ...makeDeps().cfg, enabled: false } });
       const backend = deps.backend as any;
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(DECISION_MSG)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(DECISION_MSG)]), { agentId: "dev" });
       expect(backend.upsert).not.toHaveBeenCalled();
     });
 
     it("does nothing when event.success is false", async () => {
       const deps = makeDeps();
       const backend = deps.backend as any;
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(DECISION_MSG)], false),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(DECISION_MSG)], false), {
+        agentId: "dev",
+      });
       expect(backend.upsert).not.toHaveBeenCalled();
     });
 
@@ -173,10 +166,7 @@ describe("createAutoCaptureHandler", () => {
   describe("message role filtering", () => {
     it("captures user messages", async () => {
       const deps = makeDeps();
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(DECISION_MSG)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(DECISION_MSG)]), { agentId: "dev" });
       expect((deps.backend as any).upsert).toHaveBeenCalledOnce();
     });
 
@@ -194,20 +184,14 @@ describe("createAutoCaptureHandler", () => {
       const deps = makeDeps();
       const text =
         "We decided to use Redis as the caching layer. The conclusion is that Memcached is insufficient.";
-      await createAutoCaptureHandler(deps)(
-        makeEvent([assistantMsg(text)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([assistantMsg(text)]), { agentId: "dev" });
       expect((deps.backend as any).upsert).toHaveBeenCalledOnce();
     });
 
     it("captures assistant messages with fact/infrastructure pattern", async () => {
       const deps = makeDeps();
       const text = "The server runs at port 9090 and is configured as read-only replica.";
-      await createAutoCaptureHandler(deps)(
-        makeEvent([assistantMsg(text)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([assistantMsg(text)]), { agentId: "dev" });
       expect((deps.backend as any).upsert).toHaveBeenCalledOnce();
     });
 
@@ -216,10 +200,7 @@ describe("createAutoCaptureHandler", () => {
       // Generic assistant reply — no decision/fact keywords
       const text =
         "Sure! I can help you with that. Let me take a look at your current setup and suggest some options.";
-      await createAutoCaptureHandler(deps)(
-        makeEvent([assistantMsg(text)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([assistantMsg(text)]), { agentId: "dev" });
       expect((deps.backend as any).upsert).not.toHaveBeenCalled();
     });
   });
@@ -240,10 +221,7 @@ describe("createAutoCaptureHandler", () => {
       const deps = makeDeps();
       // Exactly 30 chars wouldn't pass extractCaptureMessages (uses minLen from cfg)
       // Use something clearly over threshold
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(DECISION_MSG)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(DECISION_MSG)]), { agentId: "dev" });
       expect((deps.backend as any).upsert).toHaveBeenCalled();
     });
 
@@ -252,10 +230,7 @@ describe("createAutoCaptureHandler", () => {
         cfg: { ...makeDeps().cfg, minMessageLength: 200 },
       });
       // DECISION_MSG is ~65 chars — below 200
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(DECISION_MSG)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(DECISION_MSG)]), { agentId: "dev" });
       expect((deps.backend as any).upsert).not.toHaveBeenCalled();
     });
   });
@@ -266,7 +241,9 @@ describe("createAutoCaptureHandler", () => {
     it("captures at most 3 messages per turn", async () => {
       const deps = makeDeps();
       const messages = [
-        userMsg("We decided to use PostgreSQL as the primary relational database for this project."),
+        userMsg(
+          "We decided to use PostgreSQL as the primary relational database for this project.",
+        ),
         userMsg("We prefer TypeScript over JavaScript for all new services in this repository."),
         userMsg("We decided to deploy everything on Kubernetes with a GitOps workflow approach."),
         userMsg("We chose React over Vue for the frontend application given team familiarity."),
@@ -293,30 +270,20 @@ describe("createAutoCaptureHandler", () => {
     it("skips capture when an existing memory scores >= DEDUP_THRESHOLD (0.92)", async () => {
       const deps = makeDeps({
         backend: makeBackend({
-          vectorSearch: vi.fn().mockResolvedValue([
-            { id: "abc", score: 0.95, text: DECISION_MSG },
-          ]),
+          vectorSearch: vi.fn().mockResolvedValue([{ id: "abc", score: 0.95, text: DECISION_MSG }]),
         }),
       });
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(DECISION_MSG)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(DECISION_MSG)]), { agentId: "dev" });
       expect((deps.backend as any).upsert).not.toHaveBeenCalled();
     });
 
     it("captures when existing memory scores just below threshold (0.91)", async () => {
       const deps = makeDeps({
         backend: makeBackend({
-          vectorSearch: vi.fn().mockResolvedValue([
-            { id: "abc", score: 0.91, text: DECISION_MSG },
-          ]),
+          vectorSearch: vi.fn().mockResolvedValue([{ id: "abc", score: 0.91, text: DECISION_MSG }]),
         }),
       });
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(DECISION_MSG)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(DECISION_MSG)]), { agentId: "dev" });
       expect((deps.backend as any).upsert).toHaveBeenCalledOnce();
     });
 
@@ -326,10 +293,7 @@ describe("createAutoCaptureHandler", () => {
           vectorSearch: vi.fn().mockResolvedValue([]),
         }),
       });
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(DECISION_MSG)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(DECISION_MSG)]), { agentId: "dev" });
       expect((deps.backend as any).upsert).toHaveBeenCalledOnce();
     });
 
@@ -348,29 +312,20 @@ describe("createAutoCaptureHandler", () => {
     it("skips message that looks like prompt injection", async () => {
       (looksLikePromptInjection as Mock).mockReturnValue(true);
       const deps = makeDeps();
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(DECISION_MSG)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(DECISION_MSG)]), { agentId: "dev" });
       expect((deps.backend as any).upsert).not.toHaveBeenCalled();
     });
 
     it("captures message when injection check returns false", async () => {
       (looksLikePromptInjection as Mock).mockReturnValue(false);
       const deps = makeDeps();
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(DECISION_MSG)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(DECISION_MSG)]), { agentId: "dev" });
       expect((deps.backend as any).upsert).toHaveBeenCalledOnce();
     });
 
     it("calls looksLikePromptInjection with the message text", async () => {
       const deps = makeDeps();
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(DECISION_MSG)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(DECISION_MSG)]), { agentId: "dev" });
       expect(looksLikePromptInjection).toHaveBeenCalledWith(DECISION_MSG);
     });
   });
@@ -381,10 +336,7 @@ describe("createAutoCaptureHandler", () => {
     it("skips capture when shouldProcessAgent returns false", async () => {
       (shouldProcessAgent as Mock).mockReturnValue(false);
       const deps = makeDeps();
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(DECISION_MSG)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(DECISION_MSG)]), { agentId: "dev" });
       expect((deps.backend as any).upsert).not.toHaveBeenCalled();
     });
 
@@ -396,10 +348,7 @@ describe("createAutoCaptureHandler", () => {
           ignoreAgents: ["immune"],
         },
       });
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(DECISION_MSG)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(DECISION_MSG)]), { agentId: "dev" });
       expect(shouldProcessAgent).toHaveBeenCalledWith("dev", ["dev", "main"], ["immune"]);
     });
 
@@ -455,7 +404,9 @@ describe("createAutoCaptureHandler", () => {
         }),
       });
       const messages = [
-        userMsg("We decided to use PostgreSQL as the primary relational database for this project."),
+        userMsg(
+          "We decided to use PostgreSQL as the primary relational database for this project.",
+        ),
         userMsg("We prefer TypeScript over JavaScript for all new services in this repository."),
       ];
       await createAutoCaptureHandler(deps)(makeEvent(messages), { agentId: "dev" });
@@ -484,10 +435,7 @@ describe("createAutoCaptureHandler", () => {
   describe("quality scoring", () => {
     it("calls scoreChunkQuality with the message text", async () => {
       const deps = makeDeps();
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(DECISION_MSG)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(DECISION_MSG)]), { agentId: "dev" });
       expect(scoreChunkQuality).toHaveBeenCalledWith(
         DECISION_MSG,
         expect.stringContaining("capture/dev"),
@@ -498,20 +446,14 @@ describe("createAutoCaptureHandler", () => {
     it("skips capture when quality score is below 0.3", async () => {
       (scoreChunkQuality as Mock).mockReturnValue({ score: 0.29 });
       const deps = makeDeps();
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(DECISION_MSG)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(DECISION_MSG)]), { agentId: "dev" });
       expect((deps.backend as any).upsert).not.toHaveBeenCalled();
     });
 
     it("captures when quality score is exactly 0.3 (boundary)", async () => {
       (scoreChunkQuality as Mock).mockReturnValue({ score: 0.3 });
       const deps = makeDeps();
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(DECISION_MSG)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(DECISION_MSG)]), { agentId: "dev" });
       expect((deps.backend as any).upsert).toHaveBeenCalledOnce();
     });
   });
@@ -523,20 +465,14 @@ describe("createAutoCaptureHandler", () => {
       const deps = makeDeps({
         cfg: { ...makeDeps().cfg, useClassifier: false },
       });
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(DECISION_MSG)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(DECISION_MSG)]), { agentId: "dev" });
       expect(classifyForCapture).not.toHaveBeenCalled();
       expect(heuristicClassify).toHaveBeenCalledWith(DECISION_MSG);
     });
 
     it("uses classifyForCapture (zero-shot) when useClassifier is true", async () => {
       const deps = makeDeps({ cfg: { ...makeDeps().cfg, useClassifier: true } });
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(DECISION_MSG)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(DECISION_MSG)]), { agentId: "dev" });
       expect(classifyForCapture).toHaveBeenCalled();
     });
 
@@ -544,10 +480,7 @@ describe("createAutoCaptureHandler", () => {
       (classifyForCapture as Mock).mockResolvedValue({ label: "none", score: 0 });
       (heuristicClassify as Mock).mockReturnValue({ label: "decision", score: 0.7 });
       const deps = makeDeps();
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(DECISION_MSG)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(DECISION_MSG)]), { agentId: "dev" });
       expect(heuristicClassify).toHaveBeenCalledWith(DECISION_MSG);
       expect((deps.backend as any).upsert).toHaveBeenCalledOnce();
     });
@@ -556,10 +489,7 @@ describe("createAutoCaptureHandler", () => {
       (classifyForCapture as Mock).mockResolvedValue({ label: "none", score: 0 });
       (heuristicClassify as Mock).mockReturnValue({ label: "none", score: 0 });
       const deps = makeDeps();
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(DECISION_MSG)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(DECISION_MSG)]), { agentId: "dev" });
       expect((deps.backend as any).upsert).not.toHaveBeenCalled();
     });
 
@@ -569,10 +499,7 @@ describe("createAutoCaptureHandler", () => {
       const deps = makeDeps({
         cfg: { ...makeDeps().cfg, categories: ["decision", "preference"] },
       });
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(DECISION_MSG)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(DECISION_MSG)]), { agentId: "dev" });
       expect((deps.backend as any).upsert).not.toHaveBeenCalled();
     });
 
@@ -583,10 +510,7 @@ describe("createAutoCaptureHandler", () => {
       const deps = makeDeps({
         cfg: { ...makeDeps().cfg, minConfidence: 0.75 }, // would fail normal threshold
       });
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(LONG_FACT_MSG)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(LONG_FACT_MSG)]), { agentId: "dev" });
       // 0.65 >= 0.6 effective heuristic threshold → should capture
       expect((deps.backend as any).upsert).toHaveBeenCalledOnce();
     });
@@ -597,10 +521,7 @@ describe("createAutoCaptureHandler", () => {
       const deps = makeDeps({
         cfg: { ...makeDeps().cfg, minConfidence: 0.75 },
       });
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(LONG_FACT_MSG)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(LONG_FACT_MSG)]), { agentId: "dev" });
       expect((deps.backend as any).upsert).not.toHaveBeenCalled();
     });
   });
@@ -610,10 +531,7 @@ describe("createAutoCaptureHandler", () => {
   describe("chunk shape / storage", () => {
     it("stores a chunk with expected fields", async () => {
       const deps = makeDeps();
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(DECISION_MSG)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(DECISION_MSG)]), { agentId: "dev" });
       const upsertCall = (deps.backend as any).upsert.mock.calls[0][0] as MemoryChunk[];
       expect(upsertCall).toHaveLength(1);
       const chunk = upsertCall[0]!;
@@ -636,10 +554,7 @@ describe("createAutoCaptureHandler", () => {
           embedQuery: vi.fn().mockResolvedValue(fakeVector),
         }),
       });
-      await createAutoCaptureHandler(deps)(
-        makeEvent([userMsg(DECISION_MSG)]),
-        { agentId: "dev" },
-      );
+      await createAutoCaptureHandler(deps)(makeEvent([userMsg(DECISION_MSG)]), { agentId: "dev" });
       const chunk = (deps.backend as any).upsert.mock.calls[0][0][0] as MemoryChunk;
       expect(chunk.vector).toEqual(fakeVector);
     });
