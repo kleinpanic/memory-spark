@@ -1503,11 +1503,12 @@ all BEIR benchmarks were executed in an isolated Docker harness at
   \item Network host mode to reach Spark inference endpoints
 \end{itemize}
 A 7-phase E2E validation script (\texttt{scripts/validate-plugin.sh}) covers linting,
-unit tests (462+ cases), and Spark connectivity. A golden dataset
-(\texttt{evaluation/golden-dataset.json}) has been drafted with 139 queries across 116
-documents covering factual, procedural, and security-negative cases derived from real
-agent workspace data, but agentic evaluation using this dataset is planned for future
-work (Section~\ref{sec:future:agentic-eval}).
+unit tests (462+ cases), and Spark connectivity. A golden dataset was drafted during
+development with 139 queries across 116 documents covering factual, procedural, and
+security-negative cases derived from real agent workspace data, but it is not included
+in the public release due to personal data concerns (queries reference internal
+hostnames, file paths, and agent-specific knowledge). Agentic evaluation using a
+sanitized version is planned for future work (Section~\ref{sec:future:agentic-eval}).
 
 \subsection{Main Results}
 \label{sec:eval:main}
