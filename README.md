@@ -27,9 +27,11 @@ memory-spark is a production memory substrate for [OpenClaw](https://github.com/
 
 > **Paper:** See [`paper/memory-spark.pdf`](paper/memory-spark.pdf) for the full technical report.
 
-## Benchmark Results (BEIR SciFact, 300 queries)
+## Benchmark Results
 
-Results below are from `evaluation/results/` generated via `scripts/run-beir-bench.ts`.
+Results from `evaluation/results/` generated via `scripts/run-beir-bench.ts` across 36 configurations on 3 BEIR datasets.
+
+### BEIR SciFact (300 queries, scientific claim verification)
 
 | Metric | Best Overall (U) | GATE-A (Production) | Vector-Only | 
 |--------|------------------|---------------------|-------------|
@@ -37,6 +39,23 @@ Results below are from `evaluation/results/` generated via `scripts/run-beir-ben
 | **MRR** | **0.7572** | 0.7455 | 0.7365 |
 | **Recall@10** | 0.9099 | 0.9137 | 0.9037 |
 | **Reranker Calls** | 100% | **21%** | 0% |
+
+### Comparison vs. Published BEIR Baselines (NDCG@10)
+
+All results are zero-shot — no dataset-specific fine-tuning. Published baselines from Thakur et al., NeurIPS 2021.
+
+| System | SciFact | FiQA | NFCorpus | Avg |
+|--------|---------|------|----------|-----|
+| BM25 | 0.665 | 0.236 | 0.325 | 0.409 |
+| TAS-B (bi-encoder, 2021) | 0.643 | 0.300 | 0.319 | 0.421 |
+| Contriever (SOTA 2021) | 0.677 | 0.329 | 0.328 | 0.445 |
+| **memory-spark: Vector-Only** | **0.7709** | **0.5469** | **0.4443** | **0.5874** |
+| **memory-spark: Config U (best)** | **0.7889** | **0.5526** | 0.4344 | **0.5920** |
+| **memory-spark: GATE-A (prod)** | **0.7802** | **0.5479** | 0.4256 | **0.5846** |
+
+We outperform the strongest 2021 SOTA (Contriever) by **+16.5%** on SciFact, **+68.0%** on FiQA, and **+35.5%** on NFCorpus. Our embedding model (`llama-embed-nemotron-8b`, 8B params, instruction-tuned) is substantially larger than 2021-era baselines (110M–330M params).
+
+> **Note:** On NFCorpus, Vector-Only (0.4443) outperforms reranked configs (Config U: 0.4344). NFCorpus queries are 3-word video titles — cross-domain retrieval where the reranker's Q&A training distribution doesn't apply. See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for the full cross-dataset variance analysis.
 
 > **Note:** BEIR measures zero-shot cross-domain retrieval across standardized academic datasets (SciFact 300 queries, FiQA 648 queries, NFCorpus 323 queries). See [docs/BENCHMARKS.md](docs/BENCHMARKS.md) for full analysis across all 36 configurations.
 

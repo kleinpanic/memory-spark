@@ -9,6 +9,36 @@
 
 ---
 
+## 📊 Comparison with Published BEIR Baselines (SOTA)
+
+The following table compares our best configurations against published NDCG@10 numbers from Thakur et al. (2021) *BEIR: A Heterogeneous Benchmark for Zero-shot Evaluation of Information Retrieval Models* (NeurIPS 2021). All BEIR baselines are zero-shot (no dataset-specific fine-tuning), same as our evaluation.
+
+| System | SciFact | FiQA | NFCorpus | Avg |
+|--------|---------|------|----------|-----|
+| BM25 (Thakur et al. 2021) | 0.665 | 0.236 | 0.325 | 0.409 |
+| DPR (Thakur et al. 2021) | 0.318 | 0.167 | 0.182 | 0.222 |
+| ANCE (Thakur et al. 2021) | 0.507 | 0.295 | 0.237 | 0.346 |
+| TAS-B (Thakur et al. 2021) | 0.643 | 0.300 | 0.319 | 0.421 |
+| Contriever (Izacard et al. 2021) | 0.677 | 0.329 | 0.328 | 0.445 |
+| **memory-spark: Vector-Only (Config A)** | **0.7709** | **0.5469** | **0.4443** | **0.5874** |
+| **memory-spark: Best (Config U)** | **0.7889** | **0.5526** | 0.4344 | **0.5920** |
+| **memory-spark: GATE-A (Production)** | **0.7802** | **0.5479** | 0.4256 | **0.5846** |
+
+**Our embedding model:** `llama-embed-nemotron-8b` (8B parameter, instruction-tuned, 4096-dim) — a modern large model vs the 2021-era 110M–330M parameter baselines above.
+
+### Relative Improvement vs. Contriever (strongest 2021 SOTA)
+
+| Dataset | Contriever | Our Best | Improvement |
+|---------|-----------|----------|-------------|
+| SciFact | 0.677 | **0.7889** | **+16.5%** |
+| FiQA | 0.329 | **0.5526** | **+68.0%** |
+| NFCorpus | 0.328 | **0.4443** (Vec-A) | **+35.5%** |
+| **Average** | 0.445 | **0.5920** | **+33.1%** |
+
+> **Note on NFCorpus:** Our Vector-Only baseline (0.4443) outperforms our best reranked configuration (Config U: 0.4344) on NFCorpus. This is a structural finding — see [Cross-Dataset Variance Analysis](#cross-dataset-variance-analysis) below.
+
+---
+
 ## 🏆 Top-Line Results (Ranked by 3-Dataset Average NDCG@10)
 
 | Rank | Config | Label | SciFact | FiQA | NFCorpus | **Avg** | p50 (ms) |
@@ -156,6 +186,68 @@ The Soft Gate variants drop NFCorpus to 0.3992–0.4006 vs GATE-A's 0.4256. The 
 
 ### 8. Reranker provides small positive lift on SciFact, neutral on others
 Going from Config A (0.7709) to Config U (0.7889) = +0.018 NDCG on SciFact. On FiQA, A=0.5469 vs U=0.5526 (+0.006). On NFCorpus, A **beats** U (0.4443 vs 0.4344). Reranker lift is dataset-dependent.
+
+---
+
+## Cross-Dataset Variance Analysis
+
+**Deep audit conducted 2026-04-03.** This section explains the structural reasons why performance varies across datasets and why reranking behaves differently per domain.
+
+### Dataset Structural Differences
+
+| Property | SciFact | FiQA | NFCorpus |
+|----------|---------|------|----------|
+| Queries | 300 | 648 | 323 |
+| Corpus size | 5,183 docs | 57,638 docs | 3,633 docs |
+| Avg relevant docs/query | **1.1** | **2.6** | **38.2** |
+| Relevance scale | Binary (0/1) | Binary (0/1) | Graded (0/1/2) |
+| Query avg word length | 12.4 words | 10.8 words | **3.3 words** |
+| Query format | Declarative scientific claims | Financial questions | Nutrition **video titles** |
+| Corpus format | PubMed abstracts | Forum answers | PubMed abstracts |
+| Retrieval task | Same-domain claim→paper | Same-domain Q&A | **Cross-domain** title→abstract |
+
+### Why NFCorpus Scores Lower (and Why That's Fine)
+
+NFCorpus is structurally the hardest dataset for any dense retrieval system:
+
+1. **Cross-domain retrieval**: Queries are 3-word video titles ("Breast Cancer Cells Feed on Cholesterol") from nutritionfacts.org. Documents are PubMed abstracts. The semantic gap between a colloquial video title and a dense technical abstract is fundamentally larger than same-domain retrieval.
+
+2. **Graded relevance with 38 avg relevant docs**: With 38 relevant documents per query and a top-10 return limit, the maximum achievable Recall@10 under *perfect* retrieval is only **0.61**. Our Vector-Only Config A achieves Recall@10 of 0.2212 — which represents good performance given this structural ceiling.
+
+3. **Max achievable Recall@10 is ~0.61**: 129 of 323 queries have ≤10 relevant docs (Recall@10 = 1.0 is achievable). The remaining 194 queries have 11–475 relevant docs, capping Recall@10 below 1.0 even with perfect retrieval.
+
+Our NFCorpus NDCG@10 of 0.4443 (Vector-Only) **beats every published 2021 BEIR baseline** including BM25 (0.325) and Contriever (0.328) by 35.5%.
+
+### Why Reranking Hurts NFCorpus
+
+Per-query analysis of Config A (vector) vs Config H (vector + reranker):
+
+| Outcome | Count | % |
+|---------|-------|---|
+| Reranker helped (first-relevant moved up) | 16 | 5.0% |
+| Reranker hurt (first-relevant moved down) | 22 | 6.8% |
+| No change | 285 | 88.2% |
+| **Net** | | **-1.9%** |
+
+The reranker is a cross-encoder trained on Q&A pairs. A 3-word video title ("Breast Cancer Cells Feed on Cholesterol") is out-of-distribution for the reranker. It produces near-zero discrimination signal, causing 88.2% of queries to see no change, with the remaining 11.8% split slightly in favor of harm.
+
+### Why Reranking Hurts Specific SciFact Queries Despite Overall Gain
+
+Config U (blended reranking) helped 49 SciFact queries and hurt 34 (net +15). The hurt cases are instructive:
+
+- **Pattern**: Relevant doc ranked #3 by vector at weak score (0.23–0.41). Reranker also scores it low. The blend (α=0.4) pulls its combined score below the 10th-place cutoff. Doc disappears from results. NDCG → 0.0.
+- **Specific cases**: Query 1 (relevant doc 31715818 at vector rank #3, score 0.2285 → gone after blend), Query 431 (relevant at rank #3, score 0.4114 → gone), and ~32 others.
+- **Root cause**: Score-floor problem with blending. When both vector and reranker agree a doc is weak, blending amplifies that weakness and drops the doc out of the final pool.
+- **Planned fix**: Phase 13 — position preservation guarantee (tracked in oc-task b770298b).
+
+### Reranker Score Distribution Issue (Confirmed)
+
+The `llama-nemotron-rerank-1b-v2` model shows tight score compression:
+- 58% of top results score ≥ 0.999
+- Score range for top results: 0.83–1.0
+- Discrimination is weak at the high end — the model cannot meaningfully separate rank 1 from rank 5 when all score ≥ 0.99
+
+This is why the Hard Gate (GATE-A) is effective: it skips the reranker when vector confidence is high (78% of queries), preventing the reranker from introducing noise where it has no meaningful signal.
 
 ---
 
