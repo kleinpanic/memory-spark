@@ -261,20 +261,26 @@ graph TB
         D[Reranker Service<br/>:18096]
         E[LLM Service<br/>:18080<br/>Nemotron-120B]
         F[OCR Service<br/>:18101<br/>GLM-OCR]
+        G[NER Service<br/>:18112<br/>bert-large-NER]
+        H[Zero-Shot Classifier<br/>:8013<br/>bart-large-mnli]
+        I[STT Service<br/>:18094<br/>Whisper-large-v3]
     end
     
     subgraph STORAGE["Local Storage"]
-        G[(LanceDB<br/>IVF_PQ + FTS)]
-        H[File Watcher]
+        J[(LanceDB<br/>IVF_PQ + FTS)]
+        K[File Watcher]
     end
     
     A --> B
-    B -->|"memory_search<br/>memory_store"| G
+    B -->|"memory_search<br/>memory_store"| J
     B -->|"embed()"| C
     B -->|"rerank()"| D
     B -->|"HyDE generate"| E
     B -->|"OCR parse"| F
-    H -->|"ingest"| G
+    B -->|"entity extract"| G
+    B -->|"intent classify"| H
+    B -->|"speech-to-text"| I
+    K -->|"ingest"| J
     
     style SPARK fill:#0d1a0d,stroke:#3fb950
     style STORAGE fill:#1a1a2e,stroke:#58a6ff
@@ -282,16 +288,18 @@ graph TB
 
 ### Infrastructure Stack
 
-| Component | Model | Port |
-|-----------|-------|------|
-| Embeddings | nvidia/llama-embed-nemotron-8b (4096d) | 18091 |
-| Reranker | nvidia/llama-nemotron-rerank-1b-v2 | 18096 |
-| LLM (HyDE) | Nemotron-Super-120B-A12B (NVFP4) | 18080 |
-| NER | bert-large-NER | 18112 |
-| Zero-shot | bart-large-mnli | 8013 |
-| Storage | LanceDB (IVF_PQ + FTS) | local |
+| Component | Model | Port | Purpose |
+|-----------|-------|------|---------|
+| Embeddings | nvidia/llama-embed-nemotron-8b (4096d) | 18091 | Dense vector encoding |
+| Reranker | nvidia/llama-nemotron-rerank-1b-v2 | 18096 | Cross-encoder scoring |
+| LLM | Nemotron-Super-120B-A12B (NVFP4) | 18080 | HyDE generation |
+| OCR | zai-org/GLM-OCR (0.9B) | 18101 | Scanned PDF parsing |
+| NER | bert-large-NER | 18112 | Named entity extraction |
+| Zero-shot | bart-large-mnli | 8013 | Intent classification |
+| STT | Whisper-large-v3 | 18094 | Speech-to-text |
+| Storage | LanceDB (IVF_PQ + FTS) | local | Vector + keyword index |
 
-All ML inference runs on a local NVIDIA DGX Spark — **zero cloud API calls** for embeddings or reranking.
+All ML inference runs on a local NVIDIA DGX Spark — **zero cloud API calls**.
 
 ## Charts
 
