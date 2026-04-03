@@ -136,7 +136,7 @@ compression, and pipeline stage ordering bugs. We argue that the gap between ben
 RAG and production agentic RAG is larger than commonly acknowledged, and that iterative
 quantitative evaluation (not intuition) is the only reliable guide to system improvement.
 
-The complete system serves the meta agent in production with 18 self-service
+The complete system is validated in an isolated Docker harness with 18 self-service
 memory tools, 37,000+ indexed chunks, and a 483-test validation suite. All code,
 benchmarks, and evaluation scripts are open-source at
 \url{https://github.com/exampleuser/memory-spark}.
@@ -255,9 +255,9 @@ We make the following contributions:
   grounded in query/corpus format differences and reranker training distribution
   (answering RQ4).
 
-  \item \textbf{Production System}: A complete, deployed memory substrate serving 6
-  autonomous agents with 18 plugin tools, documented engineering lessons, and
-  open-source implementation.
+  \item \textbf{Production System}: A complete memory substrate validated in an
+  isolated Docker test harness, with 18 plugin tools and a 483-test validation
+  suite covering unit, integration, and E2E scenarios.
 \end{itemize}
 
 \subsection{Paper Organization}
@@ -1490,6 +1490,23 @@ structural diversity:
 All evaluations are zero-shot (no dataset-specific fine-tuning). All inference runs on
 a single NVIDIA DGX Spark node. We report NDCG@10 (primary), Recall@10, MAP@10, MRR,
 and median per-query latency (p50).
+
+\paragraph{Isolated test harness.}
+To prevent configuration drift and port conflicts on the production \texttt{user}
+host, all BEIR benchmarks were executed in an isolated Docker harness at
+\texttt{\textasciitilde/codeWS/Docker/openclaw-plugin-test/}. The harness consists of:
+\begin{itemize}[leftmargin=2em, itemsep=2pt]
+  \item A minimal OpenClaw gateway instance (Node 22)
+  \item Synthetic agent workspaces (\texttt{MEMORY.md}, \texttt{TOOLS.md} as eval docs)
+  \item Isolated LanceDB storage (separate from production)
+  \item Live-mount of the \texttt{memory-spark} source tree for rapid iteration
+  \item Network host mode to reach Spark inference endpoints
+\end{itemize}
+A 7-phase E2E validation script (\texttt{scripts/validate-plugin.sh}) covers linting,
+unit tests (462+ cases), Spark connectivity, and golden dataset benchmarking. The
+golden dataset (\texttt{evaluation/golden-dataset.json}) contains 139 queries across 116
+documents covering factual, procedural, and security-negative cases derived from real
+agent workspace data.
 
 \subsection{Main Results}
 \label{sec:eval:main}
