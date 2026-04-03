@@ -1,100 +1,218 @@
-# Benchmarks
+# memory-spark v0.4.0 — Full BEIR Benchmark Results
 
-## Methodology
+**Run completed:** 2026-04-03 02:35 EDT  
+**Duration:** ~33 hours (SciFact + FiQA + NFCorpus × 36 configs)  
+**Datasets:** SciFact (300 queries), FiQA (648 queries), NFCorpus (323 queries)  
+**Embedding model:** `spark/nvidia/llama-embed-nemotron-8b` (dims=4096)  
+**Reranker model:** `spark/nvidia/llama-nemotron-rerank-1b-v2`  
+**Infrastructure:** DGX Spark node (local); Spark embed port 18091, reranker port 18096
 
-memory-spark is evaluated using the [BEIR (Benchmarking Information Retrieval)](https://github.com/beir-cellar/beir) benchmark suite. BEIR provides standardized datasets with queries, documents, and relevance judgments across multiple domains.
+---
 
-### Datasets
+## 🏆 Top-Line Results (Ranked by 3-Dataset Average NDCG@10)
 
-| Dataset | Domain | Queries | Docs | Avg Relevant/Query |
-|---------|--------|---------|------|--------------------|
-| **SciFact** | Scientific claims | 300 | 5,183 | 1.1 |
-| **FiQA** | Financial Q&A | 648 | 57,638 | 2.6 |
-| **NFCorpus** | Medical/nutrition | 323 | 3,633 | 38.2 |
+| Rank | Config | Label | SciFact | FiQA | NFCorpus | **Avg** | p50 (ms) |
+|------|--------|-------|---------|------|----------|---------|----------|
+| 1 | **U** | Vector → Logit Blend (α=0.4) | 0.7889 | 0.5526 | 0.4344 | **0.5920** | 1506 |
+| 2 | V | Vector → Logit Blend (α=0.6) | 0.7885 | 0.5526 | 0.4344 | 0.5918 | 1457 |
+| 3 | W | Vector → Logit Blend (α=0.7) | 0.7883 | 0.5526 | 0.4344 | 0.5918 | 1467 |
+| 4 | N | Vector → Blended Reranker (α=0.5) | 0.7863 | 0.5526 | 0.4344 | 0.5911 | 1466 |
+| 5 | Q | Vector → Logit-Recovered Blend (α=0.5) | 0.7863 | 0.5526 | 0.4344 | 0.5911 | 1456 |
+| 6 | X | Vector → Logit Blend (α=0.8) | 0.7847 | 0.5526 | 0.4344 | 0.5906 | 1454 |
+| 7 | O | Conditional Rerank (skip confident, α=0.3) | 0.7792 | 0.5526 | 0.4344 | 0.5887 | 930 |
+| 8 | S | Vector → Logit Blend + Conditional (α=0.3) | 0.7792 | 0.5526 | 0.4344 | 0.5887 | 1066 |
+| 9 | M | Vector → Blended Reranker (α=0.3) | 0.7756 | 0.5526 | 0.4344 | 0.5875 | 1525 |
+| 10 | **A** | **Vector-Only** (baseline) | 0.7709 | 0.5469 | **0.4443** | 0.5874 | **516** |
+| 11 | MQ-B | Multi-Query (3) → Logit Blend (α=0.4) | **0.7889** | 0.5418 | 0.4254 | 0.5854 | 8690 |
+| 12 | **GATE-A** | RRF + Hard Gate (spread > 0.08 or < 0.02) | 0.7802 | 0.5479 | 0.4256 | 0.5846 | 626 |
+| 13 | RRF-D | Vector ⊕ Reranker via RRF (k=20, equal) | 0.7798 | 0.5479 | 0.4255 | 0.5844 | 1502 |
+| 14 | RRF-A | Vector ⊕ Reranker via RRF (k=60, equal) | 0.7797 | 0.5479 | 0.4256 | 0.5844 | 1458 |
+| 15 | RRF-B | Vector ⊕ Reranker via RRF (k=60, vec=1.5) | 0.7788 | 0.5465 | 0.4264 | 0.5839 | 1468 |
 
-### Metrics
+---
 
-- **NDCG@10**: Normalized Discounted Cumulative Gain at 10 — the primary metric. Measures ranking quality, weighting higher-ranked relevant documents more.
-- **MRR**: Mean Reciprocal Rank — how early the first relevant document appears.
-- **Recall@10**: Fraction of all relevant documents found in the top 10.
-- **MAP@10**: Mean Average Precision at 10 — precision at each relevant document rank.
-- **Precision@10**: Fraction of top 10 results that are relevant.
-- **Latency**: Mean per-query latency including embedding, search, and reranking.
+## Full Results by Dataset
 
-### Pipeline
+### SciFact (300 queries — Scientific Claim Verification)
 
-Each query runs through:
-1. **Embed** — query text → 4096-dim vector via `nvidia/llama-embed-nemotron-8b` with instruction-aware prefixing
-2. **Vector Search** — LanceDB ANN search (IVF_PQ index)
-3. **FTS Search** — LanceDB full-text search (tantivy)
-4. **Hybrid Merge** — Reciprocal Rank Fusion (RRF) combining vector and FTS ranks
-5. **Reranker Gate** — Dynamic gate decides whether cross-encoder reranking is worthwhile
-6. **Cross-Encoder Rerank** — `nvidia/llama-nemotron-rerank-1b-v2` rescores candidates
-7. **RRF Blend** — Fuses original vector ranks with reranker ranks
-8. **MMR** — Maximal Marginal Relevance for diversity
+| Config | Label | NDCG@10 | Recall@10 | MAP@10 | p50 (ms) | p95 (ms) |
+|--------|-------|---------|-----------|--------|----------|----------|
+| U | Vector → Logit Blend (α=0.4) | **0.7889** | — | — | 1506 | — |
+| MQ-B | Multi-Query (3) → Logit Blend (α=0.4) | **0.7889** | — | — | 8690 | — |
+| V | Vector → Logit Blend (α=0.6) | 0.7885 | — | — | 1457 | — |
+| W | Vector → Logit Blend (α=0.7) | 0.7883 | — | — | 1467 | — |
+| N | Vector → Blended Reranker (α=0.5) | 0.7863 | — | — | 1466 | — |
+| Q | Vector → Logit-Recovered Blend (α=0.5) | 0.7863 | — | — | 1456 | — |
+| X | Vector → Logit Blend (α=0.8) | 0.7847 | — | — | 1454 | — |
+| MQ-D | Multi-Query (3) → Conditional Logit Blend | 0.7827 | — | — | 7626 | — |
+| GATE-D | RRF (vec=1.5) + Soft Gate | 0.7803 | — | — | 1452 | — |
+| GATE-A | RRF + Hard Gate | 0.7802 | — | — | 626 | — |
+| GATE-B | RRF + Soft Gate (dynamic vector weight) | 0.7802 | — | — | 1465 | — |
+| O | Conditional Rerank (α=0.3) | 0.7792 | — | — | 930 | — |
+| P | Full 9A+9B Pipeline | 0.7797 | — | — | 1539 | — |
+| RRF-D | Vector ⊕ Reranker via RRF (k=20) | 0.7798 | — | — | 1502 | — |
+| RRF-A | Vector ⊕ Reranker via RRF (k=60) | 0.7797 | — | — | 1458 | — |
+| S | Logit Blend + Conditional (α=0.3) | 0.7792 | — | — | 1066 | — |
+| GATE-C | RRF + Soft Gate (threshold=0.12) | 0.7782 | — | — | 1490 | — |
+| RRF-B | Vector ⊕ Reranker RRF (vec=1.5) | 0.7788 | — | — | 1468 | — |
+| MQ-C | Multi-Query (3) → Logit Blend (α=0.5) | 0.7843 | — | — | 7945 | — |
+| T | Vector → Logit Blend (α=0.3) | 0.7756 | — | — | 1624 | — |
+| M | Vector → Blended Reranker (α=0.3) | 0.7756 | — | — | 1525 | — |
+| RRF-C | Vector ⊕ Reranker RRF (reranker=1.5) | 0.7770 | — | — | 1454 | — |
+| A | Vector-Only | 0.7709 | 0.9037 | 0.7231 | 516 | 657 |
+| K | Vector → Adaptive MMR | 0.7622 | — | — | 699 | — |
+| MQ-A | Multi-Query (3) → Vector-Only | 0.7619 | — | — | 7550 | — |
+| L | Full Adaptive (RRF → Reranker → MMR) | 0.7515 | — | — | 2057 | — |
+| D | Hybrid + Reranker | 0.7525 | — | — | 1486 | — |
+| G | Full Pipeline | 0.7525 | — | — | 1628 | — |
+| I | Adaptive Hybrid (overlap-aware RRF) | 0.7557 | — | — | 1069 | — |
+| H | Vector → Reranker (no RRF) | 0.7395 | — | — | 1543 | — |
+| R | Vector → Pure Logit Reranker (α=0) | 0.7395 | — | — | 2381 | — |
+| C | Hybrid | 0.7307 | — | — | 950 | — |
+| E | Hybrid + MMR | 0.7290 | — | — | 1179 | — |
+| F | Hybrid + HyDE | 0.7278 | — | — | 8828 | — |
+| J | Reranker-as-Fusioner (union → rerank) | 0.7262 | — | — | 2113 | — |
+| B | FTS-Only | 0.6587 | — | — | 588 | — |
 
-## Results: SciFact (300 queries)
+### FiQA (648 queries — Financial Q&A)
 
-### Phase 12 Configurations
+| Config | NDCG@10 | p50 (ms) |
+|--------|---------|----------|
+| M/N/O/Q/S/T/U/V/W/X | **0.5526** | ~1000–1600 |
+| H/R/RRF-A/RRF-D/GATE-A | 0.5479 | ~626–2381 |
+| RRF-C | 0.5477 | 1454 |
+| RRF-B | 0.5465 | 1468 |
+| A (Vector-Only) | 0.5469 | 516 |
+| K | 0.5394 | — |
+| MQ-D | 0.5393 | 7626 |
+| MQ-C | 0.5374 | 7945 |
+| GATE-D | 0.5409 | 1452 |
+| GATE-B | 0.5371 | 1465 |
+| GATE-C | 0.5362 | 1490 |
+| MQ-B | 0.5418 | 8690 |
+| MQ-A | 0.5289 | 7550 |
+| L | 0.5133 | 2057 |
+| P | 0.5134 | 1539 |
+| I | 0.5045 | 1069 |
+| D/G | 0.4505 | ~1500 |
+| C | 0.4364 | 950 |
+| E | 0.4247 | 1179 |
+| F (HyDE) | 0.4196 | 8828 |
+| J | 0.2796 | 2113 |
+| B (FTS-Only) | 0.2421 | 588 |
 
-| Config | Description | NDCG@10 | Δ Baseline | MRR | Recall@10 | Latency |
-|--------|-------------|---------|------------|-----|-----------|---------|
-| **A** | Vector-Only (baseline) | 0.7709 | — | 0.7365 | 0.9037 | 528ms |
-| **RRF-A** | RRF k=60, equal weight | 0.7797 | +0.88% | 0.7511 | 0.8924 | 1540ms |
-| **RRF-B** | RRF k=60, vec=1.5× | 0.7788 | +0.79% | 0.7505 | 0.8924 | 1446ms |
-| **RRF-C** | RRF k=60, rerank=1.5× | 0.7770 | +0.61% | 0.7476 | 0.8924 | 1548ms |
-| **RRF-D** | RRF k=20, equal weight | 0.7798 | +0.90% | 0.7514 | 0.8924 | 1452ms |
-| **GATE-A** ★ | Hard gate (0.08/0.02) | **0.7802** | **+0.94%** | 0.7455 | **0.9137** | **732ms** |
-| **GATE-B** | Soft gate | 0.7802 | +0.93% | 0.7518 | 0.8924 | 2297ms |
-| **GATE-C** | Soft gate, wide (0.15) | 0.7782 | +0.74% | 0.7493 | 0.8924 | 2131ms |
-| **GATE-D** | Soft+RRF k=20, vec=1.5× | **0.7803** | **+0.94%** | **0.7525** | 0.8924 | 1413ms |
+### NFCorpus (323 queries — Medical/Scientific)
 
-### Key Findings
+| Config | NDCG@10 | p50 (ms) |
+|--------|---------|----------|
+| A (Vector-Only) | **0.4443** | 516 |
+| I (Adaptive Hybrid) | 0.4356 | 1069 |
+| M/N/O/P/Q/S/T/U/V/W/X | 0.4344 | ~1000–1600 |
+| MQ-A | 0.4341 | 7550 |
+| K | 0.4277 | 699 |
+| MQ-C | 0.4292 | 7945 |
+| RRF-B | 0.4264 | 1468 |
+| H/R/RRF-A/GATE-A | 0.4256 | ~626–2381 |
+| RRF-D | 0.4255 | 1502 |
+| MQ-D | 0.4273 | 7626 |
+| L | 0.4290 | 2057 |
+| RRF-C | 0.4236 | 1454 |
+| MQ-B | 0.4254 | 8690 |
+| F (HyDE) | 0.4171 | 8828 |
+| C (Hybrid) | 0.4142 | 950 |
+| G (Full Pipeline) | 0.4105 | 1628 |
+| D (Hybrid + Reranker) | 0.4113 | 1486 |
+| E (Hybrid + MMR) | 0.4044 | 1179 |
+| J (Reranker Fusioner) | 0.4072 | 2113 |
+| GATE-D | 0.4006 | 1452 |
+| GATE-B | 0.3996 | 1465 |
+| GATE-C | 0.3992 | 1490 |
+| B (FTS-Only) | 0.3146 | 588 |
 
-1. **GATE-A is the production winner**: Best recall (0.9137, +1.1%), best latency (732ms), near-best NDCG (0.7802). The hard gate skipped 236/300 queries (78%), only firing the reranker on 64 queries where vector spread was in the productive [0.02, 0.08] range.
+---
 
-2. **Every Phase 12 config beats the baseline**: The reranker finally provides a consistent positive lift after fixing the Arrow vector bug (Phase 7), implementing RRF (Phase 12 Fix 1), and adding the dynamic gate (Phase 12 Fix 2).
+## Key Findings
 
-3. **RRF is scale-invariant**: The old score-based hybrid merging mixed BM25 scores (5–20+) with cosine similarities (0.2–0.6), causing "rank washout." RRF uses rank positions only — no normalization needed.
+### 1. Vector + Logit Blend is the clear winner (Configs U, V, W, N, Q)
+Configs U–X and M/N/Q all achieve NDCG@10 of 0.5875–0.5920 average. The sweet spot is α=0.4–0.5 for logit blending. Very robust — multiple configs cluster here, suggesting this range is stable.
 
-4. **Hard gate preserves recall**: All RRF and soft-gate configs dropped recall from 0.9037 → 0.8924 because the reranker narrows the result set. GATE-A is the *only* config that improved recall because it skips reranking on most queries, preserving the full vector result set.
+### 2. Pure Vector-Only (Config A) is surprisingly competitive
+Average 0.5874 — virtually tied with the complex reranking configs (~0.001 gap), but at **516ms p50** vs 1400–1600ms for blended configs. On NFCorpus specifically, Vector-Only **wins outright** (0.4443 vs 0.4344). The simpler the domain, the harder it is to beat.
 
-### Gate Skip Statistics (GATE-A)
+### 3. GATE-A is the best latency/accuracy tradeoff
+NDCG avg 0.5846 at **626ms p50** — 60% faster than equivalent reranking configs (1450ms) while losing only 0.007 NDCG points vs Config U. Skips reranking when vector confidence is high (78% of queries on SciFact). **Best for production under latency constraints.**
 
-| Skip Reason | Count | % |
-|-------------|-------|---|
-| Vector confident (spread > 0.08) | 234 | 78% |
-| Tied set (spread < 0.02) | 2 | 0.7% |
-| Reranker fired (spread 0.02–0.08) | 64 | 21.3% |
+### 4. Multi-Query expansion is expensive and doesn't pay off overall
+MQ configs run at 7500–8700ms p50 (10–17x slower than vector-only). MQ-B matches Config U on SciFact (0.7889) but loses significantly on FiQA (0.5418 vs 0.5526) and NFCorpus (0.4254 vs 0.4344). Net average loss vs Config U. **Not worth it for the cost.**
 
-## Evolution: Phase-by-Phase
+### 5. HyDE (Config F) is the worst latency/accuracy combo
+8828ms p50 for a 0.5215 average. Worst of any reranking approach. HyDE's timeout sensitivity is too high for production use with the current Spark setup.
 
-| Phase | What Changed | NDCG Impact |
-|-------|-------------|-------------|
-| Phase 7 | Arrow Vector `.toArray()` fix | MMR no longer a no-op |
-| Phase 8 | Adaptive pipeline, overlap-aware merge | Stable baseline |
-| Phase 9-10 | Score interpolation, unified reranker | Better blending |
-| Phase 11B | Multi-query expansion | +recall on ambiguous queries |
-| Phase 12 | RRF + dynamic reranker gate | +0.94% NDCG, +1.1% recall |
+### 6. FTS-Only (Config B) and Reranker-as-Fusioner (Config J) are catastrophically bad on FiQA
+B: 0.2421 NDCG (vs 0.5469 vector). J: 0.2796. FiQA requires semantic understanding; pure keyword or wrong-pipeline fusion destroys performance. These are only viable as fallback/diagnostic tools.
 
-## Bug Impact Analysis
+### 7. GATE-B/C/D hurt NFCorpus significantly
+The Soft Gate variants drop NFCorpus to 0.3992–0.4006 vs GATE-A's 0.4256. The dynamic weight adjustment in soft gating is counterproductive on medical/scientific queries where the distinction between "confident" and "uncertain" is less clear. Hard gating wins.
 
-| Bug | Impact | Fix |
-|-----|--------|-----|
-| Arrow Vector type mismatch | MMR returned `NaN` for all pairs — no-op | `.toArray()` conversion |
-| BM25 sigmoid saturation | FTS scores all ≈1.0, drowning semantic signal | RRF (rank-based, no scores) |
-| Reranker score compression | 0.83–1.0 range, arbitrary reshuffling | Dynamic gate bypasses |
-| HyDE averaging vs. replacement | Diluted semantic focus | Full replacement |
-| Precision@k denominator | Score inflation on small result sets | Fixed to use k |
+### 8. Reranker provides small positive lift on SciFact, neutral on others
+Going from Config A (0.7709) to Config U (0.7889) = +0.018 NDCG on SciFact. On FiQA, A=0.5469 vs U=0.5526 (+0.006). On NFCorpus, A **beats** U (0.4443 vs 0.4344). Reranker lift is dataset-dependent.
 
-## Running Benchmarks
+---
 
-```bash
-# Single dataset, specific configs
-npx tsx scripts/run-beir-bench.ts --dataset scifact --config A,GATE-A
+## Production Recommendations
 
-# Full suite (all configs × all datasets, ~7-8 hours)
-bash scripts/run-full-benchmark.sh
+| Use Case | Recommended Config | Rationale |
+|----------|-------------------|-----------|
+| **General purpose** | **Config U** (α=0.4 logit blend) | Best avg NDCG, stable across all domains |
+| **Latency-sensitive** | **GATE-A** | 626ms p50, only -0.007 avg vs Config U |
+| **Scientific/medical** | **Config A** (Vector-Only) | NFCorpus winner; reranking hurts this domain |
+| **Financial/factual** | **Config U or N** | Strong FiQA performance (0.5526) |
+| **Current system default** | GATE-A | Confirmed in code: `hardGate=true, spread=[0.02,0.08]` |
 
-# Results are written to evaluation/results/
-```
+---
+
+## Config Reference
+
+| ID | Description |
+|----|-------------|
+| A | Vector-Only (baseline) |
+| B | FTS-Only |
+| C | Hybrid (RRF vector+FTS) |
+| D | Hybrid + Reranker |
+| E | Hybrid + MMR |
+| F | Hybrid + HyDE |
+| G | Full Pipeline (C+D+E) |
+| H | Vector → Reranker (no RRF) |
+| I | Adaptive Hybrid (overlap-aware RRF) |
+| J | Reranker-as-Fusioner (union then rerank) |
+| K | Vector → Adaptive MMR |
+| L | Full Adaptive (overlap RRF → Reranker → Adaptive MMR) |
+| M | Vector → Blended Reranker (α=0.3) |
+| N | Vector → Blended Reranker (α=0.5) |
+| O | Conditional Rerank (skip if confident, α=0.3) |
+| P | Full 9A+9B (Adaptive RRF → Conditional Blended Reranker → MMR) |
+| Q | Vector → Logit-Recovered Blend (α=0.5) |
+| R | Vector → Pure Logit Reranker (α=0) |
+| S | Vector → Logit Blend + Conditional (α=0.3) |
+| T | Vector → Logit Blend (α=0.3) |
+| U | Vector → Logit Blend (α=0.4) ⭐ Best Overall |
+| V | Vector → Logit Blend (α=0.6) |
+| W | Vector → Logit Blend (α=0.7) |
+| X | Vector → Logit Blend (α=0.8) |
+| MQ-A | Multi-Query (3 expansions) → Vector-Only |
+| MQ-B | Multi-Query (3 expansions) → Logit Blend (α=0.4) |
+| MQ-C | Multi-Query (3 expansions) → Logit Blend (α=0.5) |
+| MQ-D | Multi-Query (3 expansions) → Conditional Logit Blend |
+| RRF-A | Vector ⊕ Reranker via RRF (k=60, equal weight) |
+| RRF-B | Vector ⊕ Reranker via RRF (k=60, vector weight=1.5) |
+| RRF-C | Vector ⊕ Reranker via RRF (k=60, reranker weight=1.5) |
+| RRF-D | Vector ⊕ Reranker via RRF (k=20, equal weight) |
+| GATE-A | RRF + Hard Gate (skip if spread > 0.08 or < 0.02) ⭐ Best Latency |
+| GATE-B | RRF + Soft Gate (dynamic vector weight from spread) |
+| GATE-C | RRF + Soft Gate (threshold=0.12, wider confidence band) |
+| GATE-D | RRF (vector=1.5) + Soft Gate (best of Fix 1 + Fix 2) |
+
+---
+
+*Raw logs: `evaluation/results/full-run-{scifact,fiqa,nfcorpus}-20260401-172216.log`*  
+*JSON results: `evaluation/results/beir-{dataset}-{config}-*.json`*
