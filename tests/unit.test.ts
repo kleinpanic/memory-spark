@@ -2159,7 +2159,7 @@ describe("Quality Score Defaults", () => {
     assert.strictEqual(scores.q1, 0.2, "P@10 with 2 relevant out of 3 returned = 2/10 not 2/3");
   });
 
-  it("MAP@k uses min(totalRelevant, k) denominator (bug fix)", () => {
+  it("MAP@k uses totalRelevant denominator (BEIR-standard, reverted from min(R,k))", () => {
     // 20 relevant docs but k=5, retriever returns 5 results, only 2 of which are relevant
     const qrels: Record<string, Record<string, number>> = {
       q1: Object.fromEntries(Array.from({ length: 20 }, (_, i) => [`d${i}`, 1])),
@@ -2167,9 +2167,9 @@ describe("Quality Score Defaults", () => {
     // d0 (relevant), d99 (not relevant), d1 (relevant), d98 (not), d97 (not)
     const results = { q1: { d0: 0.9, d99: 0.8, d1: 0.7, d98: 0.6, d97: 0.5 } };
     // d0 at rank 1: precision=1/1=1.0, d1 at rank 3: precision=2/3=0.667
-    // AP = (1.0 + 0.667) / min(20, 5) = 1.667 / 5 = 0.333
+    // AP = (1.0 + 0.667) / 20 = 1.667 / 20 = 0.0833 (BEIR divides by totalRelevant=20)
     const scores = mapAtK(qrels, results, 5);
-    const expected = (1.0 + 2 / 3) / 5;
+    const expected = (1.0 + 2 / 3) / 20;
     assert(
       Math.abs(scores.q1! - expected) < 0.001,
       `MAP@5 should be ~${expected.toFixed(3)}, got ${scores.q1}`,
