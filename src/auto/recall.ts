@@ -264,28 +264,39 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
     console.log(`[recall] merged (all pools, deduped): ${merged.length} candidates`);
     if (merged.length === 0) return undefined;
 
-    // Source weighting EARLY — penalize garbage before expensive stages
-    // so session chunks and archive content don't waste reranker slots.
-    applySourceWeighting(merged, cfg.weights);
-
-    // Temporal decay: boost recent memories (configurable floor + rate)
-    applyTemporalDecay(merged, cfg.temporalDecay);
-
-    // Source-level dedup: collapse near-identical chunks from the same source
-    // before the reranker, so it doesn't waste slots on overlapping content.
+    // P2-B fix: dedup on RAW cosine scores BEFORE weighting.
+    // Previously dedup ran after source weighting, so Jaccard kept the "highest score"
+    // among near-duplicate chunks — but those scores were already inflated to 1.0
+    // by mistake/capture boosts, making the dedup outcome arbitrary.
+    // Now: dedup on real cosine similarity → weighting → decay → reranker.
     const deduped = deduplicateSources(merged);
     console.log(
       `[recall] after source dedup: ${deduped.length} candidates (removed ${merged.length - deduped.length})`,
     );
 
+    // P1-A fix: source weighting runs AFTER dedup, on the cleaned candidate set.
+    // Weights are applied WITHOUT Math.min(1.0) clamping — scores are allowed to
+    // exceed 1.0 so the reranker gate sees a real spread between boosted and
+    // non-boosted chunks. A post-weighting normalization step rescales the top
+    // score back to 1.0, preserving relative ordering while keeping gate spread intact.
+    applySourceWeighting(deduped, cfg.weights);
+
+    // Temporal decay: boost recent memories (configurable floor + rate)
+    applyTemporalDecay(deduped, cfg.temporalDecay);
+
+    // Post-weighting normalization: rescale so top score = 1.0.
+    // This ensures minScore downstream filters work correctly AND the gate spread
+    // reflects the real relative differences between boosted and unboosted chunks,
+    // not a ceiling artifact from Math.min(1.0) clamping.
+    normalizeScores(deduped);
+
     // Cross-encoder rerank — the reranker is the most accurate relevance signal.
     // Give it a large candidate set so it can identify the best documents.
     // Then MMR trims the reranked output for diversity.
     //
-    // Phase 12: The reranker now includes a dynamic gate (GATE-A default).
-    // When top-5 vector spread > 0.08 (confident) or < 0.02 (tied set),
-    // the gate skips reranking entirely and returns vector order.
-    // Gate telemetry is logged inside sparkReranker — look for "[reranker] GATE SKIP".
+    // Phase 13: Gate now sees real score spread (P1-A fix). When multiple mistake
+    // chunks are boosted, their spread reflects actual cosine differences rather
+    // than collapsing to 0 due to clamping.
     const reranked = await reranker.rerank(queryText, deduped, cfg.maxResults * 2);
     console.log(`[recall] after rerank: ${reranked.length} candidates`);
 
@@ -1016,7 +1027,26 @@ export function applySourceWeighting(results: SearchResult[], weights?: RecallWe
       if (!patternMatched) weight *= 1.0;
     }
 
-    r.score = Math.min(1.0, r.score * weight);
+    // P1-A fix: NO Math.min(1.0) clamping here.
+    // Scores are allowed to exceed 1.0 after weighting so the reranker gate
+    // sees real spread between boosted (mistake/capture) and regular chunks.
+    // normalizeScores() rescales to [0, 1] after all weighting is complete.
+    r.score = r.score * weight;
+  }
+}
+
+/**
+ * Rescale scores so the highest score = 1.0, preserving relative ordering.
+ * Called after source weighting + temporal decay so the gate spread reflects
+ * real differences between chunks rather than clamping artifacts.
+ * No-op if results is empty or all scores are 0.
+ */
+export function normalizeScores(results: SearchResult[]): void {
+  if (results.length === 0) return;
+  const maxScore = Math.max(...results.map((r) => r.score));
+  if (maxScore <= 0) return;
+  for (const r of results) {
+    r.score = r.score / maxScore;
   }
 }
 
