@@ -419,6 +419,9 @@ export interface RerankerGateResult {
  */
 export function computeRerankerGate(
   candidates: SearchResult[],
+  // Note: production default is "hard" (set in buildDefaults() -> rerankerGate).
+  // This function-level default "off" is only reached if called directly in tests
+  // without a mode argument. The Reranker class always passes cfg.rerankerGate.
   mode: "off" | "hard" | "soft" = "off",
   threshold: number = 0.08,
   lowThreshold: number = 0.02,
