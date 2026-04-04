@@ -383,7 +383,7 @@ In `~/.openclaw/openclaw.json`:
             "blendMode": "rrf",      // "rrf" | "score"
             "topN": 40,
             "rrfK": 60,
-            "minScoreSpread": 0.01,
+            "minScoreSpread": 0.5,
             "spark": {
               "baseUrl": "http://SPARK_HOST:18096/v1",
               "apiKey": "${SPARK_BEARER_TOKEN}",
@@ -434,11 +434,12 @@ In `~/.openclaw/openclaw.json`:
           },
 
           // Auto-recall (memory injection)
+          // Note: minScore default is 0.75 — 0.3 shown here for broad ingestion (lower threshold)
           "autoRecall": {
             "enabled": true,
             "agents": ["main", "dev", "meta"],
             "maxResults": 10,
-            "minScore": 0.3,
+            "minScore": 0.75,
             "maxInjectionTokens": 2000,
             "mmrLambda": 0.9,
             "temporalDecay": {
