@@ -1681,6 +1681,9 @@
 
     const W = () => canvas.offsetWidth;
     const H = () => canvas.offsetHeight;
+    
+    // Scale font size based on canvas height
+    const FS = (base) => Math.max(8, Math.floor(base * H() / 300));
 
     function getAnchorPoints() {
         const query = { x: W() * 0.08, y: H() * 0.5 };
@@ -1774,7 +1777,7 @@
             ctx.globalAlpha = 1;
 
             if (this.direction === 'back' && this.t > 0.25 && this.t < 0.75) {
-                ctx.font = '600 11px JetBrains Mono';
+                ctx.font = `600 ${FS(10)}px JetBrains Mono`;
                 ctx.fillStyle = this.pool.color;
                 ctx.textAlign = 'left';
                 const label = this.pool.bm25 ? 'BM25' : `x${this.pool.weightValue.toFixed(1)}`;
@@ -1793,12 +1796,12 @@
         ctx.stroke();
 
         ctx.fillStyle = COLORS.text;
-        ctx.font = '600 12px Inter';
+        ctx.font = `600 ${FS(11)}px Inter`;
         ctx.textAlign = 'center';
         ctx.fillText(title, x, y - 4);
 
         ctx.fillStyle = color;
-        ctx.font = '500 10px JetBrains Mono';
+        ctx.font = `500 ${FS(9)}px JetBrains Mono`;
         ctx.fillText(subtitle, x, y + 11);
     }
 
@@ -1808,20 +1811,21 @@
         ctx.fillRect(0, 0, W(), H());
 
         ctx.fillStyle = COLORS.muted;
-        ctx.font = '600 12px Inter';
+        ctx.font = `600 ${FS(10)}px Inter`;
         ctx.textAlign = 'left';
-        ctx.fillText('1) Query fan-out (parallel)', W() * 0.03, H() * 0.08);
-        ctx.fillText('2) Pool retrieval completes independently', W() * 0.35, H() * 0.08);
-        ctx.fillText('3) Weighting is applied on return (after search)', W() * 0.62, H() * 0.08);
+        ctx.fillText('Query fan-out →', W() * 0.03, H() * 0.08);
+        ctx.fillText('→ Weighted merge', W() * 0.55, H() * 0.08);
 
         pools.forEach((pool) => {
             drawPath(query, pool, COLORS.line, 0.55);
             drawPath(pool, merge, pool.color, 0.32);
-            drawNode(pool.x, pool.y, 140, 50, pool.color, pool.name, pool.bm25 ? 'BM25 search' : `weight ${pool.weight}`);
+            const nodeW = Math.max(100, Math.min(140, W() * 0.18));
+            const nodeH = Math.max(40, Math.min(50, H() * 0.12));
+            drawNode(pool.x, pool.y, nodeW, nodeH, pool.color, pool.name, pool.bm25 ? 'BM25' : `w ${pool.weight}`);
         });
 
-        drawNode(query.x, query.y, 108, 56, COLORS.normal, 'Query', 'incoming');
-        drawNode(merge.x, merge.y, 128, 56, '#ffffff', 'Merge', 'weighted results');
+        drawNode(query.x, query.y, 90, 46, COLORS.normal, 'Query', 'in');
+        drawNode(merge.x, merge.y, 100, 46, '#ffffff', 'Merge', 'results');
     }
 
     function spawnParallelCycle() {
@@ -1873,6 +1877,9 @@
     
     const W = () => canvas.offsetWidth;
     const H = () => canvas.offsetHeight;
+    
+    // Scale font size based on canvas height
+    const FS = (base) => Math.max(8, Math.floor(base * H() / 300));
 
     const COLORS = {
         confident: '#30d158',
@@ -1886,195 +1893,103 @@
 
     const scenarios = [
         {
-            label: 'Confident spread',
-            scores: [0.92, 0.81, 0.74, 0.69, 0.63],
-            decision: 'SKIP RERANKER',
+            label: 'Confident',
+            scores: [0.92, 0.81, 0.74],
+            decision: 'SKIP',
             rule: 'σ > 0.08',
             color: COLORS.confident,
-            explanation: 'Clear winner: vector search is already confident.'
         },
         {
-            label: 'Tied scores',
-            scores: [0.740, 0.735, 0.731, 0.728, 0.723],
-            decision: 'SKIP RERANKER',
+            label: 'Tied',
+            scores: [0.740, 0.735, 0.731],
+            decision: 'SKIP',
             rule: 'σ < 0.02',
             color: COLORS.tied,
-            explanation: 'Near tie: reranker is unlikely to add signal.'
         },
         {
-            label: 'Ambiguous middle zone',
-            scores: [0.82, 0.79, 0.77, 0.76, 0.75],
-            decision: 'RUN RERANKER',
-            rule: '0.02 <= σ <= 0.08',
+            label: 'Ambiguous',
+            scores: [0.82, 0.79, 0.77],
+            decision: 'RUN',
+            rule: '0.02-0.08',
             color: COLORS.ambiguous,
-            explanation: 'Close but not tied: cross-encoder can disambiguate.'
         }
     ];
 
-    const phaseDuration = 2200;
-    const cycleDuration = phaseDuration * 3;
+    const cycleDuration = 4000;
 
-    function clamp(v, min, max) {
-        return Math.max(min, Math.min(max, v));
-    }
-
-    function lerp(a, b, t) {
-        return a + (b - a) * t;
-    }
-
-    function drawAxes(left, top, width, height) {
-        ctx.strokeStyle = COLORS.line;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(left, top + height);
-        ctx.lineTo(left + width, top + height);
-        ctx.stroke();
-
-        ctx.fillStyle = COLORS.muted;
-        ctx.font = '500 11px Inter';
-        ctx.textAlign = 'center';
-        [0.6, 0.7, 0.8, 0.9].forEach((tick) => {
-            const x = left + ((tick - 0.6) / 0.32) * width;
-            ctx.fillText(tick.toFixed(1), x, top + height + 18);
-        });
-        ctx.fillText('candidate score', left + width / 2, top + height + 34);
-    }
-
-    function drawScenario(nowMs) {
-        const cycleIndex = Math.floor(nowMs / cycleDuration);
+    function drawFrame(ts) {
+        ctx.clearRect(0, 0, W(), H());
+        
+        const cycleIndex = Math.floor(ts / cycleDuration);
         const scenario = scenarios[cycleIndex % scenarios.length];
-        const local = nowMs % cycleDuration;
-
-        const phase = Math.floor(local / phaseDuration);
-        const phaseT = (local % phaseDuration) / phaseDuration;
-
-        const left = W() * 0.08;
-        const chartTop = H() * 0.28;
-        const chartWidth = W() * 0.56;
-        const chartHeight = H() * 0.42;
-        const decisionX = W() * 0.70;
-        const decisionY = H() * 0.26;
-        const decisionW = W() * 0.24;
-        const decisionH = H() * 0.52;
-
-        const maxScore = Math.max(...scenario.scores);
-        const minScore = Math.min(...scenario.scores);
-        const sigma = maxScore - minScore;
-
-        drawAxes(left, chartTop, chartWidth, chartHeight);
-
+        
+        // Title - smaller on mobile
+        ctx.font = `600 ${FS(13)}px Inter`;
         ctx.fillStyle = COLORS.text;
-        ctx.font = '600 14px Inter';
-        ctx.textAlign = 'left';
-        ctx.fillText('Input: candidate results with vector scores', left, H() * 0.12);
-
-        const revealCount = phase === 0
-            ? Math.max(1, Math.floor(lerp(1, scenario.scores.length + 0.999, phaseT)))
-            : scenario.scores.length;
-
-        scenario.scores.forEach((score, i) => {
-            if (i >= revealCount) return;
-            const y = chartTop + (i + 1) * (chartHeight / (scenario.scores.length + 1));
-            const x = left + ((score - 0.6) / 0.32) * chartWidth;
-
-            ctx.fillStyle = COLORS.muted;
-            ctx.font = '500 12px JetBrains Mono';
-            ctx.textAlign = 'left';
-            ctx.fillText(`c${i + 1}`, left - 28, y + 4);
-
-            ctx.beginPath();
-            ctx.arc(x, y, 6, 0, Math.PI * 2);
-            ctx.fillStyle = scenario.color;
-            ctx.fill();
-
-            ctx.fillStyle = COLORS.text;
-            ctx.textAlign = 'left';
-            ctx.fillText(score.toFixed(3), x + 12, y + 4);
-        });
-
+        ctx.textAlign = 'center';
+        ctx.fillText(`Gate: ${scenario.label}`, W() / 2, H() * 0.15);
+        
+        // Scores - compact layout
+        const barStartY = H() * 0.30;
+        const barHeight = H() * 0.08;
+        const barSpacing = H() * 0.12;
+        const maxBarWidth = W() * 0.55;
+        
+        ctx.font = `500 ${FS(10)}px JetBrains Mono`;
         ctx.fillStyle = COLORS.muted;
-        ctx.font = '500 12px Inter';
         ctx.textAlign = 'left';
-        ctx.fillText(`Scenario: ${scenario.label}`, left, H() * 0.18);
-
-        if (phase >= 1) {
-            const maxX = left + ((maxScore - 0.6) / 0.32) * chartWidth;
-            const minX = left + ((minScore - 0.6) / 0.32) * chartWidth;
-            const spreadY = chartTop + chartHeight + 52;
-            const spreadProgress = phase === 1 ? clamp(phaseT * 1.2, 0, 1) : 1;
-
-            ctx.strokeStyle = scenario.color;
-            ctx.lineWidth = 3;
-            ctx.beginPath();
-            ctx.moveTo(minX, spreadY);
-            ctx.lineTo(lerp(minX, maxX, spreadProgress), spreadY);
-            ctx.stroke();
-
+        ctx.fillText('Scores:', W() * 0.08, H() * 0.25);
+        
+        scenario.scores.forEach((score, i) => {
+            const y = barStartY + i * barSpacing;
+            const barWidth = (score - 0.6) / 0.35 * maxBarWidth;
+            
+            // Score bar
             ctx.fillStyle = scenario.color;
-            ctx.font = '600 13px JetBrains Mono';
-            ctx.textAlign = 'left';
-            ctx.fillText(`σ = max - min = ${maxScore.toFixed(3)} - ${minScore.toFixed(3)} = ${sigma.toFixed(3)}`, left, spreadY - 12);
-        }
-
+            ctx.globalAlpha = 0.7;
+            ctx.fillRect(W() * 0.08, y, barWidth, barHeight);
+            ctx.globalAlpha = 1;
+            
+            // Score label
+            ctx.font = `500 ${FS(9)}px JetBrains Mono`;
+            ctx.fillStyle = COLORS.text;
+            ctx.fillText(score.toFixed(2), W() * 0.08 + barWidth + 8, y + barHeight * 0.7);
+        });
+        
+        // Decision box - right side
+        const boxX = W() * 0.70;
+        const boxY = H() * 0.25;
+        const boxW = W() * 0.25;
+        const boxH = H() * 0.45;
+        
         ctx.fillStyle = COLORS.card;
-        ctx.strokeStyle = 'rgba(148,163,184,0.35)';
-        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = scenario.color;
+        ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.roundRect(decisionX, decisionY, decisionW, decisionH, 10);
+        ctx.roundRect(boxX, boxY, boxW, boxH, 8);
         ctx.fill();
         ctx.stroke();
-
-        ctx.fillStyle = COLORS.text;
-        ctx.font = '600 13px Inter';
-        ctx.textAlign = 'left';
-        ctx.fillText('Gate Decision', decisionX + 14, decisionY + 24);
-
-        ctx.font = '500 12px JetBrains Mono';
+        
+        ctx.font = `700 ${FS(14)}px Inter`;
+        ctx.fillStyle = scenario.color;
+        ctx.textAlign = 'center';
+        ctx.fillText(scenario.decision, boxX + boxW / 2, boxY + H() * 0.15);
+        
+        ctx.font = `500 ${FS(9)}px JetBrains Mono`;
         ctx.fillStyle = COLORS.muted;
-        ctx.fillText('Rule check:', decisionX + 14, decisionY + 50);
-        ctx.fillText('σ > 0.08  -> SKIP', decisionX + 14, decisionY + 70);
-        ctx.fillText('σ < 0.02  -> SKIP', decisionX + 14, decisionY + 90);
-        ctx.fillText('else           -> RUN', decisionX + 14, decisionY + 110);
-
-        if (phase >= 2) {
-            const pulse = 0.75 + 0.25 * Math.sin(nowMs / 180);
-            ctx.globalAlpha = pulse;
-            ctx.fillStyle = scenario.color;
-            ctx.font = '700 16px Inter';
-            ctx.fillText(scenario.decision, decisionX + 14, decisionY + 156);
-            ctx.globalAlpha = 1;
-
-            ctx.fillStyle = scenario.color;
-            ctx.font = '600 12px JetBrains Mono';
-            ctx.fillText(`Condition: ${scenario.rule}`, decisionX + 14, decisionY + 182);
-
-            ctx.fillStyle = COLORS.text;
-            ctx.font = '500 12px Inter';
-            ctx.fillText(scenario.explanation, decisionX + 14, decisionY + 208);
-        } else {
-            ctx.fillStyle = COLORS.muted;
-            ctx.font = '500 12px Inter';
-            ctx.fillText('Waiting for σ calculation...', decisionX + 14, decisionY + 156);
-        }
-
-        const stepText = phase === 0
-            ? 'Step 1: Gather top-k candidates from vector search.'
-            : phase === 1
-            ? 'Step 2: Compute spread σ = max_score - min_score.'
-            : 'Step 3: Apply thresholds and decide SKIP vs RUN.';
-        ctx.fillStyle = COLORS.text;
-        ctx.font = '600 13px Inter';
+        ctx.fillText(scenario.rule, boxX + boxW / 2, boxY + H() * 0.25);
+        
+        // σ formula at bottom
+        const sigma = Math.max(...scenario.scores) - Math.min(...scenario.scores);
+        ctx.font = `500 ${FS(10)}px JetBrains Mono`;
+        ctx.fillStyle = scenario.color;
         ctx.textAlign = 'left';
-        ctx.fillText(stepText, left, H() * 0.94);
+        ctx.fillText(`σ = ${sigma.toFixed(3)}`, W() * 0.08, H() * 0.90);
+        
+        requestAnimationFrame(drawFrame);
     }
-
-    function animate(ts) {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        drawScenario(ts);
-        requestAnimationFrame(animate);
-    }
-
-    requestAnimationFrame(animate);
+    
+    requestAnimationFrame(drawFrame);
 })();
 
 // Reranker Deep Dive Animation
