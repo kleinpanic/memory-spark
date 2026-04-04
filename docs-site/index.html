@@ -1,0 +1,670 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Memory-Spark — Intelligent RAG Pipeline</title>
+<meta name="description" content="Memory-Spark: A production-grade RAG pipeline with adaptive gating, reciprocal rank fusion, and confidence-aware retrieval.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg0:#0a0a0f;--bg1:#12121a;--bg2:#1a1a28;--bg-card:#16161f;
+  --bdr:#2a2a3a;--bdr2:#3a3a5a;
+  --t1:#e8e8f0;--t2:#9898b0;--t3:#6a6a80;
+  --blue:#6366f1;--purple:#a855f7;--cyan:#22d3ee;--green:#34d399;
+  --amber:#fbbf24;--red:#f87171;--pink:#ec4899;
+  --gl-blue:rgba(99,102,241,.15);--gl-purple:rgba(168,85,247,.12);
+  --sans:'Inter',system-ui,sans-serif;--mono:'JetBrains Mono',monospace;
+  --ease:cubic-bezier(.16,1,.3,1);--spring:cubic-bezier(.34,1.56,.64,1);
+}
+html{scroll-behavior:smooth}
+body{font-family:var(--sans);background:var(--bg0);color:var(--t1);line-height:1.7;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:var(--bg0)}::-webkit-scrollbar-thumb{background:var(--bdr);border-radius:3px}
+.container{max-width:1200px;margin:0 auto;padding:0 2rem}
+section{padding:7rem 0;position:relative}
+
+/* Reveals */
+.rv{opacity:0;transform:translateY(40px);transition:opacity .8s var(--ease),transform .8s var(--ease)}
+.rv.v{opacity:1;transform:translateY(0)}
+.rv-l{opacity:0;transform:translateX(-50px);transition:opacity .8s var(--ease),transform .8s var(--ease)}
+.rv-l.v{opacity:1;transform:translateX(0)}
+.rv-r{opacity:0;transform:translateX(50px);transition:opacity .8s var(--ease),transform .8s var(--ease)}
+.rv-r.v{opacity:1;transform:translateX(0)}
+.rv-s{opacity:0;transform:scale(.92);transition:opacity .8s var(--ease),transform .8s var(--ease)}
+.rv-s.v{opacity:1;transform:scale(1)}
+.d1{transition-delay:.1s}.d2{transition-delay:.2s}.d3{transition-delay:.3s}.d4{transition-delay:.4s}.d5{transition-delay:.5s}
+
+/* Nav */
+nav{position:fixed;top:0;left:0;right:0;z-index:100;padding:1rem 0;background:rgba(10,10,15,.8);backdrop-filter:blur(20px);border-bottom:1px solid transparent;transition:border-color .3s}
+nav.scrolled{border-bottom-color:var(--bdr)}
+nav .container{display:flex;justify-content:space-between;align-items:center}
+.nav-logo{font-size:1.2rem;font-weight:700;color:var(--t1);text-decoration:none;display:flex;align-items:center;gap:.4rem}
+.nav-logo .spark{color:var(--amber);font-size:1.4rem}
+.nav-links{display:flex;gap:2rem;list-style:none}
+.nav-links a{color:var(--t2);text-decoration:none;font-size:.88rem;font-weight:500;transition:color .2s}
+.nav-links a:hover{color:var(--t1)}
+.nav-cta{background:var(--blue)!important;color:#fff!important;padding:.45rem 1.1rem;border-radius:8px;font-weight:600}
+.menu-btn{display:none;background:none;border:none;color:var(--t1);font-size:1.5rem;cursor:pointer}
+
+/* Hero */
+#hero{min-height:100vh;display:flex;align-items:center;padding-top:5rem;overflow:hidden}
+#hero::before{content:'';position:absolute;inset:-40%;background:radial-gradient(ellipse at 30% 20%,var(--gl-blue) 0%,transparent 50%),radial-gradient(ellipse at 70% 60%,var(--gl-purple) 0%,transparent 50%);pointer-events:none;animation:hglow 8s ease-in-out infinite alternate}
+@keyframes hglow{0%{opacity:.6;transform:scale(1)}100%{opacity:1;transform:scale(1.05)}}
+.hero-c{position:relative;z-index:1;text-align:center;max-width:880px;margin:0 auto}
+.badge{display:inline-flex;align-items:center;gap:.5rem;padding:.35rem 1rem;background:var(--bg2);border:1px solid var(--bdr);border-radius:100px;font-size:.82rem;color:var(--t2);margin-bottom:2rem}
+.badge .dot{width:6px;height:6px;background:var(--green);border-radius:50%;animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+h1{font-size:clamp(2.6rem,6vw,4.2rem);font-weight:800;line-height:1.1;letter-spacing:-.03em;margin-bottom:1.5rem}
+.gr{background:linear-gradient(135deg,var(--blue),var(--purple),var(--cyan));-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
+.hero-sub{font-size:1.2rem;color:var(--t2);max-width:640px;margin:0 auto 2.5rem;line-height:1.8}
+.hero-actions{display:flex;gap:1rem;justify-content:center;flex-wrap:wrap}
+.btn{display:inline-flex;align-items:center;gap:.5rem;padding:.8rem 1.8rem;border-radius:12px;font-size:.95rem;font-weight:600;text-decoration:none;transition:all .3s var(--ease);cursor:pointer;border:none;font-family:var(--sans)}
+.btn-p{background:var(--blue);color:#fff;box-shadow:0 4px 20px rgba(99,102,241,.3)}
+.btn-p:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(99,102,241,.4)}
+.btn-s{background:var(--bg2);color:var(--t1);border:1px solid var(--bdr)}
+.btn-s:hover{border-color:var(--bdr2);transform:translateY(-2px)}
+.scroll-hint{position:absolute;bottom:2rem;left:50%;transform:translateX(-50%);color:var(--t3);font-size:.82rem;display:flex;flex-direction:column;align-items:center;gap:.4rem;animation:bob 2s ease-in-out infinite}
+@keyframes bob{0%,100%{transform:translateX(-50%) translateY(0)}50%{transform:translateX(-50%) translateY(8px)}}
+
+/* Section common */
+.slbl{font-size:.78rem;font-weight:600;text-transform:uppercase;letter-spacing:.15em;color:var(--blue);margin-bottom:.8rem}
+.stitle{font-size:clamp(1.8rem,4vw,2.8rem);font-weight:700;line-height:1.2;letter-spacing:-.02em;margin-bottom:1.5rem}
+.sdesc{font-size:1.05rem;color:var(--t2);max-width:680px;line-height:1.8;margin-bottom:3.5rem}
+
+/* Problem */
+#problem{background:var(--bg1);border-top:1px solid var(--bdr);border-bottom:1px solid var(--bdr)}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem}
+.pcard{background:var(--bg-card);border:1px solid var(--bdr);border-radius:16px;padding:2rem;transition:all .3s var(--ease);position:relative;overflow:hidden}
+.pcard::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:linear-gradient(90deg,var(--red),var(--amber));opacity:0;transition:opacity .3s}
+.pcard:hover{border-color:var(--bdr2);transform:translateY(-4px)}.pcard:hover::before{opacity:1}
+.pcard .ico{font-size:1.8rem;margin-bottom:.8rem}
+.pcard h3{font-size:1.1rem;font-weight:600;margin-bottom:.6rem}
+.pcard p{color:var(--t2);font-size:.9rem;line-height:1.7}
+
+/* Solution */
+.sol-intro{text-align:center;margin-bottom:4rem}
+.sol-intro .sdesc{margin-left:auto;margin-right:auto}
+
+/* Pipeline */
+.pipe-wrap{background:var(--bg-card);border:1px solid var(--bdr);border-radius:20px;padding:2.5rem 1.5rem;position:relative;overflow:hidden}
+.pipe-wrap::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,var(--gl-blue) 0%,transparent 60%);pointer-events:none}
+.pipe-title{text-align:center;font-family:var(--mono);font-size:.8rem;color:var(--t3);margin-bottom:2rem;position:relative}
+.pipe-flow{display:flex;align-items:center;justify-content:center;gap:0;flex-wrap:wrap;position:relative}
+.pstage{display:flex;flex-direction:column;align-items:center;gap:.4rem;opacity:0;transform:translateY(20px) scale(.9);transition:all .6s var(--spring)}
+.pstage.on{opacity:1;transform:translateY(0) scale(1)}
+.pstage.lit .sbox{border-color:var(--blue);box-shadow:0 0 20px var(--gl-blue)}
+.sbox{width:100px;height:100px;background:var(--bg2);border:2px solid var(--bdr);border-radius:14px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:.25rem;transition:all .4s var(--ease)}
+.sbox .si{font-size:1.7rem}
+.sbox .sl{font-size:.65rem;font-weight:600;text-transform:uppercase;letter-spacing:.08em;color:var(--t2)}
+.parr{font-size:1.3rem;color:var(--t3);margin:0 .4rem;opacity:0;transition:opacity .4s,color .4s}.parr.on{opacity:1}.parr.lit{color:var(--blue)}
+.pdlbl{font-family:var(--mono);font-size:.6rem;color:var(--t3);margin-top:.2rem;transition:color .3s}
+.pstage.lit .pdlbl{color:var(--cyan)}
+
+/* Context Window */
+#context{background:var(--bg1);border-top:1px solid var(--bdr);border-bottom:1px solid var(--bdr)}
+.ctx-layout{display:grid;grid-template-columns:1fr 1fr;gap:3rem;align-items:start}
+.ctx-text h3{font-size:1.4rem;font-weight:700;margin-bottom:1rem}
+.ctx-text p{color:var(--t2);line-height:1.8;margin-bottom:1rem}
+.ctx-win{background:var(--bg-card);border:1px solid var(--bdr);border-radius:16px;overflow:hidden}
+.ctx-hdr{display:flex;justify-content:space-between;align-items:center;padding:.8rem 1.2rem;border-bottom:1px solid var(--bdr);background:var(--bg2)}
+.ctx-hdr-t{font-family:var(--mono);font-size:.75rem;color:var(--t2)}
+.tok-bar{display:flex;align-items:center;gap:.4rem}
+.tok-track{width:90px;height:5px;background:var(--bg0);border-radius:3px;overflow:hidden}
+.tok-fill{height:100%;background:linear-gradient(90deg,var(--green),var(--blue));border-radius:3px;width:0%;transition:width 1.5s var(--ease)}
+.tok-lbl{font-family:var(--mono);font-size:.65rem;color:var(--t3)}
+.ctx-msgs{padding:1rem 1.2rem;display:flex;flex-direction:column;gap:.6rem;min-height:300px}
+.cm{padding:.65rem .9rem;border-radius:10px;font-size:.82rem;line-height:1.6;opacity:0;transform:translateY(10px);transition:all .5s var(--ease)}
+.cm.v{opacity:1;transform:translateY(0)}
+.cm.u{background:var(--bg2);border:1px solid var(--bdr);align-self:flex-end;max-width:85%}
+.cm.a{background:rgba(99,102,241,.08);border:1px solid rgba(99,102,241,.15);align-self:flex-start;max-width:85%}
+.cm.r{background:rgba(34,211,238,.06);border:1px solid rgba(34,211,238,.15);font-family:var(--mono);font-size:.75rem;position:relative}
+.cm.r::before{content:'⚡ Retrieved';display:block;font-size:.6rem;font-weight:600;color:var(--cyan);margin-bottom:.25rem;text-transform:uppercase;letter-spacing:.1em}
+.cm .tag{display:inline-block;font-size:.6rem;font-weight:600;padding:.1rem .35rem;border-radius:4px;margin-right:.25rem}
+.tag-u{background:rgba(168,85,247,.15);color:var(--purple)}
+.tag-s{background:rgba(99,102,241,.15);color:var(--blue)}
+
+/* Score Distribution */
+.sc-layout{display:grid;grid-template-columns:1fr 1fr;gap:3.5rem;align-items:center}
+.sc-chart{background:var(--bg-card);border:1px solid var(--bdr);border-radius:16px;padding:2rem}
+.sc-chart-t{font-family:var(--mono);font-size:.75rem;color:var(--t3);margin-bottom:1.2rem;text-align:center}
+.sc-bars{display:flex;flex-direction:column;gap:.6rem}
+.sb-row{display:flex;align-items:center;gap:.6rem}
+.sb-lbl{font-family:var(--mono);font-size:.68rem;color:var(--t2);width:85px;text-align:right;flex-shrink:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sb-track{flex:1;height:22px;background:var(--bg0);border-radius:5px;overflow:hidden}
+.sb-fill{height:100%;border-radius:5px;width:0%;transition:width 1.2s var(--ease);display:flex;align-items:center;justify-content:flex-end;padding-right:6px}
+.sb-val{font-family:var(--mono);font-size:.65rem;font-weight:600;color:#fff;opacity:0;transition:opacity .4s 1s}
+.sb-row.v .sb-val{opacity:1}
+.sb-hi{background:linear-gradient(90deg,var(--green),#4ade80)}
+.sb-mid{background:linear-gradient(90deg,var(--amber),#facc15)}
+.sb-lo{background:linear-gradient(90deg,var(--red),#fb923c)}
+.sigma{display:inline-flex;align-items:center;gap:.25rem;padding:.25rem .6rem;background:var(--bg2);border:1px solid var(--bdr);border-radius:8px;font-family:var(--mono);font-size:.75rem;color:var(--cyan);margin-top:1rem}
+.sc-text h3{font-size:1.4rem;font-weight:700;margin-bottom:1rem}
+.sc-text p{color:var(--t2);line-height:1.8;margin-bottom:1rem}
+.hl{color:var(--cyan);font-weight:600}
+
+/* RRF Fusion */
+#fusion{background:var(--bg1);border-top:1px solid var(--bdr);border-bottom:1px solid var(--bdr)}
+.fus-vis{display:flex;align-items:flex-start;justify-content:center;gap:2rem;margin-top:2.5rem;flex-wrap:wrap}
+.fus-col{display:flex;flex-direction:column;gap:.6rem;min-width:210px}
+.fus-col-t{font-family:var(--mono);font-size:.7rem;font-weight:600;text-transform:uppercase;letter-spacing:.1em;color:var(--t3);margin-bottom:.4rem;text-align:center}
+.fi{padding:.65rem 1rem;background:var(--bg-card);border:1px solid var(--bdr);border-radius:10px;font-size:.78rem;display:flex;justify-content:space-between;align-items:center;opacity:0;transition:all .5s var(--ease)}
+.fi.v{opacity:1}
+.fi .rk{font-family:var(--mono);font-weight:600;font-size:.7rem}
+.fi.vec{border-left:3px solid var(--purple)}.fi.vec .rk{color:var(--purple)}
+.fi.fts{border-left:3px solid var(--amber)}.fi.fts .rk{color:var(--amber)}
+.fi.mrg{border-left:3px solid var(--green)}.fi.mrg .rk{color:var(--green)}
+.fus-arrows{display:flex;flex-direction:column;align-items:center;gap:.4rem;color:var(--t3);font-size:1.3rem;padding-top:2rem;opacity:0;transition:opacity .6s var(--ease)}
+.fus-arrows.v{opacity:1}
+.fus-arrows .formula{font-family:var(--mono);font-size:.6rem;color:var(--cyan);text-align:center;line-height:1.4}
+
+/* Gate Logic */
+.gate-vis{margin-top:2.5rem}
+.gate-tree{display:flex;flex-direction:column;align-items:center;gap:1.2rem}
+.gnode{background:var(--bg-card);border:2px solid var(--bdr);border-radius:14px;padding:1.1rem 1.8rem;text-align:center;max-width:380px;width:100%;opacity:0;transform:scale(.9);transition:all .6s var(--spring)}
+.gnode.v{opacity:1;transform:scale(1)}
+.gnode.decision{border-color:var(--amber);background:rgba(251,191,36,.04)}
+.gnode.yes{border-color:var(--green);background:rgba(52,211,153,.04)}
+.gnode.no{border-color:var(--red);background:rgba(248,113,113,.04)}
+.gnode .gi{font-size:1.4rem;margin-bottom:.4rem}
+.gnode h4{font-size:.95rem;font-weight:600;margin-bottom:.3rem}
+.gnode p{font-size:.78rem;color:var(--t2);line-height:1.5}
+.gate-connector{width:2px;height:30px;background:var(--bdr);opacity:0;transition:opacity .4s .3s}
+.gate-connector.v{opacity:1}
+.gate-branches{display:flex;gap:2rem;justify-content:center;flex-wrap:wrap}
+
+/* Results */
+.results-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:1.5rem;margin-top:3rem}
+.rcard{background:var(--bg-card);border:1px solid var(--bdr);border-radius:16px;padding:2rem;text-align:center;transition:all .3s var(--ease)}
+.rcard:hover{border-color:var(--bdr2);transform:translateY(-4px)}
+.rcard .rnum{font-size:2.4rem;font-weight:800;margin-bottom:.4rem}
+.rcard .rlbl{font-size:.85rem;color:var(--t2)}
+.rcard:nth-child(1) .rnum{color:var(--green)}
+.rcard:nth-child(2) .rnum{color:var(--blue)}
+.rcard:nth-child(3) .rnum{color:var(--cyan)}
+.rcard:nth-child(4) .rnum{color:var(--purple)}
+
+/* CTA */
+#cta{text-align:center}
+.cta-box{background:var(--bg-card);border:1px solid var(--bdr);border-radius:24px;padding:4rem 2rem;position:relative;overflow:hidden}
+.cta-box::before{content:'';position:absolute;inset:0;background:radial-gradient(ellipse at 50% 100%,var(--gl-purple) 0%,transparent 60%);pointer-events:none}
+.cta-box>*{position:relative}
+.cta-box h2{font-size:clamp(1.8rem,3.5vw,2.5rem);font-weight:700;margin-bottom:1rem}
+.cta-box p{color:var(--t2);max-width:500px;margin:0 auto 2rem;font-size:1.05rem}
+
+/* Footer */
+footer{padding:3rem 0;border-top:1px solid var(--bdr);text-align:center}
+footer p{font-size:.82rem;color:var(--t3)}
+footer a{color:var(--t2);text-decoration:none}
+footer a:hover{color:var(--t1)}
+
+/* Install block */
+.install-block{background:var(--bg2);border:1px solid var(--bdr);border-radius:12px;padding:1rem 1.5rem;font-family:var(--mono);font-size:.85rem;color:var(--cyan);margin:2rem auto;max-width:500px;text-align:left;position:relative}
+.install-block .prompt{color:var(--t3);user-select:none}
+
+/* Mobile */
+@media(max-width:768px){
+  .nav-links{display:none}
+  .menu-btn{display:block}
+  .ctx-layout,.sc-layout{grid-template-columns:1fr}
+  .fus-vis{flex-direction:column;align-items:stretch}
+  .fus-arrows{flex-direction:row;padding-top:0}
+  .gate-branches{flex-direction:column;align-items:center}
+  .pipe-flow{gap:.5rem}
+  .sbox{width:75px;height:75px}
+  .sbox .si{font-size:1.3rem}
+  section{padding:4rem 0}
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav>
+  <div class="container">
+    <a href="#" class="nav-logo"><span class="spark">⚡</span> Memory-Spark</a>
+    <ul class="nav-links">
+      <li><a href="#problem">Problem</a></li>
+      <li><a href="#solution">Solution</a></li>
+      <li><a href="#pipeline">Pipeline</a></li>
+      <li><a href="#scores">Scoring</a></li>
+      <li><a href="#fusion">Fusion</a></li>
+      <li><a class="nav-cta" href="https://github.com/kleinpanic/memory-spark">GitHub</a></li>
+    </ul>
+    <button class="menu-btn" aria-label="Menu">☰</button>
+  </div>
+</nav>
+
+<!-- HERO -->
+<section id="hero">
+  <div class="container hero-c">
+    <div class="badge rv"><span class="dot"></span> Production-Grade RAG Pipeline</div>
+    <h1 class="rv d1">Don't Just Retrieve.<br><span class="gr">Retrieve Intelligently.</span></h1>
+    <p class="hero-sub rv d2">Vanilla RAG pipelines flood your context with irrelevant chunks. Memory-Spark uses adaptive gating, reciprocal rank fusion, and confidence-aware scoring to return only what matters.</p>
+    <div class="hero-actions rv d3">
+      <a href="https://github.com/kleinpanic/memory-spark" class="btn btn-p">⚡ Get Started</a>
+      <a href="#pipeline" class="btn btn-s">See How It Works →</a>
+    </div>
+  </div>
+  <div class="scroll-hint">scroll to explore <span class="arrow">↓</span></div>
+</section>
+
+<!-- PROBLEM -->
+<section id="problem">
+  <div class="container">
+    <div class="slbl rv">The Problem</div>
+    <h2 class="stitle rv d1">Vanilla RAG Is Broken</h2>
+    <p class="sdesc rv d2">Most retrieval-augmented generation pipelines suffer from fundamental design flaws that degrade response quality as your knowledge base grows.</p>
+    <div class="pgrid">
+      <div class="pcard rv d1">
+        <div class="ico">🗑️</div>
+        <h3>Context Pollution</h3>
+        <p>Top-k retrieval blindly includes low-relevance chunks, diluting the signal your LLM needs to reason accurately.</p>
+      </div>
+      <div class="pcard rv d2">
+        <div class="ico">🎯</div>
+        <h3>Single-Signal Ranking</h3>
+        <p>Relying on vector similarity alone misses lexical matches. Relying on keyword search alone misses semantic meaning.</p>
+      </div>
+      <div class="pcard rv d3">
+        <div class="ico">🔇</div>
+        <h3>No Confidence Awareness</h3>
+        <p>Without knowing how confident retrieval is, the pipeline can't decide whether to use results, fall back, or abstain.</p>
+      </div>
+      <div class="pcard rv d4">
+        <div class="ico">💸</div>
+        <h3>Wasted Tokens</h3>
+        <p>Sending irrelevant chunks to the LLM burns tokens and money. Worse, it can actively mislead the model into hallucination.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SOLUTION -->
+<section id="solution">
+  <div class="container">
+    <div class="sol-intro">
+      <div class="slbl rv">The Solution</div>
+      <h2 class="stitle rv d1">Retrieval That <span class="gr">Thinks Before It Speaks</span></h2>
+      <p class="sdesc rv d2">Memory-Spark is a multi-stage RAG pipeline that fuses vector and full-text search, gates results by confidence, and reranks for precision — all before a single token reaches your LLM.</p>
+    </div>
+
+    <!-- Pipeline Animation -->
+    <div id="pipeline" class="pipe-wrap rv-s">
+      <div class="pipe-title">memory-spark pipeline flow</div>
+      <div class="pipe-flow" id="pipelineFlow">
+        <div class="pstage" data-stage="0">
+          <div class="sbox"><div class="si">❓</div><div class="sl">Query</div></div>
+          <div class="pdlbl">"How does X work?"</div>
+        </div>
+        <div class="parr" data-arrow="0">→</div>
+        <div class="pstage" data-stage="1">
+          <div class="sbox"><div class="si">🔍</div><div class="sl">Retrieve</div></div>
+          <div class="pdlbl">vector + FTS</div>
+        </div>
+        <div class="parr" data-arrow="1">→</div>
+        <div class="pstage" data-stage="2">
+          <div class="sbox"><div class="si">🚦</div><div class="sl">Gate</div></div>
+          <div class="pdlbl">σ threshold</div>
+        </div>
+        <div class="parr" data-arrow="2">→</div>
+        <div class="pstage" data-stage="3">
+          <div class="sbox"><div class="si">🔀</div><div class="sl">Rerank</div></div>
+          <div class="pdlbl">RRF fusion</div>
+        </div>
+        <div class="parr" data-arrow="3">→</div>
+        <div class="pstage" data-stage="4">
+          <div class="sbox"><div class="si">✅</div><div class="sl">Return</div></div>
+          <div class="pdlbl">top-k filtered</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- CONTEXT WINDOW SIM -->
+<section id="context">
+  <div class="container">
+    <div class="ctx-layout">
+      <div class="ctx-text rv-l">
+        <div class="slbl">Context-Aware Retrieval</div>
+        <h3>Your Context Window, Supercharged</h3>
+        <p>Memory-Spark doesn't just dump chunks into your prompt. It retrieves contextually, scores confidence, and injects only high-value fragments — preserving your precious token budget.</p>
+        <p>Watch how a query flows through the pipeline: the system retrieves relevant memories, scores them, and injects only what passes the confidence gate.</p>
+      </div>
+      <div class="ctx-win rv-r" id="ctxWin">
+        <div class="ctx-hdr">
+          <span class="ctx-hdr-t">context window</span>
+          <div class="tok-bar">
+            <div class="tok-track"><div class="tok-fill" id="tokFill"></div></div>
+            <span class="tok-lbl" id="tokLbl">0 / 4,096</span>
+          </div>
+        </div>
+        <div class="ctx-msgs" id="ctxMsgs">
+          <div class="cm u" data-delay="0"><span class="tag tag-u">User</span> How does the adaptive gate work in Memory-Spark?</div>
+          <div class="cm r" data-delay="600">Gate uses confidence spread σ across top-k scores. When σ &lt; threshold, results are cohesive → pass. When σ is high, scores are scattered → gate filters or abstains.</div>
+          <div class="cm r" data-delay="1200">RRF fusion merges vector similarity rank with FTS keyword rank using 1/(k+rank). Cross-signal agreement boosts true positives.</div>
+          <div class="cm a" data-delay="1800"><span class="tag tag-s">Spark</span> The adaptive gate in Memory-Spark analyzes the confidence spread (σ) of retrieval scores. When results cluster tightly, they pass through. When scores are scattered, the gate applies stricter filtering…</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- SCORE DISTRIBUTION -->
+<section id="scores">
+  <div class="container">
+    <div class="sc-layout">
+      <div class="sc-chart rv-l" id="scoreChart">
+        <div class="sc-chart-t">retrieval score distribution</div>
+        <div class="sc-bars">
+          <div class="sb-row" data-w="92"><div class="sb-lbl">chunk_0x3a</div><div class="sb-track"><div class="sb-fill sb-hi"><span class="sb-val">0.92</span></div></div></div>
+          <div class="sb-row" data-w="87"><div class="sb-lbl">chunk_0x1f</div><div class="sb-track"><div class="sb-fill sb-hi"><span class="sb-val">0.87</span></div></div></div>
+          <div class="sb-row" data-w="84"><div class="sb-lbl">chunk_0x7c</div><div class="sb-track"><div class="sb-fill sb-hi"><span class="sb-val">0.84</span></div></div></div>
+          <div class="sb-row" data-w="61"><div class="sb-lbl">chunk_0x2b</div><div class="sb-track"><div class="sb-fill sb-mid"><span class="sb-val">0.61</span></div></div></div>
+          <div class="sb-row" data-w="45"><div class="sb-lbl">chunk_0x9e</div><div class="sb-track"><div class="sb-fill sb-mid"><span class="sb-val">0.45</span></div></div></div>
+          <div class="sb-row" data-w="23"><div class="sb-lbl">chunk_0x4d</div><div class="sb-track"><div class="sb-fill sb-lo"><span class="sb-val">0.23</span></div></div></div>
+          <div class="sb-row" data-w="12"><div class="sb-lbl">chunk_0xf1</div><div class="sb-track"><div class="sb-fill sb-lo"><span class="sb-val">0.12</span></div></div></div>
+        </div>
+        <div class="sigma">σ = 0.31 — <span style="color:var(--amber);margin-left:.3rem">moderate spread, gate filters bottom 4</span></div>
+      </div>
+      <div class="sc-text rv-r">
+        <div class="slbl">Confidence Scoring</div>
+        <h3>Know When to Trust Your Results</h3>
+        <p>Memory-Spark computes the <span class="hl">standard deviation (σ)</span> across retrieval scores for every query. This single metric tells the pipeline how cohesive the results are.</p>
+        <p><span class="hl">Low σ</span> means tight clustering — all results agree, high confidence. <span class="hl">High σ</span> means scattered scores — some good, some noise. The gate uses this to decide what passes through.</p>
+        <p>The result: only chunks above the confidence threshold reach your LLM. No more context pollution.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- RRF FUSION -->
+<section id="fusion">
+  <div class="container">
+    <div class="sol-intro">
+      <div class="slbl rv">Reciprocal Rank Fusion</div>
+      <h2 class="stitle rv d1">Two Signals, <span class="gr">One Truth</span></h2>
+      <p class="sdesc rv d2">Vector similarity captures meaning. Full-text search captures exact terms. RRF fuses both ranking signals into a single, stronger ordering.</p>
+    </div>
+    <div class="fus-vis" id="fusionVis">
+      <div class="fus-col">
+        <div class="fus-col-t">🟣 Vector Search</div>
+        <div class="fi vec" data-delay="0"><span>Adaptive gating docs</span><span class="rk">#1</span></div>
+        <div class="fi vec" data-delay="100"><span>Pipeline architecture</span><span class="rk">#2</span></div>
+        <div class="fi vec" data-delay="200"><span>Score normalization</span><span class="rk">#3</span></div>
+        <div class="fi vec" data-delay="300"><span>Context management</span><span class="rk">#4</span></div>
+        <div class="fi vec" data-delay="400"><span>Token budgeting</span><span class="rk">#5</span></div>
+      </div>
+      <div class="fus-arrows" id="fusArrows">
+        <div>→</div>
+        <div class="formula">RRF(d) = Σ 1/(k + r)<br>k = 60</div>
+        <div>←</div>
+      </div>
+      <div class="fus-col">
+        <div class="fus-col-t">🟡 Full-Text Search</div>
+        <div class="fi fts" data-delay="0"><span>Pipeline architecture</span><span class="rk">#1</span></div>
+        <div class="fi fts" data-delay="100"><span>Adaptive gating docs</span><span class="rk">#2</span></div>
+        <div class="fi fts" data-delay="200"><span>Reranking strategies</span><span class="rk">#3</span></div>
+        <div class="fi fts" data-delay="300"><span>Score normalization</span><span class="rk">#4</span></div>
+        <div class="fi fts" data-delay="400"><span>Embedding models</span><span class="rk">#5</span></div>
+      </div>
+    </div>
+    <div style="text-align:center;margin-top:2rem">
+      <div class="fus-col" style="display:inline-flex;min-width:260px" id="fusResult">
+        <div class="fus-col-t">🟢 Fused Result</div>
+        <div class="fi mrg" data-delay="800"><span>Adaptive gating docs</span><span class="rk">0.033</span></div>
+        <div class="fi mrg" data-delay="900"><span>Pipeline architecture</span><span class="rk">0.033</span></div>
+        <div class="fi mrg" data-delay="1000"><span>Score normalization</span><span class="rk">0.031</span></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- GATE LOGIC -->
+<section id="gate">
+  <div class="container">
+    <div class="sol-intro">
+      <div class="slbl rv">Adaptive Gating</div>
+      <h2 class="stitle rv d1">The Decision Tree</h2>
+      <p class="sdesc rv d2">Every retrieval pass is evaluated by the gate — a lightweight decision layer that determines whether results are trustworthy enough to inject into context.</p>
+    </div>
+    <div class="gate-vis">
+      <div class="gate-tree" id="gateTree">
+        <div class="gnode decision rv-s"><div class="gi">🚦</div><h4>Compute σ across top-k scores</h4><p>Standard deviation of retrieval confidence scores</p></div>
+        <div class="gate-connector rv-s d1"></div>
+        <div class="gnode decision rv-s d2"><div class="gi">📊</div><h4>σ &lt; threshold?</h4><p>Is the score spread tight enough to trust?</p></div>
+        <div class="gate-connector rv-s d3"></div>
+        <div class="gate-branches">
+          <div>
+            <div class="gnode yes rv-s d3"><div class="gi">✅</div><h4>PASS — Inject Results</h4><p>Scores cluster tightly. High agreement across chunks. Safe to inject top-k into context.</p></div>
+          </div>
+          <div>
+            <div class="gnode no rv-s d4"><div class="gi">🚫</div><h4>FILTER — Drop Low Scores</h4><p>Scores are scattered. Remove chunks below dynamic cutoff. Only highest-confidence fragments pass.</p></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- RESULTS -->
+<section id="results">
+  <div class="container">
+    <div class="sol-intro">
+      <div class="slbl rv">The Results</div>
+      <h2 class="stitle rv d1">By the Numbers</h2>
+      <p class="sdesc rv d2">Memory-Spark delivers measurably better retrieval quality while reducing token waste and latency.</p>
+    </div>
+    <div class="results-grid">
+      <div class="rcard rv d1"><div class="rnum" data-count="79">0</div><div class="rlbl">NDCG @ 10 %</div></div>
+      <div class="rcard rv d2"><div class="rnum" data-count="78">0</div><div class="rlbl">Skip Rate %</div></div>
+      <div class="rcard rv d3"><div class="rnum" data-count="15">0</div><div class="rlbl">Pipeline Stages</div></div>
+      <div class="rcard rv d4"><div class="rnum" data-count="626">0</div><div class="rlbl">ms p50 Latency</div></div>
+    </div>
+  </div>
+</section>
+
+<!-- CTA -->
+<section id="cta">
+  <div class="container">
+    <div class="cta-box rv-s">
+      <div class="slbl">Get Started</div>
+      <h2>Add Memory-Spark to Your Stack</h2>
+      <p>Drop-in RAG pipeline. TypeScript/Node.js. Zero external dependencies beyond your embedding provider.</p>
+      <div class="install-block">
+        <span class="prompt">$</span> git clone https://github.com/kleinpanic/memory-spark.git
+      </div>
+      <div class="hero-actions" style="margin-top:1.5rem">
+        <a href="https://github.com/kleinpanic/memory-spark" class="btn btn-p">⚡ View on GitHub</a>
+        <a href="https://github.com/kleinpanic/memory-spark#readme" class="btn btn-s">Read the Docs →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div class="container">
+    <p>Built by <a href="https://github.com/kleinpanic">kleinpanic</a> · Memory-Spark is open source under MIT</p>
+  </div>
+</footer>
+
+<script>
+// ============================================
+// INTERSECTION OBSERVER — Scroll Reveals
+// ============================================
+const revealEls = document.querySelectorAll('.rv,.rv-l,.rv-r,.rv-s,.gnode,.gate-connector');
+const revealObs = new IntersectionObserver((entries) => {
+  entries.forEach(e => { if (e.isIntersecting) { e.target.classList.add('v'); revealObs.unobserve(e.target); } });
+}, { threshold: 0.15, rootMargin: '0px 0px -60px 0px' });
+revealEls.forEach(el => revealObs.observe(el));
+
+// ============================================
+// NAV SCROLL
+// ============================================
+const nav = document.querySelector('nav');
+window.addEventListener('scroll', () => {
+  nav.classList.toggle('scrolled', window.scrollY > 50);
+}, { passive: true });
+
+// ============================================
+// PIPELINE ANIMATION
+// ============================================
+let pipeAnimated = false;
+const pipeObs = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting && !pipeAnimated) {
+      pipeAnimated = true;
+      animatePipeline();
+      pipeObs.unobserve(e.target);
+    }
+  });
+}, { threshold: 0.3 });
+pipeObs.observe(document.getElementById('pipelineFlow'));
+
+function animatePipeline() {
+  const stages = document.querySelectorAll('.pstage');
+  const arrows = document.querySelectorAll('.parr');
+  let delay = 0;
+  stages.forEach((s, i) => {
+    setTimeout(() => {
+      s.classList.add('on');
+      setTimeout(() => s.classList.add('lit'), 300);
+      setTimeout(() => s.classList.remove('lit'), 1200);
+    }, delay);
+    if (arrows[i]) {
+      setTimeout(() => {
+        arrows[i].classList.add('on');
+        setTimeout(() => arrows[i].classList.add('lit'), 100);
+        setTimeout(() => arrows[i].classList.remove('lit'), 800);
+      }, delay + 300);
+    }
+    delay += 500;
+  });
+  // Loop the lit effect
+  setInterval(() => {
+    let d = 0;
+    stages.forEach((s, i) => {
+      setTimeout(() => {
+        s.classList.add('lit');
+        setTimeout(() => s.classList.remove('lit'), 800);
+      }, d);
+      if (arrows[i]) {
+        setTimeout(() => {
+          arrows[i].classList.add('lit');
+          setTimeout(() => arrows[i].classList.remove('lit'), 600);
+        }, d + 200);
+      }
+      d += 400;
+    });
+  }, 4000);
+}
+
+// ============================================
+// CONTEXT WINDOW SIMULATION
+// ============================================
+let ctxAnimated = false;
+const ctxObs = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting && !ctxAnimated) {
+      ctxAnimated = true;
+      animateContext();
+      ctxObs.unobserve(e.target);
+    }
+  });
+}, { threshold: 0.3 });
+ctxObs.observe(document.getElementById('ctxWin'));
+
+function animateContext() {
+  const msgs = document.querySelectorAll('.cm');
+  const fill = document.getElementById('tokFill');
+  const lbl = document.getElementById('tokLbl');
+  const tokens = [820, 1640, 2460, 3280];
+  msgs.forEach((m, i) => {
+    const d = parseInt(m.dataset.delay) || 0;
+    setTimeout(() => {
+      m.classList.add('v');
+      fill.style.width = ((tokens[i] / 4096) * 100) + '%';
+      lbl.textContent = tokens[i].toLocaleString() + ' / 4,096';
+    }, d);
+  });
+}
+
+// ============================================
+// SCORE BARS
+// ============================================
+let scAnimated = false;
+const scObs = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting && !scAnimated) {
+      scAnimated = true;
+      animateScores();
+      scObs.unobserve(e.target);
+    }
+  });
+}, { threshold: 0.3 });
+scObs.observe(document.getElementById('scoreChart'));
+
+function animateScores() {
+  document.querySelectorAll('.sb-row').forEach((row, i) => {
+    setTimeout(() => {
+      const w = row.dataset.w;
+      row.querySelector('.sb-fill').style.width = w + '%';
+      row.classList.add('v');
+    }, i * 150);
+  });
+}
+
+// ============================================
+// FUSION ANIMATION
+// ============================================
+let fusAnimated = false;
+const fusObs = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting && !fusAnimated) {
+      fusAnimated = true;
+      animateFusion();
+      fusObs.unobserve(e.target);
+    }
+  });
+}, { threshold: 0.2 });
+fusObs.observe(document.getElementById('fusionVis'));
+
+function animateFusion() {
+  document.querySelectorAll('#fusionVis .fi, #fusResult .fi').forEach(fi => {
+    const d = parseInt(fi.dataset.delay) || 0;
+    setTimeout(() => fi.classList.add('v'), d);
+  });
+  setTimeout(() => document.getElementById('fusArrows').classList.add('v'), 500);
+}
+
+// ============================================
+// RESULTS COUNTER
+// ============================================
+let resAnimated = false;
+const resObs = new IntersectionObserver((entries) => {
+  entries.forEach(e => {
+    if (e.isIntersecting && !resAnimated) {
+      resAnimated = true;
+      document.querySelectorAll('.rnum').forEach(el => {
+        const target = parseInt(el.dataset.count);
+        const suffix = el.closest('.rcard').querySelector('.rlbl').textContent.includes('%') ? '%' : '';
+        let current = 0;
+        const step = Math.max(1, Math.floor(target / 40));
+        const interval = setInterval(() => {
+          current += step;
+          if (current >= target) { current = target; clearInterval(interval); }
+          el.textContent = current + suffix;
+        }, 30);
+      });
+      resObs.unobserve(e.target);
+    }
+  });
+}, { threshold: 0.3 });
+resObs.observe(document.querySelector('.results-grid'));
+</script>
+</body>
+</html>
