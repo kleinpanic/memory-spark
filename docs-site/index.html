@@ -1699,7 +1699,7 @@
 
     function getAnchorPoints() {
         const query = { x: W() * 0.08, y: H() * 0.5 };
-        const merge = { x: W() * 0.9, y: H() * 0.5 };
+        const merge = { x: W() * 0.9, y: H() * 0.62 };
         const baseX = W() * 0.45;
         const topY = H() * 0.26;
         const rowGap = H() * 0.22;
@@ -1938,45 +1938,49 @@
         const cycleIndex = Math.floor(ts / cycleDuration);
         const scenario = scenarios[cycleIndex % scenarios.length];
         
-        // Title - smaller on mobile
-        ctx.font = `600 ${FS(13)}px Inter`;
+        const titleSize = Math.max(12, FS(13));
+        const labelSize = Math.max(10, FS(10));
+        const smallSize = Math.max(9, FS(9));
+
+        // Title
+        ctx.font = `600 ${titleSize}px sans-serif`;
         ctx.fillStyle = COLORS.text;
         ctx.textAlign = 'center';
-        ctx.fillText(`Gate: ${scenario.label}`, W() / 2, H() * 0.15);
-        
-        // Scores - compact layout
-        const barStartY = H() * 0.30;
-        const barHeight = H() * 0.08;
-        const barSpacing = H() * 0.12;
-        const maxBarWidth = W() * 0.55;
-        
-        ctx.font = `500 ${FS(10)}px JetBrains Mono`;
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`Dynamic Gate — ${scenario.label}`, W() * 0.5, H() * 0.12);
+
+        // Scores region
+        const leftX = W() * 0.08;
+        const barStartY = H() * 0.26;
+        const barHeight = H() * 0.07;
+        const barSpacing = H() * 0.11;
+        const maxBarWidth = W() * 0.50;
+
+        ctx.font = `500 ${labelSize}px monospace`;
         ctx.fillStyle = COLORS.muted;
         ctx.textAlign = 'left';
-        ctx.fillText('Scores:', W() * 0.08, H() * 0.25);
-        
+        ctx.fillText('Top-k vector scores', leftX, H() * 0.19);
+
         scenario.scores.forEach((score, i) => {
             const y = barStartY + i * barSpacing;
-            const barWidth = (score - 0.6) / 0.35 * maxBarWidth;
-            
-            // Score bar
+            const barWidth = Math.max(6, ((score - 0.6) / 0.35) * maxBarWidth);
+
             ctx.fillStyle = scenario.color;
             ctx.globalAlpha = 0.7;
-            ctx.fillRect(W() * 0.08, y, barWidth, barHeight);
+            ctx.fillRect(leftX, y, barWidth, barHeight);
             ctx.globalAlpha = 1;
-            
-            // Score label
-            ctx.font = `500 ${FS(9)}px JetBrains Mono`;
+
+            ctx.font = `500 ${smallSize}px monospace`;
             ctx.fillStyle = COLORS.text;
-            ctx.fillText(score.toFixed(2), W() * 0.08 + barWidth + 8, y + barHeight * 0.7);
+            ctx.fillText(score.toFixed(3), leftX + barWidth + 6, y + barHeight * 0.6);
         });
-        
-        // Decision box - right side
-        const boxX = W() * 0.70;
-        const boxY = H() * 0.25;
-        const boxW = W() * 0.25;
-        const boxH = H() * 0.45;
-        
+
+        // Decision box (right)
+        const boxX = W() * 0.66;
+        const boxY = H() * 0.20;
+        const boxW = W() * 0.30;
+        const boxH = H() * 0.58;
+
         ctx.fillStyle = COLORS.card;
         ctx.strokeStyle = scenario.color;
         ctx.lineWidth = 2;
@@ -1984,22 +1988,33 @@
         ctx.roundRect(boxX, boxY, boxW, boxH, 8);
         ctx.fill();
         ctx.stroke();
-        
-        ctx.font = `700 ${FS(14)}px Inter`;
+
+        ctx.font = `600 ${labelSize}px sans-serif`;
+        ctx.fillStyle = COLORS.text;
+        ctx.textAlign = 'left';
+        ctx.fillText('Gate Decision', boxX + 10, boxY + 18);
+
+        ctx.font = `500 ${smallSize}px monospace`;
+        ctx.fillStyle = COLORS.muted;
+        ctx.fillText('σ > 0.08  → SKIP', boxX + 10, boxY + 40);
+        ctx.fillText('σ < 0.02  → SKIP', boxX + 10, boxY + 56);
+        ctx.fillText('otherwise → RUN', boxX + 10, boxY + 72);
+
+        ctx.font = `700 ${Math.max(12, FS(14))}px sans-serif`;
         ctx.fillStyle = scenario.color;
         ctx.textAlign = 'center';
-        ctx.fillText(scenario.decision, boxX + boxW / 2, boxY + H() * 0.15);
-        
-        ctx.font = `500 ${FS(9)}px JetBrains Mono`;
+        ctx.fillText(scenario.decision, boxX + boxW / 2, boxY + boxH * 0.68);
+
+        ctx.font = `500 ${smallSize}px monospace`;
         ctx.fillStyle = COLORS.muted;
-        ctx.fillText(scenario.rule, boxX + boxW / 2, boxY + H() * 0.25);
-        
+        ctx.fillText(`rule: ${scenario.rule}`, boxX + boxW / 2, boxY + boxH * 0.85);
+
         // σ formula at bottom
         const sigma = Math.max(...scenario.scores) - Math.min(...scenario.scores);
-        ctx.font = `500 ${FS(10)}px JetBrains Mono`;
+        ctx.font = `500 ${labelSize}px monospace`;
         ctx.fillStyle = scenario.color;
         ctx.textAlign = 'left';
-        ctx.fillText(`σ = ${sigma.toFixed(3)}`, W() * 0.08, H() * 0.90);
+        ctx.fillText(`σ = ${sigma.toFixed(3)}`, leftX, H() * 0.93);
         
         requestAnimationFrame(drawFrame);
     }
