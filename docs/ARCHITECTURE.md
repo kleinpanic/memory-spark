@@ -2,7 +2,7 @@
 
 **Status:** Production  
 **Authors:** KleinClaw-Meta (Opus 4.6) + Dev (Codex 5.4)  
-**Last Updated:** 2026-04-01
+**Last Updated:** 2026-04-04
 
 ## Design Principles
 
@@ -119,13 +119,14 @@ Query → Clean → HyDE (optional) → Multi-Query Expand → Embed
    - Embed each reformulation in parallel
    - All query vectors used in subsequent vector search (union by chunk ID)
 
-4. **Per-Pool Search** (5 pools searched in parallel)
+4. **Per-Pool Search** (5 pool groups searched sequentially in the current implementation)
    - agent_memory + agent_tools (filtered by agent_id)
    - agent_mistakes (filtered, 1.6× boost)
    - shared_mistakes (cross-agent, 1.6× boost)
    - shared_knowledge (cross-agent, 0.8× weight)
    - shared_rules (cross-agent)
-   - Each pool: Vector search + FTS search → RRF merge
+   - Each pool group: Vector search + FTS search → RRF merge
+   - Note: query reformulation embedding can run in parallel, but the top-level pool-group lookups in `src/auto/recall.ts` are currently awaited one after another
 
 5. **RRF Hybrid Merge** (`hybridMerge`)
    - Reciprocal Rank Fusion: `score(d) = Σ weight / (k + rank)`
@@ -190,7 +191,7 @@ Use our LLM serving infrastructure for proper classification, not just regex.
 
 ```
 Raw Text → Language Detection → Quality Scoring → LLM Classification → 
-  → Table Routing → Chunking → Embedding → Storage
+  → Pool Routing → Chunking → Embedding → Storage
 ```
 
 1. **Language Detection** (heuristic + confidence threshold)
@@ -200,12 +201,14 @@ Raw Text → Language Detection → Quality Scoring → LLM Classification →
    - Minimum threshold: 0.3 (configurable)
 3. **LLM Classification** (zero-shot via Nemotron)
    - Categories: fact, preference, decision, code-snippet, tool-definition, mistake, infrastructure
-   - Route to appropriate table based on classification
-4. **Table Routing Logic**:
-   - `tool-definition` → `agent_{id}_tools`
-   - `mistake` → `shared_mistakes`
-   - `infrastructure` + shared flag → `shared_knowledge`
-   - Everything else → `agent_{id}_memory`
+   - Route to appropriate pool based on classification
+4. **Pool Routing Logic**:
+   - Classification and path rules ultimately resolve into a logical `pool` inside the single `memory_chunks` table
+   - `tool-definition` / `TOOLS.md`-style content → `agent_tools`
+   - `mistake` / `MISTAKES.md`-style content → `agent_mistakes` unless explicitly promoted to shared mistakes
+   - shared infrastructure / cross-agent knowledge → `shared_knowledge`
+   - rules and preferences → `shared_rules`
+   - default agent-scoped recall content → `agent_memory`
 
 ### Capture-Time Classification
 
@@ -271,135 +274,39 @@ memory-spark/
 
 ---
 
-## 6. Configuration Schema (Target)
+## 6. Configuration Schema
 
-```typescript
-interface MemorySparkConfig {
-  // Storage
-  backend: "lancedb";
-  lancedbDir: string;
-  
-  // Tables
-  tables: {
-    agentPrefix: string;        // Default: "agent_"
-    sharedKnowledge: string;    // Default: "shared_knowledge"
-    sharedMistakes: string;     // Default: "shared_mistakes"
-    referenceLibrary: string;   // Default: "reference_library"
-    referenceCode: string;      // Default: "reference_code"
-  };
-  
-  // Embedding
-  embed: {
-    provider: "spark" | "openai" | "local";
-    model: string;
-    dimensions: number;
-    batchSize: number;
-    cache: { enabled: boolean; maxSize: number; };
-  };
-  
-  // Reranking
-  rerank: {
-    enabled: boolean;
-    provider: "spark" | "none";
-    model: string;
-    topN: number;
-    timeoutMs: number;
-  };
-  
-  // FTS
-  fts: {
-    enabled: boolean;
-    sigmoidMidpoint: number;     // BM25 normalization center (default: 3.0)
-    language: string;            // Stemming language
-    maxTokenLength: number;
-  };
-  
-  // Auto-Recall
-  autoRecall: {
-    enabled: boolean;
-    agents: string[];
-    ignoreAgents: string[];
-    maxResults: number;
-    minScore: number;
-    queryMessageCount: number;
-    maxInjectionTokens: number;
-    weights: {
-      sources: Record<string, number>;
-      paths: Record<string, number>;
-      pathPatterns: Record<string, number>;
-    };
-    temporalDecay: {
-      enabled: boolean;
-      floor: number;             // Default: 0.8
-      rate: number;              // Default: 0.03
-    };
-    mmr: {
-      enabled: boolean;
-      lambda: number;            // Default: 0.7
-    };
-  };
-  
-  // Auto-Capture
-  autoCapture: {
-    enabled: boolean;
-    agents: string[];
-    ignoreAgents: string[];
-    categories: string[];
-    minConfidence: number;
-    minMessageLength: number;
-    useClassifier: boolean;      // Use LLM zero-shot vs heuristic
-    maxCapturesPerTurn: number;
-    deduplicationThreshold: number; // Cosine similarity for skip (default: 0.92)
-  };
-  
-  // Ingest
-  ingest: {
-    language: string;
-    languageThreshold: number;
-    minQuality: number;
-    watch: {
-      enabled: boolean;
-      fileTypes: string[];
-      indexOnBoot: boolean;
-      debounceMs: number;
-    };
-  };
-  
-  // Reference Library
-  reference: {
-    enabled: boolean;
-    paths: string[];
-    chunkSize: number;
-    tags: Record<string, string[]>;
-    autoIndex: boolean;          // Reindex on boot?
-  };
-  
-  // Spark endpoints
-  spark: {
-    embed: string;
-    rerank: string;
-    ocr: string;
-    ner: string;
-    zeroShot: string;
-  };
-  
-  // Security
-  security: {
-    promptInjectionDetection: boolean;
-    escapeMemoryText: boolean;
-    maxChunkSizeBytes: number;
-  };
-}
-```
+The authoritative config type is `MemorySparkConfig` in `src/config.ts`. See `docs/CONFIGURATION.md` for the full reference with all defaults. Key top-level sections:
+
+| Section | Purpose |
+|---------|---------|
+| `backend` / `lancedbDir` | Storage backend (LanceDB only) |
+| `embed` | Embedding provider, model, dimensions, instruction prefix |
+| `rerank` | Cross-encoder reranking, RRF blend, dynamic gate |
+| `fts` | BM25 full-text search tuning |
+| `autoRecall` | Memory injection: agents, weights, MMR, HyDE, temporal decay, query expansion |
+| `autoCapture` | Fact extraction: categories, classifier, confidence |
+| `watch` | Filesystem watcher for auto-indexing |
+| `ingest` | Language filtering, quality thresholds |
+| `reference` | Reference library paths and chunking |
+| `hyde` | Hypothetical Document Embeddings config |
+| `chunk` | Chunking sizes (flat + hierarchical parent-child) |
+| `embedCache` | Query embedding LRU cache |
+| `search` | ANN tuning (refineFactor, IVF_PQ params) |
+| `spark` | Individual Spark service endpoint URLs |
+
+Pool routing is NOT configurable — it's determined by `src/storage/pool.ts` based on content type and path.
 
 ---
 
 ## 7. Implementation Phases
 
-### Phase 0: Bug Fixes ✅ DONE (commit 8c46531, 9770281)
-- 14 critical bugs fixed
-- Codex audit passed
-- 159/159 unit tests passing
+### Historical note on phases
+The phase list below is retained as historical context, but the authoritative current-state operational handoff is `docs/STATE.md`.
+
+### Phase 0: Bug Fixes ✅ DONE
+- Critical early retrieval and evaluation bugs were fixed during the v0.4.0 cycle
+- See `docs/CHANGELOG.md`, `docs/AUDIT-2026-04-02.md`, and `docs/STATE.md` for current validated status
 
 ### Phase 1: Pool Architecture ✅ COMPLETE
 - [x] Pool column + `resolvePool()` routing
@@ -408,7 +315,7 @@ interface MemorySparkConfig {
 - [x] Pool propagation through recall, capture, ingest, manager
 - [x] Backend consolidation: `LanceDBBackend` sole backend (MultiTableBackend deleted)
 - [x] Rules/mistakes tools with pool-based isolation
-- [x] 172+ unit tests covering pool routing + backend
+- [x] Covered by the current test suite (see `docs/STATE.md` for latest validated counts)
 
 ### Phase 2: Reference Library
 - [ ] Implement reference ingestion (PDF, markdown, HTML, code)
@@ -420,7 +327,7 @@ interface MemorySparkConfig {
 ### Phase 3: Classification Pipeline
 - [ ] Integrate zero-shot classifier (Nemotron) for content routing
 - [ ] Replace heuristic-only classification with LLM+heuristic hybrid
-- [ ] Implement table routing based on classification output
+- [ ] Implement pool routing based on classification output
 - [ ] Quality scoring refinement with LLM feedback
 
 ### Phase 4: Evaluation Overhaul
