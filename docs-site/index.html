@@ -287,8 +287,9 @@
         /* PIPELINE SECTION */
         #pipeline-section {
             padding: 4rem 0;
-            background: var(--bg-deep);
+            background: linear-gradient(180deg, var(--bg-deep) 0%, #0d0e14 50%, var(--bg-elevated) 100%);
             position: relative;
+            overflow: hidden;
         }
         
         #pipeline-section::before {
@@ -299,7 +300,9 @@
             right: 0;
             bottom: 0;
             background: 
-                radial-gradient(ellipse 60% 40% at 50% 30%, rgba(6,182,212,0.05), transparent 50%);
+                radial-gradient(ellipse 80% 50% at 50% 20%, rgba(6,182,212,0.08), transparent 50%),
+                radial-gradient(ellipse 60% 40% at 20% 50%, rgba(168,85,247,0.05), transparent 40%),
+                radial-gradient(ellipse 60% 40% at 80% 80%, rgba(15,118,110,0.06), transparent 40%);
             pointer-events: none;
         }
         
@@ -333,6 +336,7 @@
         .deep-dive {
             padding: 6rem 2rem;
             position: relative;
+            overflow: hidden;
         }
         
         .deep-dive:nth-child(even) {
@@ -342,6 +346,8 @@
         .deep-dive-header {
             text-align: center;
             margin-bottom: 3rem;
+            position: relative;
+            z-index: 2;
         }
         
         .deep-dive-header h2 {
@@ -359,10 +365,12 @@
             height: 400px;
             display: block;
             margin: 2rem auto;
-            max-width: 800px;
+            max-width: 900px;
             border-radius: 16px;
-            background: rgba(10,11,16,0.5);
+            background: rgba(10,11,16,0.8);
             border: 1px solid rgba(255,255,255,0.05);
+            position: relative;
+            z-index: 1;
         }
 
         #pools-canvas {
@@ -371,6 +379,14 @@
 
         #reranker-canvas {
             height: 500px;
+        }
+        
+        #fusion-canvas {
+            height: 350px;
+        }
+        
+        #embedder-canvas {
+            height: 400px;
         }
         
         .deep-dive-content {
@@ -794,6 +810,7 @@
         <li><a href="#pipeline-section">Pipeline</a></li>
         <li><a href="#gate-deep-dive">Gate</a></li>
         <li><a href="#reranker-deep-dive">Reranker</a></li>
+        <li><a href="#embedder-deep-dive">Embedder</a></li>
         <li><a href="#fusion-deep-dive">Fusion</a></li>
         <li><a href="#benchmarks">Benchmarks</a></li>
         <li><a href="paper.pdf" target="_blank">📄 Paper</a></li>
@@ -869,10 +886,10 @@
 <section class="content-section" id="how">
     <h2>How Does It Work?</h2>
     <p>
-        At the heart of Memory-Spark is a sophisticated 15-stage retrieval pipeline that transforms a simple query into a refined set of actionable insights. The process begins with query expansion and intent classification, followed by parallel retrieval across isolated memory pools. Multiple layers of semantic filtering, cross-encoder reranking, and recursive refinement ensure every piece of data is evaluated against strict relevance gates.
+        At the heart of Memory-Spark is a sophisticated 15-stage retrieval pipeline that transforms a simple query into a refined set of actionable insights. The process begins with query expansion and intent classification, followed by parallel retrieval across isolated memory pools stored in <strong>LanceDB</strong>. Multiple layers of semantic filtering, cross-encoder reranking, and recursive refinement ensure every piece of data is evaluated against strict relevance gates.
     </p>
     <p>
-        Key innovations include <strong>Dynamic Gating</strong> (adjusts retrieval depth based on query complexity), <strong>Reciprocal Rank Fusion (RRF)</strong> (blends vector, keyword, and graph-based searches), and <strong>Pool Isolation</strong> (prevents cross-contamination between knowledge bases).
+        Key innovations include <strong>Dynamic Gating</strong> (adjusts retrieval depth based on query complexity), <strong>Reciprocal Rank Fusion (RRF)</strong> (blends vector and keyword searches), <strong>LanceDB IVF_PQ indexing</strong> (fast approximate nearest neighbor search), and <strong>Pool Isolation</strong> (prevents cross-contamination between knowledge bases via metadata columns).
     </p>
 </section>
 
@@ -924,8 +941,8 @@
 <!-- POOL ARCHITECTURE DEEP DIVE -->
 <section class="deep-dive" id="pools-deep-dive">
     <div class="deep-dive-header">
-        <h2>🗄️ Pool Architecture</h2>
-        <p>Query fan-out runs in parallel across 6 pools; weights are applied after retrieval on return flow</p>
+        <h2>🗄️ Pool Architecture + LanceDB</h2>
+        <p>All pools stored in LanceDB with IVF_PQ indexing; logical isolation via metadata columns</p>
     </div>
     
     <canvas class="deep-dive-canvas" id="pools-canvas"></canvas>
@@ -1018,6 +1035,40 @@
         <div class="concept-card">
             <h3>Spread Guard</h3>
             <p>If top candidate scores are too tight (very small spread), reranking can be skipped to save latency because extra computation adds little signal.</p>
+        </div>
+    </div>
+</section>
+
+<!-- EMBEDDER DEEP DIVE -->
+<section class="deep-dive" id="embedder-deep-dive">
+    <div class="deep-dive-header">
+        <h2>🧠 Embedder Deep-Dive</h2>
+        <p>Text → 4096-dim vectors via Nemotron-8B</p>
+    </div>
+    
+    <canvas class="deep-dive-canvas" id="embedder-canvas"></canvas>
+    
+    <div class="deep-dive-content">
+        <p>
+            Memory-Spark uses <strong>llama-embed-nemotron-8b</strong> to transform text into 4096-dimensional vectors stored in <strong>LanceDB</strong>. This instruction-tuned model requires different prefixes for queries vs documents to achieve optimal retrieval accuracy.
+        </p>
+        <p>
+            Query embeddings use the prefix: <code style="background: rgba(6,182,212,0.1); padding: 0.25rem 0.5rem; border-radius: 4px; font-family: 'JetBrains Mono', monospace; color: var(--neon-cyan);">"Instruct: {task}\nQuery: {text}"</code> while document embeddings are raw. This <strong>asymmetric encoding</strong> aligns queries and documents in complementary subspaces.
+        </p>
+    </div>
+    
+    <div class="concept-grid">
+        <div class="concept-card">
+            <h3>Asymmetric Embedding</h3>
+            <p>Queries get instruction prefixes; documents don't. This separation creates query-document alignment in the embedding space, improving retrieval accuracy by ~15%.</p>
+        </div>
+        <div class="concept-card">
+            <h3>LanceDB Storage</h3>
+            <p>Vectors are stored in LanceDB with IVF_PQ indexing (P=10 partitions, M=64 sub-vectors). This enables fast approximate nearest neighbor search while keeping memory usage low.</p>
+        </div>
+        <div class="concept-card">
+            <h3>Pool Isolation</h3>
+            <p>Each memory pool (agent_memory, agent_mistakes, shared_knowledge, etc.) is logically isolated via metadata columns in LanceDB, preventing cross-contamination.</p>
         </div>
     </div>
 </section>
@@ -2161,6 +2212,135 @@
     requestAnimationFrame(animate);
 })();
 
+// Embedder Deep Dive Animation
+(function() {
+    const canvas = document.getElementById('embedder-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    
+    function resize() {
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        ctx.scale(dpr, dpr);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+    
+    const W = () => canvas.offsetWidth;
+    const H = () => canvas.offsetHeight;
+    
+    // Draw text → vector visualization
+    function drawEmbeddingPipeline() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        const centerX = W() / 2;
+        const centerY = H() / 2;
+        
+        // Draw input text box
+        ctx.fillStyle = 'rgba(6,182,212,0.1)';
+        ctx.strokeStyle = 'rgba(6,182,212,0.4)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(centerX - 180, H() * 0.15, 160, 60, 8);
+        ctx.fill();
+        ctx.stroke();
+        
+        ctx.fillStyle = '#00d4ff';
+        ctx.font = 'bold 11px Inter';
+        ctx.textAlign = 'center';
+        ctx.fillText('INPUT TEXT', centerX - 100, H() * 0.15 + 25);
+        ctx.font = '10px JetBrains Mono';
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText('"capital of france"', centerX - 100, H() * 0.15 + 42);
+        
+        // Draw model box
+        ctx.fillStyle = 'rgba(168,85,247,0.1)';
+        ctx.strokeStyle = 'rgba(168,85,247,0.4)';
+        ctx.beginPath();
+        ctx.roundRect(centerX - 20, centerY - 50, 140, 100, 8);
+        ctx.fill();
+        ctx.stroke();
+        
+        ctx.fillStyle = '#bf5af2';
+        ctx.font = 'bold 10px Inter';
+        ctx.fillText('NEMOTRON-8B', centerX + 50, centerY - 30);
+        ctx.font = '9px Inter';
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText('4096 dims', centerX + 50, centerY - 15);
+        ctx.fillText('IVF_PQ index', centerX + 50, centerY);
+        ctx.fillText('LanceDB', centerX + 50, centerY + 15);
+        
+        // Draw output vector box
+        ctx.fillStyle = 'rgba(48,209,88,0.1)';
+        ctx.strokeStyle = 'rgba(48,209,88,0.4)';
+        ctx.beginPath();
+        ctx.roundRect(centerX + 140, H() * 0.15, 160, 60, 8);
+        ctx.fill();
+        ctx.stroke();
+        
+        ctx.fillStyle = '#30d158';
+        ctx.font = 'bold 11px Inter';
+        ctx.fillText('VECTOR [4096]', centerX + 220, H() * 0.15 + 25);
+        ctx.font = '9px JetBrains Mono';
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText('[0.12, -0.34, 0.89, ...]', centerX + 220, H() * 0.15 + 42);
+        
+        // Draw arrows
+        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+        ctx.lineWidth = 2;
+        
+        // Arrow from text to model
+        ctx.beginPath();
+        ctx.moveTo(centerX - 20, H() * 0.15 + 30);
+        ctx.lineTo(centerX - 20, centerY - 50);
+        ctx.stroke();
+        drawArrowHead(ctx, centerX - 20, centerY - 50);
+        
+        // Arrow from model to vector
+        ctx.beginPath();
+        ctx.moveTo(centerX + 120, centerY + 50);
+        ctx.lineTo(centerX + 140, H() * 0.15 + 60);
+        ctx.stroke();
+        drawArrowHead(ctx, centerX + 140, H() * 0.15 + 60);
+        
+        // Draw asymmetric encoding note
+        ctx.fillStyle = 'rgba(255,159,10,0.2)';
+        ctx.strokeStyle = 'rgba(255,159,10,0.4)';
+        ctx.beginPath();
+        ctx.roundRect(centerX - 80, H() * 0.65, 260, 70, 8);
+        ctx.fill();
+        ctx.stroke();
+        
+        ctx.fillStyle = '#ff9f0a';
+        ctx.font = 'bold 10px Inter';
+        ctx.textAlign = 'center';
+        ctx.fillText('ASYMMETRIC ENCODING', centerX + 50, H() * 0.65 + 20);
+        ctx.font = '9px Inter';
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText('Query: "Instruct: retrieve\\nQuery: capital of france"', centerX + 50, H() * 0.65 + 38);
+        ctx.fillText('Document: raw text (no prefix)', centerX + 50, H() * 0.65 + 55);
+    }
+    
+    function drawArrowHead(ctx, x, y) {
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x - 5, y + 8);
+        ctx.lineTo(x + 5, y + 8);
+        ctx.closePath();
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.fill();
+    }
+    
+    function animate() {
+        drawEmbeddingPipeline();
+        requestAnimationFrame(animate);
+    }
+    
+    animate();
+})();
+
 // Fusion Deep Dive Animation
 (function() {
     const canvas = document.getElementById('fusion-canvas');
@@ -2180,77 +2360,102 @@
     const W = () => canvas.offsetWidth;
     const H = () => canvas.offsetHeight;
     
-    const particles = [];
+    let time = 0;
     
-    class FusionParticle {
-        constructor(type) {
-            this.type = type; // 'vector' or 'bm25'
-            this.x = type === 'vector' ? W() * 0.2 : W() * 0.2;
-            this.y = type === 'vector' ? H() * 0.3 : H() * 0.7;
-            this.t = 0;
-            this.speed = 0.008 + Math.random() * 0.004;
-            this.color = type === 'vector' ? '#00d4ff' : '#ff9f0a';
-        }
+    function drawRRFVisualization() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        time += 0.02;
         
-        update() {
-            this.t += this.speed;
-            if (this.t >= 1) return false;
-            return true;
-        }
+        // Title
+        ctx.fillStyle = '#f1f5f9';
+        ctx.font = 'bold 14px Inter';
+        ctx.textAlign = 'center';
+        ctx.fillText('RRF Score Combination (k=60)', W() / 2, 25);
         
-        draw(ctx) {
-            const midX = W() * 0.5;
-            const endX = W() * 0.8;
-            const midY = H() * 0.5;
+        // Draw three columns: Vector, RRF, BM25
+        const colWidth = W() / 3;
+        
+        // Vector scores column
+        ctx.fillStyle = 'rgba(0,212,255,0.1)';
+        ctx.fillRect(20, 50, colWidth - 40, H() - 100);
+        ctx.strokeStyle = 'rgba(0,212,255,0.3)';
+        ctx.strokeRect(20, 50, colWidth - 40, H() - 100);
+        
+        ctx.fillStyle = '#00d4ff';
+        ctx.font = 'bold 11px Inter';
+        ctx.fillText('Vector Scores', colWidth / 2, 70);
+        
+        // BM25 scores column
+        ctx.fillStyle = 'rgba(255,159,10,0.1)';
+        ctx.fillRect(W() - colWidth + 20, 50, colWidth - 40, H() - 100);
+        ctx.strokeStyle = 'rgba(255,159,10,0.3)';
+        ctx.strokeRect(W() - colWidth + 20, 50, colWidth - 40, H() - 100);
+        
+        ctx.fillStyle = '#ff9f0a';
+        ctx.fillText('BM25 Scores', W() - colWidth / 2, 70);
+        
+        // RRF merged column
+        ctx.fillStyle = 'rgba(48,209,88,0.1)';
+        ctx.fillRect(colWidth + 10, 50, colWidth - 20, H() - 100);
+        ctx.strokeStyle = 'rgba(48,209,88,0.3)';
+        ctx.strokeRect(colWidth + 10, 50, colWidth - 20, H() - 100);
+        
+        ctx.fillStyle = '#30d158';
+        ctx.fillText('RRF Merged', W() / 2, 70);
+        
+        // Draw sample documents with animated scores
+        const docs = [
+            { id: 'Doc A', vec: 0.89, bm25: 0.75, vecRank: 1, bm25Rank: 2 },
+            { id: 'Doc B', vec: 0.72, bm25: 0.88, vecRank: 2, bm25Rank: 1 },
+            { id: 'Doc C', vec: 0.65, bm25: 0.55, vecRank: 3, bm25Rank: 3 },
+            { id: 'Doc D', vec: 0.45, bm25: 0.42, vecRank: 4, bm25Rank: 4 },
+        ];
+        
+        docs.forEach((doc, i) => {
+            const y = 100 + i * 50;
+            const pulse = Math.sin(time + i) * 0.05;
             
-            // Path: start → merge → end
-            let x, y;
-            if (this.t < 0.5) {
-                x = this.x + (midX - this.x) * (this.t * 2);
-                y = this.y + (midY - this.y) * (this.t * 2);
-            } else {
-                x = midX + (endX - midX) * ((this.t - 0.5) * 2);
-                y = midY;
-            }
+            // Vector score bar
+            const vecWidth = (doc.vec + pulse) * (colWidth - 80);
+            ctx.fillStyle = 'rgba(0,212,255,0.6)';
+            ctx.fillRect(30, y, vecWidth, 30);
+            ctx.fillStyle = '#94a3b8';
+            ctx.font = '10px Inter';
+            ctx.textAlign = 'left';
+            ctx.fillText(`${doc.id}`, 35, y + 20);
+            ctx.fillText(`${doc.vec.toFixed(2)}`, vecWidth + 35, y + 20);
             
-            ctx.beginPath();
-            ctx.arc(x, y, 6, 0, Math.PI * 2);
-            ctx.fillStyle = this.color;
-            ctx.globalAlpha = 0.8;
-            ctx.shadowColor = this.color;
-            ctx.shadowBlur = 10;
-            ctx.fill();
-            ctx.shadowBlur = 0;
-            ctx.globalAlpha = 1;
-        }
+            // BM25 score bar
+            const bm25Width = (doc.bm25 + pulse) * (colWidth - 80);
+            ctx.fillStyle = 'rgba(255,159,10,0.6)';
+            ctx.fillRect(W() - colWidth + 30, y, bm25Width, 30);
+            ctx.fillStyle = '#94a3b8';
+            ctx.textAlign = 'left';
+            ctx.fillText(`${doc.bm25.toFixed(2)}`, W() - colWidth + bm25Width + 35, y + 20);
+            
+            // RRF calculation
+            const vecRRF = 1 / (60 + doc.vecRank);
+            const bm25RRF = 1 / (60 + doc.bm25Rank);
+            const totalRRF = vecRRF + bm25RRF;
+            const rrfNorm = totalRRF / 0.033; // Normalize to 0-1
+            
+            const rrfWidth = rrfNorm * (colWidth - 40);
+            ctx.fillStyle = 'rgba(48,209,88,0.6)';
+            ctx.fillRect(colWidth + 20, y, rrfWidth, 30);
+            ctx.fillStyle = '#94a3b8';
+            ctx.textAlign = 'center';
+            ctx.fillText(`RRF=${totalRRF.toFixed(4)}`, colWidth + colWidth / 2, y + 20);
+        });
+        
+        // Draw formula at bottom
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.font = '12px JetBrains Mono';
+        ctx.textAlign = 'center';
+        ctx.fillText('RRF(d) = 1/(60+rank_vec) + 1/(60+rank_bm25)', W() / 2, H() - 20);
     }
     
     function animate() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        // Draw merge point
-        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(W() * 0.5, H() * 0.3);
-        ctx.lineTo(W() * 0.5, H() * 0.7);
-        ctx.stroke();
-        
-        if (Math.random() < 0.05) {
-            particles.push(new FusionParticle('vector'));
-        }
-        if (Math.random() < 0.05) {
-            particles.push(new FusionParticle('bm25'));
-        }
-        
-        for (let i = particles.length - 1; i >= 0; i--) {
-            if (!particles[i].update()) {
-                particles.splice(i, 1);
-            } else {
-                particles[i].draw(ctx);
-            }
-        }
-        
+        drawRRFVisualization();
         requestAnimationFrame(animate);
     }
     
