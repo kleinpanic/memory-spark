@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>15-Stage Pipeline — Memory-Spark</title>
+<title>15-Stage Pipeline -- Memory-Spark</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script>
 tailwind.config = {
@@ -38,7 +38,7 @@ body{background:#0a0a0f;color:#cdd6f4;font-family:Inter,system-ui,sans-serif}
 <body class="min-h-screen p-8">
 
 <div class="max-w-6xl mx-auto">
-  <a href="../index.html" class="text-spark-muted hover:text-spark-accent text-sm mb-4 inline-block">← Back to Overview</a>
+  <a href="../index.html" class="text-spark-muted hover:text-spark-accent text-sm mb-4 inline-block">Back to Overview</a>
   
   <div class="text-center mb-12">
     <h1 class="text-4xl font-bold mb-4">15-Stage Retrieval Pipeline</h1>
@@ -53,7 +53,7 @@ body{background:#0a0a0f;color:#cdd6f4;font-family:Inter,system-ui,sans-serif}
     <!-- Stage 0: User Query -->
     <div class="stage-card bg-spark-card border-2 border-spark-purple rounded-xl p-4 cursor-pointer" onclick="selectStage(0)">
       <div class="text-center">
-        <div class="text-3xl mb-2">👤</div>
+        <div class="text-3xl mb-2">USER</div>
         <div class="font-semibold">S0: User Query</div>
         <div class="text-xs text-spark-muted mt-1">Input</div>
       </div>
@@ -62,7 +62,7 @@ body{background:#0a0a0f;color:#cdd6f4;font-family:Inter,system-ui,sans-serif}
     <!-- Stage 1: Query Cleaning -->
     <div class="stage-card bg-spark-card border border-spark-border rounded-xl p-4 cursor-pointer" onclick="selectStage(1)">
       <div class="text-center">
-        <div class="text-3xl mb-2">🧹</div>
+        <div class="text-3xl mb-2">Clean</div>
         <div class="font-semibold">S1: Clean</div>
         <div class="text-xs text-spark-muted mt-1">~5ms</div>
       </div>
@@ -71,7 +71,7 @@ body{background:#0a0a0f;color:#cdd6f4;font-family:Inter,system-ui,sans-serif}
     <!-- Stage 2: HyDE -->
     <div class="stage-card bg-spark-card border border-spark-border rounded-xl p-4 cursor-pointer" onclick="selectStage(2)">
       <div class="text-center">
-        <div class="text-3xl mb-2">📄</div>
+        <div class="text-3xl mb-2">HDE</div>
         <div class="font-semibold">S2: HyDE</div>
         <div class="text-xs text-spark-muted mt-1">~400ms (optional)</div>
       </div>
@@ -80,7 +80,7 @@ body{background:#0a0a0f;color:#cdd6f4;font-family:Inter,system-ui,sans-serif}
     <!-- Stage 3: Multi-Query -->
     <div class="stage-card bg-spark-card border border-spark-border rounded-xl p-4 cursor-pointer" onclick="selectStage(3)">
       <div class="text-center">
-        <div class="text-3xl mb-2">🔀</div>
+        <div class="text-3xl mb-2">Expand</div>
         <div class="font-semibold">S3: Multi-Query</div>
         <div class="text-xs text-spark-muted mt-1">~300ms</div>
       </div>
@@ -89,7 +89,7 @@ body{background:#0a0a0f;color:#cdd6f4;font-family:Inter,system-ui,sans-serif}
     <!-- Stage 4: Embedding -->
     <div class="stage-card bg-spark-card border-2 border-spark-accent rounded-xl p-4 cursor-pointer" onclick="selectStage(4)">
       <div class="text-center">
-        <div class="text-3xl mb-2">🧠</div>
+        <div class="text-3xl mb-2">EMB</div>
         <div class="font-semibold">S4: Embed</div>
         <div class="text-xs text-spark-muted mt-1">~50ms</div>
       </div>
@@ -98,7 +98,7 @@ body{background:#0a0a0f;color:#cdd6f4;font-family:Inter,system-ui,sans-serif}
     <!-- Stage 5: Pool Search -->
     <div class="stage-card bg-spark-card border border-spark-border rounded-xl p-4 cursor-pointer" onclick="selectStage(5)">
       <div class="text-center">
-        <div class="text-3xl mb-2">🗄️</div>
+        <div class="text-3xl mb-2">DB</div>
         <div class="font-semibold">S5: Pools</div>
         <div class="text-xs text-spark-muted mt-1">~80ms (parallel)</div>
       </div>
@@ -107,7 +107,7 @@ body{background:#0a0a0f;color:#cdd6f4;font-family:Inter,system-ui,sans-serif}
     <!-- Stage 6: Hybrid Search -->
     <div class="stage-card bg-spark-card border border-spark-border rounded-xl p-4 cursor-pointer" onclick="selectStage(6)">
       <div class="text-center">
-        <div class="text-3xl mb-2">⚡</div>
+        <div class="text-3xl mb-2">HYB</div>
         <div class="font-semibold">S6: Hybrid</div>
         <div class="text-xs text-spark-muted mt-1">~20ms</div>
       </div>
@@ -116,7 +116,7 @@ body{background:#0a0a0f;color:#cdd6f4;font-family:Inter,system-ui,sans-serif}
     <!-- Stage 7: RRF Fusion -->
     <div class="stage-card bg-spark-card border border-spark-border rounded-xl p-4 cursor-pointer" onclick="selectStage(7)">
       <div class="text-center">
-        <div class="text-3xl mb-2">🔗</div>
+        <div class="text-3xl mb-2">RRF</div>
         <div class="font-semibold">S7: RRF</div>
         <div class="text-xs text-spark-muted mt-1">~5ms</div>
       </div>
@@ -125,7 +125,7 @@ body{background:#0a0a0f;color:#cdd6f4;font-family:Inter,system-ui,sans-serif}
     <!-- Stage 8: Source Weight -->
     <div class="stage-card bg-spark-card border border-spark-border rounded-xl p-4 cursor-pointer" onclick="selectStage(8)">
       <div class="text-center">
-        <div class="text-3xl mb-2">⚖️</div>
+        <div class="text-3xl mb-2">WGT</div>
         <div class="font-semibold">S8: Weight</div>
         <div class="text-xs text-spark-muted mt-1">~2ms</div>
       </div>
@@ -134,7 +134,7 @@ body{background:#0a0a0f;color:#cdd6f4;font-family:Inter,system-ui,sans-serif}
     <!-- Stage 9: Temporal Decay -->
     <div class="stage-card bg-spark-card border border-spark-border rounded-xl p-4 cursor-pointer" onclick="selectStage(9)">
       <div class="text-center">
-        <div class="text-3xl mb-2">⏰</div>
+        <div class="text-3xl mb-2">TMP</div>
         <div class="font-semibold">S9: Decay</div>
         <div class="text-xs text-spark-muted mt-1">~2ms</div>
       </div>
@@ -143,7 +143,7 @@ body{background:#0a0a0f;color:#cdd6f4;font-family:Inter,system-ui,sans-serif}
     <!-- Stage 10: Gate -->
     <div class="stage-card bg-spark-card border-2 border-spark-amber rounded-xl p-4 cursor-pointer" onclick="selectStage(10)">
       <div class="text-center">
-        <div class="text-3xl mb-2">🚦</div>
+        <div class="text-3xl mb-2">Gate</div>
         <div class="font-semibold">S10: Gate</div>
         <div class="text-xs text-spark-muted mt-1">~1ms</div>
       </div>
@@ -152,7 +152,7 @@ body{background:#0a0a0f;color:#cdd6f4;font-family:Inter,system-ui,sans-serif}
     <!-- Stage 11: Reranker -->
     <div class="stage-card bg-spark-card border-2 border-spark-green rounded-xl p-4 cursor-pointer" onclick="selectStage(11)">
       <div class="text-center">
-        <div class="text-3xl mb-2">🎯</div>
+        <div class="text-3xl mb-2">XCE</div>
         <div class="font-semibold">S11: Rerank</div>
         <div class="text-xs text-spark-muted mt-1">~119ms (if run)</div>
       </div>
@@ -161,7 +161,7 @@ body{background:#0a0a0f;color:#cdd6f4;font-family:Inter,system-ui,sans-serif}
     <!-- Stage 12: MMR -->
     <div class="stage-card bg-spark-card border border-spark-border rounded-xl p-4 cursor-pointer" onclick="selectStage(12)">
       <div class="text-center">
-        <div class="text-3xl mb-2">🎲</div>
+        <div class="text-3xl mb-2">MMR</div>
         <div class="font-semibold">S12: MMR</div>
         <div class="text-xs text-spark-muted mt-1">~10ms</div>
       </div>
@@ -170,7 +170,7 @@ body{background:#0a0a0f;color:#cdd6f4;font-family:Inter,system-ui,sans-serif}
     <!-- Stage 13: Parent Expand -->
     <div class="stage-card bg-spark-card border border-spark-border rounded-xl p-4 cursor-pointer" onclick="selectStage(13)">
       <div class="text-center">
-        <div class="text-3xl mb-2">📦</div>
+        <div class="text-3xl mb-2">EXP</div>
         <div class="font-semibold">S13: Expand</div>
         <div class="text-xs text-spark-muted mt-1">~5ms</div>
       </div>
@@ -179,7 +179,7 @@ body{background:#0a0a0f;color:#cdd6f4;font-family:Inter,system-ui,sans-serif}
     <!-- Stage 14: Top-K -->
     <div class="stage-card bg-spark-card border border-spark-border rounded-xl p-4 cursor-pointer" onclick="selectStage(14)">
       <div class="text-center">
-        <div class="text-3xl mb-2">🔝</div>
+        <div class="text-3xl mb-2">TOPK</div>
         <div class="font-semibold">S14: Top-K</div>
         <div class="text-xs text-spark-muted mt-1">~1ms</div>
       </div>
@@ -188,7 +188,7 @@ body{background:#0a0a0f;color:#cdd6f4;font-family:Inter,system-ui,sans-serif}
     <!-- Stage 15: Response -->
     <div class="stage-card bg-spark-card border-2 border-spark-cyan rounded-xl p-4 cursor-pointer" onclick="selectStage(15)">
       <div class="text-center">
-        <div class="text-3xl mb-2">💬</div>
+        <div class="text-3xl mb-2">OUT</div>
         <div class="font-semibold">S15: Response</div>
         <div class="text-xs text-spark-muted mt-1">Output</div>
       </div>
@@ -350,7 +350,7 @@ results.forEach(r => {
   },
   10: {
     title: 'S10: Dynamic Gate',
-    description: 'Check confidence spread (σ = s₁ - sₖ). Skip reranker if confident or tied.',
+    description: 'Check confidence spread (sigma = s1 - sk). Skip reranker if confident or tied.',
     input: 'Decayed results',
     output: 'Gate decision',
     code: `const sigma = results[0].score - results[4].score;
@@ -384,7 +384,7 @@ const reranked = await sparkRerank({
   },
   12: {
     title: 'S12: MMR Diversity',
-    description: 'Maximal Marginal Relevance ensures diverse results. Balance relevance (λ) vs. novelty (1-λ).',
+    description: 'Maximal Marginal Relevance ensures diverse results. Balance relevance (lambda) vs. novelty (1-lambda).',
     input: 'Ranked results',
     output: 'Diverse top-K',
     code: `function mmr(query, candidates, lambda=0.9, k=10) {
