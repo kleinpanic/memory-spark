@@ -2261,7 +2261,7 @@
     requestAnimationFrame(animate);
 })();
 
-// Embedder Deep Dive Animation
+// Embedder Deep Dive Animation - Educational Pipeline
 (function() {
     const canvas = document.getElementById('embedder-canvas');
     if (!canvas) return;
@@ -2280,106 +2280,235 @@
     const W = () => canvas.offsetWidth;
     const H = () => canvas.offsetHeight;
     
-    // Draw text → vector visualization
+    // Animated particles
+    const particles = [];
+    
+    class EmbedParticle {
+        constructor() {
+            this.t = 0;
+            this.speed = 0.015 + Math.random() * 0.01;
+            this.y = H() * 0.4 + Math.random() * H() * 0.2;
+            this.size = 3 + Math.random() * 3;
+            this.color = Math.random() > 0.5 ? '#00d4ff' : '#30d158';
+        }
+        
+        update() {
+            this.t += this.speed;
+            return this.t < 1;
+        }
+        
+        draw(ctx) {
+            const w = W();
+            const startX = w * 0.15;
+            const modelX = w * 0.35;
+            const endX = w * 0.75;
+            
+            let x;
+            if (this.t < 0.4) {
+                // Phase 1: Text → Model
+                x = startX + (modelX - startX) * (this.t / 0.4);
+            } else if (this.t < 0.6) {
+                // Phase 2: Inside model (processing)
+                x = modelX;
+            } else {
+                // Phase 3: Model → Vector
+                x = modelX + (endX - modelX) * ((this.t - 0.6) / 0.4);
+            }
+            
+            // Draw particle with glow
+            ctx.beginPath();
+            ctx.arc(x, this.y, this.size, 0, Math.PI * 2);
+            ctx.fillStyle = this.color;
+            ctx.shadowColor = this.color;
+            ctx.shadowBlur = 8;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+        }
+    }
+    
+    let frameCount = 0;
+    
     function drawEmbeddingPipeline() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+        frameCount++;
         
-        const centerX = W() / 2;
-        const centerY = H() / 2;
+        const w = W();
+        const h = H();
         
-        // Draw input text box
-        ctx.fillStyle = 'rgba(6,182,212,0.1)';
-        ctx.strokeStyle = 'rgba(6,182,212,0.4)';
+        // Draw background grid
+        ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+        ctx.lineWidth = 1;
+        for (let x = 0; x < w; x += 40) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, h);
+            ctx.stroke();
+        }
+        for (let y = 0; y < h; y += 40) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(w, y);
+            ctx.stroke();
+        }
+        
+        // Section labels
+        ctx.font = '10px Inter';
+        ctx.fillStyle = 'rgba(255,255,255,0.2)';
+        ctx.textAlign = 'center';
+        ctx.fillText('ASSEMBLY', w * 0.15, h * 0.12);
+        ctx.fillText('TRANSFORMATION', w * 0.5, h * 0.12);
+        ctx.fillText('STORAGE', w * 0.85, h * 0.12);
+        
+        // 1. Input box (Query)
+        ctx.fillStyle = 'rgba(0,212,255,0.1)';
+        ctx.strokeStyle = 'rgba(0,212,255,0.4)';
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.roundRect(centerX - 180, H() * 0.15, 160, 60, 8);
+        ctx.roundRect(w * 0.05, h * 0.35, w * 0.2, h * 0.3, 8);
         ctx.fill();
         ctx.stroke();
         
         ctx.fillStyle = '#00d4ff';
         ctx.font = 'bold 11px Inter';
         ctx.textAlign = 'center';
-        ctx.fillText('INPUT TEXT', centerX - 100, H() * 0.15 + 25);
+        ctx.fillText('QUERY', w * 0.15, h * 0.40);
         ctx.font = '10px JetBrains Mono';
         ctx.fillStyle = '#94a3b8';
-        ctx.fillText('"capital of france"', centerX - 100, H() * 0.15 + 42);
+        ctx.fillText('"capital of', w * 0.15, h * 0.50);
+        ctx.fillText('france"', w * 0.15, h * 0.58);
         
-        // Draw model box
+        // 2. Model box (Nemotron-8B)
         ctx.fillStyle = 'rgba(168,85,247,0.1)';
         ctx.strokeStyle = 'rgba(168,85,247,0.4)';
         ctx.beginPath();
-        ctx.roundRect(centerX - 20, centerY - 50, 140, 100, 8);
+        ctx.roundRect(w * 0.30, h * 0.25, w * 0.15, h * 0.50, 8);
         ctx.fill();
         ctx.stroke();
         
         ctx.fillStyle = '#bf5af2';
         ctx.font = 'bold 10px Inter';
-        ctx.fillText('NEMOTRON-8B', centerX + 50, centerY - 30);
+        ctx.fillText('NEMOTRON', w * 0.375, h * 0.35);
+        ctx.fillText('-8B', w * 0.375, h * 0.42);
         ctx.font = '9px Inter';
         ctx.fillStyle = '#94a3b8';
-        ctx.fillText('4096 dims', centerX + 50, centerY - 15);
-        ctx.fillText('IVF_PQ index', centerX + 50, centerY);
-        ctx.fillText('LanceDB', centerX + 50, centerY + 15);
+        ctx.fillText('4096-dim', w * 0.375, h * 0.52);
+        ctx.fillText('embeddings', w * 0.375, h * 0.58);
         
-        // Draw output vector box
-        ctx.fillStyle = 'rgba(48,209,88,0.1)';
-        ctx.strokeStyle = 'rgba(48,209,88,0.4)';
-        ctx.beginPath();
-        ctx.roundRect(centerX + 140, H() * 0.15, 160, 60, 8);
-        ctx.fill();
-        ctx.stroke();
+        // Processing indicator (pulsing)
+        const pulse = Math.sin(frameCount * 0.1) * 0.3 + 0.7;
+        ctx.fillStyle = `rgba(168,85,247,${pulse})`;
+        ctx.font = '8px Inter';
+        ctx.fillText('● processing', w * 0.375, h * 0.68);
         
-        ctx.fillStyle = '#30d158';
-        ctx.font = 'bold 11px Inter';
-        ctx.fillText('VECTOR [4096]', centerX + 220, H() * 0.15 + 25);
-        ctx.font = '9px JetBrains Mono';
-        ctx.fillStyle = '#94a3b8';
-        ctx.fillText('[0.12, -0.34, 0.89, ...]', centerX + 220, H() * 0.15 + 42);
-        
-        // Draw arrows
-        ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-        ctx.lineWidth = 2;
-        
-        // Arrow from text to model
-        ctx.beginPath();
-        ctx.moveTo(centerX - 20, H() * 0.15 + 30);
-        ctx.lineTo(centerX - 20, centerY - 50);
-        ctx.stroke();
-        drawArrowHead(ctx, centerX - 20, centerY - 50);
-        
-        // Arrow from model to vector
-        ctx.beginPath();
-        ctx.moveTo(centerX + 120, centerY + 50);
-        ctx.lineTo(centerX + 140, H() * 0.15 + 60);
-        ctx.stroke();
-        drawArrowHead(ctx, centerX + 140, H() * 0.15 + 60);
-        
-        // Draw asymmetric encoding note
-        ctx.fillStyle = 'rgba(255,159,10,0.2)';
+        // 3. Prefix box (Instruction)
+        ctx.fillStyle = 'rgba(255,159,10,0.1)';
         ctx.strokeStyle = 'rgba(255,159,10,0.4)';
         ctx.beginPath();
-        ctx.roundRect(centerX - 80, H() * 0.65, 260, 70, 8);
+        ctx.roundRect(w * 0.48, h * 0.25, w * 0.18, h * 0.50, 8);
         ctx.fill();
         ctx.stroke();
         
         ctx.fillStyle = '#ff9f0a';
         ctx.font = 'bold 10px Inter';
-        ctx.textAlign = 'center';
-        ctx.fillText('ASYMMETRIC ENCODING', centerX + 50, H() * 0.65 + 20);
-        ctx.font = '9px Inter';
+        ctx.fillText('ASSEMBLE', w * 0.57, h * 0.35);
+        ctx.font = '8px JetBrains Mono';
         ctx.fillStyle = '#94a3b8';
-        ctx.fillText('Query: "Instruct: retrieve\\nQuery: capital of france"', centerX + 50, H() * 0.65 + 38);
-        ctx.fillText('Document: raw text (no prefix)', centerX + 50, H() * 0.65 + 55);
+        ctx.fillText('"Instruct:', w * 0.57, h * 0.44);
+        ctx.fillText(' retrieve\\n', w * 0.57, h * 0.50);
+        ctx.fillText('Query: ', w * 0.57, h * 0.56);
+        ctx.fillText('capital of', w * 0.57, h * 0.62);
+        ctx.fillText('france"', w * 0.57, h * 0.68);
+        
+        // 4. Output vector box
+        ctx.fillStyle = 'rgba(48,209,88,0.1)';
+        ctx.strokeStyle = 'rgba(48,209,88,0.4)';
+        ctx.beginPath();
+        ctx.roundRect(w * 0.70, h * 0.35, w * 0.25, h * 0.3, 8);
+        ctx.fill();
+        ctx.stroke();
+        
+        ctx.fillStyle = '#30d158';
+        ctx.font = 'bold 11px Inter';
+        ctx.fillText('VECTOR [4096]', w * 0.825, h * 0.42);
+        ctx.font = '9px JetBrains Mono';
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText('[0.12, -0.34,', w * 0.825, h * 0.52);
+        ctx.fillText('0.89, ...]', w * 0.825, h * 0.58);
+        
+        // 5. LanceDB storage
+        ctx.fillStyle = 'rgba(59,130,246,0.1)';
+        ctx.strokeStyle = 'rgba(59,130,246,0.4)';
+        ctx.beginPath();
+        ctx.roundRect(w * 0.70, h * 0.70, w * 0.25, h * 0.22, 8);
+        ctx.fill();
+        ctx.stroke();
+        
+        ctx.fillStyle = '#3b82f6';
+        ctx.font = 'bold 10px Inter';
+        ctx.fillText('LanceDB', w * 0.825, h * 0.78);
+        ctx.font = '8px Inter';
+        ctx.fillStyle = '#94a3b8';
+        ctx.fillText('IVF_PQ (P=10, M=64)', w * 0.825, h * 0.85);
+        
+        // Draw arrows
+        ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+        ctx.lineWidth = 2;
+        
+        // Arrow 1: Query → Model
+        ctx.beginPath();
+        ctx.moveTo(w * 0.25, h * 0.5);
+        ctx.lineTo(w * 0.30, h * 0.5);
+        ctx.stroke();
+        drawArrowHead(ctx, w * 0.30, h * 0.5, 0);
+        
+        // Arrow 2: Model → Prefix (horizontal)
+        ctx.beginPath();
+        ctx.moveTo(w * 0.45, h * 0.5);
+        ctx.lineTo(w * 0.48, h * 0.5);
+        ctx.stroke();
+        drawArrowHead(ctx, w * 0.48, h * 0.5, 0);
+        
+        // Arrow 3: Prefix → Vector
+        ctx.beginPath();
+        ctx.moveTo(w * 0.66, h * 0.5);
+        ctx.lineTo(w * 0.70, h * 0.5);
+        ctx.stroke();
+        drawArrowHead(ctx, w * 0.70, h * 0.5, 0);
+        
+        // Arrow 4: Vector → LanceDB
+        ctx.beginPath();
+        ctx.moveTo(w * 0.825, h * 0.65);
+        ctx.lineTo(w * 0.825, h * 0.70);
+        ctx.stroke();
+        drawArrowHead(ctx, w * 0.825, h * 0.70, 90);
+        
+        // Spawn new particles
+        if (frameCount % 20 === 0 && particles.length < 15) {
+            particles.push(new EmbedParticle());
+        }
+        
+        // Update and draw particles
+        for (let i = particles.length - 1; i >= 0; i--) {
+            if (!particles[i].update()) {
+                particles.splice(i, 1);
+            } else {
+                particles[i].draw(ctx);
+            }
+        }
     }
     
-    function drawArrowHead(ctx, x, y) {
+    function drawArrowHead(ctx, x, y, angle) {
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.rotate(angle * Math.PI / 180);
         ctx.beginPath();
-        ctx.moveTo(x, y);
-        ctx.lineTo(x - 5, y + 8);
-        ctx.lineTo(x + 5, y + 8);
+        ctx.moveTo(0, 0);
+        ctx.lineTo(-6, -4);
+        ctx.lineTo(-6, 4);
         ctx.closePath();
-        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.fillStyle = 'rgba(255,255,255,0.2)';
         ctx.fill();
+        ctx.restore();
     }
     
     function animate() {
