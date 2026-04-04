@@ -1037,7 +1037,42 @@ describe("Config: New Fields", () => {
     expect(cfg.autoRecall.queryMessageCount).toBe(2);
   });
 
-  // --- Temporal Decay (New Formula) ---
+  // --- Rerank defaults (centralized in buildDefaults, Phase 12 audit fix) ---
+
+  it("Default rerank.blendMode is 'rrf'", () => {
+    const cfg = resolveConfig();
+    expect(cfg.rerank.blendMode).toBe("rrf");
+  });
+
+  it("Default rerank.rerankerGate is 'hard'", () => {
+    const cfg = resolveConfig();
+    expect(cfg.rerank.rerankerGate).toBe("hard");
+  });
+
+  it("Default rerank.rerankerGateThreshold is 0.08", () => {
+    const cfg = resolveConfig();
+    expect(cfg.rerank.rerankerGateThreshold).toBe(0.08);
+  });
+
+  it("Default rerank.rerankerGateLowThreshold is 0.02", () => {
+    const cfg = resolveConfig();
+    expect(cfg.rerank.rerankerGateLowThreshold).toBe(0.02);
+  });
+
+  it("Default rerank.spark.minScoreSpread is 0.5 (logit-space)", () => {
+    const cfg = resolveConfig();
+    expect(cfg.rerank.spark!.minScoreSpread).toBe(0.5);
+  });
+
+  it("Default rerank.scoreBlendAlpha is 0", () => {
+    const cfg = resolveConfig();
+    expect(cfg.rerank.scoreBlendAlpha).toBe(0);
+  });
+
+  it("Default rerank.rrfK is 60", () => {
+    const cfg = resolveConfig();
+    expect(cfg.rerank.rrfK).toBe(60);
+  });
 });
 
 describe("Temporal Decay (New Formula)", () => {
