@@ -7,7 +7,7 @@
 - **Reciprocal Rank Fusion (RRF)**: Scale-invariant hybrid merging replaces buggy score-based blending. No more BM25/cosine scale mismatch.
 - **5 new plugin tools**: 13 → 18 total. `memory_recall_debug`, `memory_bulk_ingest`, `memory_temporal`, `memory_related`, `memory_gate_status`.
 - **Multi-Query Expansion**: LLM-generated query reformulations improve recall for ambiguous queries.
-- **483 tests**: Up from 144. Comprehensive coverage across all pipeline stages.
+- **704 tests**: Up from 144. Comprehensive coverage across all pipeline stages.
 
 ### Added
 - **Phase 12: RRF + Dynamic Reranker Gate**
