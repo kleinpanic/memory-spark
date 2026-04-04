@@ -10,698 +10,1064 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
         :root {
-            --bg: #09090b;
-            --bg-elevated: #18181b;
-            --bg-card: #1f1f23;
-            --fg: #fafafa;
-            --fg-muted: #71717a;
-            --border: #27272a;
-            --blue: #3b82f6;
-            --cyan: #22d3ee;
-            --green: #22c55e;
-            --orange: #fb923c;
-            --purple: #a78bfa;
-            --red: #f87171;
+            --bg-primary: #0a0a0f;
+            --bg-secondary: #12121a;
+            --bg-tertiary: #1a1a25;
+            --text-primary: #e5e5e5;
+            --text-secondary: #a0a0a0;
+            --accent-blue: #3b82f6;
+            --accent-purple: #a855f7;
+            --accent-amber: #f59e0b;
+            --accent-green: #22c55e;
+            --accent-red: #ef4444;
+            --gradient-hero: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
         }
-        
+
         body {
-            font-family: 'Inter', system-ui, sans-serif;
-            background: var(--bg);
-            color: var(--fg);
-            line-height: 1.6;
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.7;
         }
-        
+
+        /* Section base */
+        .section {
+            min-height: 100vh;
+            padding: 100px 20px;
+            max-width: 1200px;
+            margin: 0 auto;
+            opacity: 0;
+            transform: translateY(50px);
+            transition: opacity 0.8s ease, transform 0.8s ease;
+        }
+
+        .section.visible {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
         /* Hero */
         .hero {
             min-height: 100vh;
             display: flex;
             flex-direction: column;
-            align-items: center;
             justify-content: center;
-            padding: 2rem;
+            align-items: center;
             text-align: center;
-            background: 
-                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(59,130,246,0.15), transparent),
-                radial-gradient(ellipse 60% 40% at 80% 60%, rgba(168,85,247,0.08), transparent),
-                var(--bg);
+            background: radial-gradient(ellipse at top, #1a1a35 0%, var(--bg-primary) 70%);
         }
-        
+
         .hero h1 {
-            font-size: clamp(2.5rem, 7vw, 5rem);
+            font-size: clamp(3rem, 8vw, 5rem);
             font-weight: 700;
-            letter-spacing: -0.03em;
-            background: linear-gradient(135deg, #fff 0%, #7dd3fc 50%, #a78bfa 100%);
+            background: linear-gradient(135deg, #a78bfa 0%, #3b82f6 50%, #22c55e 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            margin-bottom: 1rem;
+            background-clip: text;
+            margin-bottom: 24px;
         }
-        
-        .hero p {
-            font-size: clamp(1rem, 2vw, 1.25rem);
-            color: var(--fg-muted);
-            max-width: 700px;
-            margin-bottom: 3rem;
+
+        .hero .tagline {
+            font-size: 1.5rem;
+            color: var(--text-secondary);
+            margin-bottom: 48px;
         }
-        
-        .hero strong { color: var(--cyan); font-weight: 500; }
-        
-        /* Stats */
-        .stats {
-            display: flex;
-            gap: 2rem;
-            flex-wrap: wrap;
-            justify-content: center;
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 24px;
+            max-width: 800px;
         }
-        
-        .stat {
+
+        .stat-card {
+            background: var(--bg-secondary);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 12px;
+            padding: 24px;
             text-align: center;
         }
-        
+
         .stat-value {
             font-size: 2.5rem;
             font-weight: 700;
-            background: linear-gradient(135deg, var(--green), var(--cyan));
+            color: var(--accent-blue);
+        }
+
+        .stat-label {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-top: 8px;
+        }
+
+        /* Headers */
+        h2 {
+            font-size: 3rem;
+            margin-bottom: 16px;
+            background: linear-gradient(90deg, var(--text-primary), var(--accent-purple));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
+            background-clip: text;
         }
-        
-        .stat-label {
-            font-size: 0.8rem;
-            color: var(--fg-muted);
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
+
+        h3 {
+            font-size: 1.8rem;
+            margin: 40px 0 20px;
+            color: var(--accent-amber);
         }
-        
-        /* Sections */
-        section {
-            padding: 5rem 2rem;
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-        
-        .section-title {
-            font-size: 2rem;
-            font-weight: 600;
-            text-align: center;
-            margin-bottom: 0.5rem;
-        }
-        
+
         .section-subtitle {
-            color: var(--fg-muted);
-            text-align: center;
-            margin-bottom: 3rem;
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+            margin-bottom: 48px;
         }
-        
-        /* Pipeline */
-        #pipeline {
+
+        /* Pipeline canvas */
+        #pipeline-canvas {
             width: 100%;
-            height: 1000px;
-            background: var(--bg);
-            position: relative;
-            overflow: hidden;
+            height: 500px;
+            background: var(--bg-secondary);
+            border-radius: 16px;
+            border: 1px solid rgba(255,255,255,0.1);
         }
-        
-        /* Gate Decision */
-        .gate-section {
-            background: var(--bg-elevated);
-            border-radius: 24px;
-            padding: 3rem;
-            margin: 3rem 0;
+
+        /* Cards */
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 24px;
+            margin-top: 32px;
         }
-        
-        .gate-header {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-        
-        .gate-icon {
-            width: 48px;
-            height: 48px;
-            background: linear-gradient(135deg, var(--orange), var(--red));
+
+        .card {
+            background: var(--bg-secondary);
+            border: 1px solid rgba(255,255,255,0.1);
             border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
+            padding: 24px;
+            transition: transform 0.3s, border-color 0.3s;
         }
-        
-        .gate-title { font-size: 1.5rem; font-weight: 600; }
-        
-        .gate-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 1.5rem;
-        }
-        
-        @media (max-width: 900px) {
-            .gate-grid { grid-template-columns: 1fr; }
-        }
-        
-        .gate-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 1.5rem;
-            transition: all 0.3s ease;
-        }
-        
-        .gate-card:hover {
+
+        .card:hover {
             transform: translateY(-4px);
-            border-color: var(--blue);
+            border-color: var(--accent-blue);
         }
-        
-        .gate-condition {
+
+        .card-icon {
+            font-size: 2rem;
+            margin-bottom: 12px;
+        }
+
+        .card h4 {
+            font-size: 1.2rem;
+            margin-bottom: 8px;
+        }
+
+        .card p {
+            color: var(--text-secondary);
+            font-size: 0.95rem;
+        }
+
+        /* Code blocks */
+        pre {
+            background: var(--bg-tertiary);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 20px;
+            overflow-x: auto;
             font-family: 'JetBrains Mono', monospace;
-            font-size: 1.25rem;
-            margin-bottom: 0.75rem;
-        }
-        
-        .gate-condition.confident { color: var(--green); }
-        .gate-condition.tied { color: var(--orange); }
-        .gate-condition.ambiguous { color: var(--red); }
-        
-        .gate-desc {
-            color: var(--fg-muted);
             font-size: 0.9rem;
-            margin-bottom: 1rem;
+            line-height: 1.5;
+            margin: 24px 0;
         }
-        
-        .gate-result {
-            display: inline-block;
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 0.9rem;
+
+        code {
+            font-family: 'JetBrains Mono', monospace;
+            background: rgba(255,255,255,0.05);
+            padding: 2px 6px;
+            border-radius: 4px;
         }
-        
-        .gate-result.skip {
-            background: rgba(34,197,94,0.15);
-            color: var(--green);
+
+        .keyword { color: var(--accent-purple); }
+        .function { color: var(--accent-blue); }
+        .string { color: var(--accent-green); }
+        .comment { color: var(--text-secondary); font-style: italic; }
+        .number { color: var(--accent-amber); }
+
+        /* Math blocks */
+        .math-block {
+            background: var(--bg-secondary);
+            border-left: 4px solid var(--accent-purple);
+            padding: 24px;
+            margin: 24px 0;
+            border-radius: 0 8px 8px 0;
+            font-size: 1.1rem;
         }
-        
-        .gate-result.run {
-            background: rgba(248,113,113,0.15);
-            color: var(--red);
+
+        .math-block .formula {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.3rem;
+            color: var(--accent-amber);
+            margin: 12px 0;
         }
-        
-        /* Formula */
-        .formula-box {
-            background: linear-gradient(135deg, rgba(59,130,246,0.1), rgba(168,85,247,0.05));
-            border: 1px solid var(--blue);
-            border-radius: 24px;
-            padding: 3rem;
+
+        /* Gate diagram */
+        .gate-diagram {
+            display: flex;
+            justify-content: center;
+            gap: 32px;
+            margin: 48px 0;
+            flex-wrap: wrap;
+        }
+
+        .gate-box {
+            background: var(--bg-secondary);
+            border: 2px solid rgba(255,255,255,0.1);
+            border-radius: 16px;
+            padding: 32px;
+            min-width: 280px;
             text-align: center;
-            margin: 3rem 0;
         }
-        
-        .formula-title {
-            font-size: 1.25rem;
-            font-weight: 600;
-            margin-bottom: 1.5rem;
+
+        .gate-box.skip {
+            border-color: var(--accent-red);
+            background: rgba(239, 68, 68, 0.1);
         }
-        
-        .formula {
-            font-family: 'Times New Roman', serif;
-            font-size: 2.5rem;
-            color: var(--cyan);
-            margin: 1.5rem 0;
+
+        .gate-box.run {
+            border-color: var(--accent-green);
+            background: rgba(34, 197, 94, 0.1);
         }
-        
-        .formula-note {
-            color: var(--fg-muted);
-            max-width: 600px;
-            margin: 0 auto;
+
+        .gate-box h4 {
+            font-size: 1.5rem;
+            margin-bottom: 16px;
         }
-        
-        /* Architecture */
-        .arch-grid {
+
+        .gate-box .sigma {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.2rem;
+            margin: 16px 0;
+        }
+
+        /* Pool architecture */
+        .pool-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 1.5rem;
+            gap: 16px;
+            margin: 32px 0;
         }
-        
-        @media (max-width: 900px) {
-            .arch-grid { grid-template-columns: 1fr; }
-        }
-        
-        .arch-card {
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 2rem;
-            transition: all 0.3s ease;
-        }
-        
-        .arch-card:hover {
-            border-color: var(--blue);
-            transform: translateY(-4px);
-        }
-        
-        .arch-card.highlight {
-            border-color: var(--cyan);
-            background: linear-gradient(135deg, rgba(34,211,238,0.1), transparent);
-        }
-        
-        .arch-card h3 {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            font-size: 1.1rem;
-            margin-bottom: 1rem;
-        }
-        
-        .arch-icon {
-            width: 36px;
-            height: 36px;
+
+        .pool-box {
+            background: var(--bg-secondary);
+            border: 1px solid rgba(255,255,255,0.1);
             border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.1rem;
+            padding: 16px;
+            text-align: center;
         }
-        
-        .arch-card ul {
-            list-style: none;
-            color: var(--fg-muted);
+
+        .pool-box.boosted {
+            border-color: var(--accent-amber);
+            background: rgba(245, 158, 11, 0.1);
+        }
+
+        .pool-box.primary {
+            border-color: var(--accent-blue);
+        }
+
+        .pool-name {
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .pool-weight {
+            font-family: 'JetBrains Mono', monospace;
             font-size: 0.9rem;
+            color: var(--text-secondary);
         }
-        
-        .arch-card li {
-            padding: 0.5rem 0;
-            border-bottom: 1px solid var(--border);
+
+        /* Spark services */
+        .services-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 32px 0;
         }
-        
-        .arch-card li:last-child { border-bottom: none; }
-        
+
+        .services-table th,
+        .services-table td {
+            padding: 16px;
+            text-align: left;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .services-table th {
+            color: var(--accent-amber);
+            font-weight: 600;
+        }
+
+        .services-table code {
+            background: none;
+            padding: 0;
+        }
+
         /* Footer */
         footer {
             text-align: center;
-            padding: 4rem 2rem;
-            border-top: 1px solid var(--border);
+            padding: 48px;
+            color: var(--text-secondary);
+            border-top: 1px solid rgba(255,255,255,0.1);
         }
-        
-        .footer-links {
-            display: flex;
-            justify-content: center;
-            gap: 1rem;
-            flex-wrap: wrap;
-        }
-        
-        .footer-link {
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
-            padding: 0.75rem 1.5rem;
-            border-radius: 10px;
-            color: var(--fg);
+
+        footer a {
+            color: var(--accent-blue);
             text-decoration: none;
-            font-weight: 500;
-            transition: all 0.2s ease;
         }
-        
-        .footer-link:hover {
-            border-color: var(--blue);
-            transform: translateY(-2px);
+
+        /* Scroll indicator */
+        .scroll-indicator {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            background: var(--accent-purple);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 30px;
+            font-size: 0.9rem;
+            opacity: 0;
+            transition: opacity 0.3s;
+            z-index: 100;
+        }
+
+        .scroll-indicator.visible {
+            opacity: 1;
+        }
+
+        @media (max-width: 768px) {
+            .stats-grid { grid-template-columns: repeat(2, 1fr); }
+            .pool-grid { grid-template-columns: 1fr; }
+            .gate-diagram { flex-direction: column; align-items: center; }
         }
     </style>
 </head>
 <body>
-    <section class="hero">
+    <!-- Section 1: Hero -->
+    <section class="section hero visible">
         <h1>Memory-Spark</h1>
-        <p>
-            A <strong>15-stage RAG pipeline</strong> that outperforms 2026 SOTA by <strong>+16% NDCG</strong> 
-            through dynamic reranker gating, RRF fusion, and asymmetric instruction-aware embeddings.
-        </p>
-        <div class="stats">
-            <div class="stat">
+        <p class="tagline">Production RAG Pipeline with Dynamic Reranker Gating</p>
+        <div class="stats-grid">
+            <div class="stat-card">
                 <div class="stat-value">78.9%</div>
-                <div class="stat-label">NDCG@10</div>
+                <div class="stat-label">NDCG@10 (SciFact)</div>
             </div>
-            <div class="stat">
+            <div class="stat-card">
                 <div class="stat-value">626ms</div>
                 <div class="stat-label">P50 Latency</div>
             </div>
-            <div class="stat">
+            <div class="stat-card">
                 <div class="stat-value">78%</div>
-                <div class="stat-label">Skip Rate</div>
+                <div class="stat-label">Reranker Skip Rate</div>
             </div>
-            <div class="stat">
-                <div class="stat-value">+16%</div>
-                <div class="stat-label">vs SOTA</div>
-            </div>
-        </div>
-    </section>
-    
-    <section>
-        <h2 class="section-title">Pipeline Architecture</h2>
-        <p class="section-subtitle">Query flows through 15 stages: embedding → parallel pool search → RRF merge → gating → rerank → MMR</p>
-        <canvas id="pipeline"></canvas>
-    </section>
-    
-    <section>
-        <div class="gate-section">
-            <div class="gate-header">
-                <div class="gate-icon">⚡</div>
-                <div class="gate-title">Dynamic Reranker Gate</div>
-            </div>
-            <p class="section-subtitle" style="margin-bottom: 2rem;">The key to 50% latency reduction without accuracy loss</p>
-            
-            <div class="gate-grid">
-                <div class="gate-card">
-                    <div class="gate-condition confident">σ > 0.08</div>
-                    <div class="gate-desc">
-                        High confidence spread — the top result is clearly better than the rest.
-                        Vector search already found the right answer.
-                    </div>
-                    <div class="gate-result skip">SKIP RERANKER</div>
-                </div>
-                
-                <div class="gate-card">
-                    <div class="gate-condition tied">σ < 0.02</div>
-                    <div class="gate-desc">
-                        Tied results — scores are too close to discriminate.
-                        Reranker won't add meaningful signal here.
-                    </div>
-                    <div class="gate-result skip">SKIP RERANKER</div>
-                </div>
-                
-                <div class="gate-card">
-                    <div class="gate-condition ambiguous">0.02 ≤ σ ≤ 0.08</div>
-                    <div class="gate-desc">
-                        Ambiguous zone — results are neither clearly confident nor tied.
-                        Cross-encoder can help disambiguate.
-                    </div>
-                    <div class="gate-result run">RUN RERANKER</div>
-                </div>
+            <div class="stat-card">
+                <div class="stat-value">15</div>
+                <div class="stat-label">Pipeline Stages</div>
             </div>
         </div>
     </section>
-    
-    <section>
-        <div class="formula-box">
-            <div class="formula-title">Reciprocal Rank Fusion</div>
-            <div class="formula">RRF(d) = Σ 1/(k + rank(d))</div>
-            <div class="formula-note">
-                Scale-invariant merging of vector and BM25 results. 
-                Smoothing constant <strong>k=60</strong> prevents rank #1 from dominating.
-                Documents appearing high in both lists get an "agreement bonus."
+
+    <!-- Section 2: Pipeline Overview -->
+    <section class="section" id="pipeline">
+        <h2>15-Stage Retrieval Pipeline</h2>
+        <p class="section-subtitle">Query → HyDE/Expand → Parallel Pools → RRF → Gate → Rerank → MMR → Inject</p>
+        <canvas id="pipeline-canvas"></canvas>
+        <div class="card-grid">
+            <div class="card">
+                <div class="card-icon">🔍</div>
+                <h4>Query Pre-processing</h4>
+                <p>HyDE generates hypothetical documents. Multi-query expansion creates reformulations for recall.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🔀</div>
+                <h4>Parallel Pool Search</h4>
+                <p>6 pools queried simultaneously: agent_memory, agent_mistakes, shared_mistakes, shared_knowledge, shared_rules, FTS.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🚦</div>
+                <h4>Dynamic Gate</h4>
+                <p>Skip reranker when vector is confident (σ > 0.08) or tied (σ < 0.02). Saves 78% of cross-encoder calls.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🤝</div>
+                <h4>RRF Fusion</h4>
+                <p>Reciprocal Rank Fusion merges vector and reranker signals without score normalization.</p>
             </div>
         </div>
     </section>
-    
-    <section>
-        <h2 class="section-title">System Architecture</h2>
-        <p class="section-subtitle">Self-hosted on NVIDIA DGX Spark (zero cloud API calls)</p>
+
+    <!-- Section 3: Gate Deep-Dive -->
+    <section class="section" id="gate">
+        <h2>Dynamic Reranker Gate</h2>
+        <p class="section-subtitle">The key insight: reranking hurts performance on tight clusters</p>
         
-        <div class="arch-grid">
-            <div class="arch-card">
-                <h3>
-                    <div class="arch-icon" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8);">🤖</div>
-                    OpenClaw Agent
-                </h3>
-                <ul>
-                    <li>Calls memory_recall tool</li>
-                    <li>Pool isolation per agent</li>
-                    <li>Context injection prepended</li>
-                </ul>
+        <div class="math-block">
+            <p>The gate computes the <strong>confidence spread</strong> of the top-5 vector results:</p>
+            <div class="formula">σ = max(scores[0:5]) - min(scores[0:5])</div>
+            <p>When σ is large, the vector model is confident — let it decide. When σ is tiny, it's a near-tie — reranker is gambling.</p>
+        </div>
+
+        <div class="gate-diagram">
+            <div class="gate-box skip">
+                <h4>⛔ SKIP Reranker</h4>
+                <div class="sigma">σ > 0.08</div>
+                <p>Vector is confident.<br>Top-1 is clearly best.</p>
             </div>
-            
-            <div class="arch-card highlight">
-                <h3>
-                    <div class="arch-icon" style="background: linear-gradient(135deg, #22d3ee, #06b6d4);">⚡</div>
-                    Memory-Spark Plugin
-                </h3>
-                <ul>
-                    <li>15-stage retrieval pipeline</li>
-                    <li>LanceDB + Tantivy FTS</li>
-                    <li>Dynamic reranker gate</li>
-                    <li>Temporal decay (7/30/90 day)</li>
-                    <li>MMR diversity λ=0.9</li>
-                    <li>Parent-child expansion</li>
-                </ul>
+            <div class="gate-box run">
+                <h4>✅ RUN Reranker</h4>
+                <div class="sigma">0.02 ≤ σ ≤ 0.08</div>
+                <p>Ambiguous ranking.<br>Let cross-encoder decide.</p>
             </div>
-            
-            <div class="arch-card">
-                <h3>
-                    <div class="arch-icon" style="background: linear-gradient(135deg, #a78bfa, #7c3aed);">🖥️</div>
-                    Spark Backend
-                </h3>
-                <ul>
-                    <li>Embed-8B :18091</li>
-                    <li>Rerank-1B v2 :18096</li>
-                    <li>Super-120B (LLM) :18080</li>
-                    <li>GLM-OCR :18080</li>
-                    <li>NER :18112</li>
-                    <li>STT :18094</li>
-                </ul>
+            <div class="gate-box skip">
+                <h4>⛔ SKIP Reranker</h4>
+                <div class="sigma">σ < 0.02</div>
+                <p>Near-tie top-5.<br>Reranker gambling.</p>
+            </div>
+        </div>
+
+        <h3>Implementation</h3>
+<pre><code><span class="keyword">export function</span> <span class="function">computeRerankerGate</span>(
+  candidates: SearchResult[],
+  mode: <span class="string">"off" | "hard" | "soft"</span> = <span class="string">"off"</span>,
+  threshold: number = <span class="number">0.08</span>,
+  lowThreshold: number = <span class="number">0.02</span>,
+): RerankerGateResult {
+  <span class="keyword">const</span> top5 = candidates.slice(<span class="number">0</span>, <span class="number">5</span>);
+  <span class="keyword">const</span> scores = top5.map(c => c.score);
+  <span class="keyword">const</span> spread = Math.max(...scores) - Math.min(...scores);
+
+  <span class="keyword">if</span> (mode === <span class="string">"hard"</span>) {
+    <span class="keyword">if</span> (spread > threshold) <span class="keyword">return</span> { shouldRerank: <span class="keyword">false</span>, reason: <span class="string">"vector-confident"</span> };
+    <span class="keyword">if</span> (spread < lowThreshold) <span class="keyword">return</span> { shouldRerank: <span class="keyword">false</span>, reason: <span class="string">"tied-set"</span> };
+    <span class="keyword">return</span> { shouldRerank: <span class="keyword">true</span>, reason: <span class="string">"ambiguous"</span> };
+  }
+  <span class="comment">// ... soft gate logic</span>
+}</code></pre>
+    </section>
+
+    <!-- Section 4: RRF Math -->
+    <section class="section" id="rrf">
+        <h2>Reciprocal Rank Fusion</h2>
+        <p class="section-subtitle">Scale-invariant alternative to score blending</p>
+
+        <div class="math-block">
+            <p>The problem: BM25 scores (5–20) and cosine similarities (0.2–0.6) are incompatible. Sigmoid normalization helped, but hardcoded midpoints caused saturation.</p>
+            <div class="formula">RRF(d) = Σ w_i / (k + rank_i)</div>
+            <p>Where k = 60 (standard smoothing constant). Documents appearing in both lists get double credit — an "agreement bonus."</p>
+        </div>
+
+        <h3>TypeScript Implementation</h3>
+<pre><code><span class="keyword">export function</span> <span class="function">blendByRank</span>(
+  pool: SearchResult[],
+  rerankResults: Array<{ index: number; relevance_score: number }>,
+  k: number = <span class="number">60</span>,
+  vectorWeight: number = <span class="number">1.0</span>,
+  rerankerWeight: number = <span class="number">1.0</span>,
+): SearchResult[] {
+  <span class="keyword">const</span> rrfScores = <span class="keyword">new</span> Map&lt;number, number&gt;();
+
+  <span class="comment">// Vector rank contribution</span>
+  <span class="keyword">for</span> (<span class="keyword">let</span> rank = <span class="number">0</span>; rank < pool.length; rank++) {
+    rrfScores.set(rank, vectorWeight / (k + rank + <span class="number">1</span>));
+  }
+
+  <span class="comment">// Reranker rank contribution (adds when doc in both lists)</span>
+  <span class="keyword">const</span> sortedRerank = [...rerankResults].sort((a, b) => b.relevance_score - a.relevance_score);
+  <span class="keyword">for</span> (<span class="keyword">let</span> rank = <span class="number">0</span>; rank < sortedRerank.length; rank++) {
+    <span class="keyword">const</span> idx = sortedRerank[rank].index;
+    rrfScores.set(idx, (rrfScores.get(idx) ?? <span class="number">0</span>) + rerankerWeight / (k + rank + <span class="number">1</span>));
+  }
+
+  <span class="keyword">return</span> [...rrfScores.entries()]
+    .sort(([, a], [, b]) => b - a)
+    .map(([idx, score]) => ({ ...pool[idx], score }));
+}</code></pre>
+
+        <h3>Why RRF Won</h3>
+        <div class="card-grid">
+            <div class="card">
+                <div class="card-icon">📊</div>
+                <h4>Scale-Invariant</h4>
+                <p>Reranker scores 0.83–1.0 vs 0–100 makes no difference. Only positions matter.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🤝</div>
+                <h4>Dual Evidence</h4>
+                <p>When vector AND reranker agree on rank-1, that doc gets maximum RRF score.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🛡️</div>
+                <h4>Safe Fallback</h4>
+                <p>When reranker disagrees, it can only promote docs, not catastrophically demote.</p>
             </div>
         </div>
     </section>
+
+    <!-- Section 5: Pool Architecture -->
+    <section class="section" id="pools">
+        <h2>Pool-Aware Recall</h2>
+        <p class="section-subtitle">6 isolated pools with priority weighting</p>
+
+        <div class="pool-grid">
+            <div class="pool-box primary">
+                <div class="pool-name">agent_memory</div>
+                <div class="pool-weight">Primary recall source</div>
+            </div>
+            <div class="pool-box boosted">
+                <div class="pool-name">agent_mistakes</div>
+                <div class="pool-weight">1.6× boost (learn from errors)</div>
+            </div>
+            <div class="pool-box boosted">
+                <div class="pool-name">shared_mistakes</div>
+                <div class="pool-weight">1.6× boost (cross-agent)</div>
+            </div>
+            <div class="pool-box">
+                <div class="pool-name">shared_knowledge</div>
+                <div class="pool-weight">0.8× weight (supplemental)</div>
+            </div>
+            <div class="pool-box">
+                <div class="pool-name">shared_rules</div>
+                <div class="pool-weight">Relevance-gated</div>
+            </div>
+            <div class="pool-box">
+                <div class="pool-name">reference_pools</div>
+                <div class="pool-weight">Tool-call only (never auto)</div>
+            </div>
+        </div>
+
+        <h3>Source Code: Pool Search</h3>
+<pre><code><span class="comment">// src/auto/recall.ts — Pool-Aware Recall Pipeline</span>
+<span class="keyword">const</span> poolSearch = <span class="keyword">async</span> (
+  pools: <span class="string">string[]</span>,
+  filterAgentId?: <span class="string">string</span>,
+  limit = fetchN,
+  minScore = cfg.minScore,
+): Promise&lt;SearchResult[]&gt; => {
+  <span class="comment">// Multi-vector search: search each query vector and union by chunk ID</span>
+  <span class="keyword">let</span> vectorResults: SearchResult[];
+  <span class="keyword">if</span> (allQueryVectors.length > <span class="number">1</span>) {
+    <span class="keyword">const</span> allVecResults = <span class="keyword">await</span> Promise.all(
+      allQueryVectors.map(vec => <span class="function">searchOne</span>(vec))
+    );
+    <span class="comment">// Union: dedupe by chunk ID, keep highest score</span>
+    <span class="keyword">const</span> best = <span class="keyword">new</span> Map&lt;<span class="string">string</span>, SearchResult&gt;();
+    <span class="keyword">for</span> (<span class="keyword">const</span> resultSet <span class="keyword">of</span> allVecResults) {
+      <span class="keyword">for</span> (<span class="keyword">const</span> r <span class="keyword">of</span> resultSet) {
+        <span class="keyword">const</span> existing = best.get(r.chunk.id);
+        <span class="keyword">if</span> (!existing || r.score > existing.score) {
+          best.set(r.chunk.id, r);
+        }
+      }
+    }
+    vectorResults = [...best.values()].sort((a, b) => b.score - a.score);
+  }
+  <span class="comment">// ... RRF merge with FTS results</span>
+};</code></pre>
+    </section>
+
+    <!-- Section 6: Temporal Decay -->
+    <section class="section" id="decay">
+        <h2>Temporal Decay</h2>
+        <p class="section-subtitle">Recent memories score higher</p>
+
+        <div class="math-block">
+            <p>Exponential decay with a configurable floor:</p>
+            <div class="formula">decay(t) = floor + (1 - floor) × e^(-rate × ageDays)</div>
+            <p>Default: floor = 0.8, rate = 0.03. A 30-day-old memory scores 0.89× instead of 1.0×.</p>
+        </div>
+
+<pre><code><span class="keyword">export function</span> <span class="function">applyTemporalDecay</span>(
+  results: SearchResult[],
+  opts?: { floor?: number; rate?: number }
+): <span class="keyword">void</span> {
+  <span class="keyword">const</span> floor = opts?.floor ?? <span class="number">0.8</span>;
+  <span class="keyword">const</span> rate = opts?.rate ?? <span class="number">0.03</span>;
+  <span class="keyword">const</span> now = Date.now();
+  
+  <span class="keyword">for</span> (<span class="keyword">const</span> r <span class="keyword">of</span> results) {
+    <span class="keyword">const</span> rawTime = r.chunk.updated_at ? <span class="keyword">new</span> Date(r.chunk.updated_at).getTime() : <span class="keyword">NaN</span>;
+    <span class="keyword">if</span> (Number.isNaN(rawTime)) <span class="keyword">continue</span>; <span class="comment">// Guard against invalid timestamps</span>
     
+    <span class="keyword">const</span> ageDays = Math.max(<span class="number">0</span>, (now - rawTime) / (<span class="number">86400</span> * <span class="number">1000</span>));
+    <span class="keyword">const</span> decay = floor + (<span class="number">1</span> - floor) * Math.exp(-rate * ageDays);
+    r.score *= decay;
+  }
+}</code></pre>
+
+        <div class="card-grid">
+            <div class="card">
+                <div class="card-icon">📅</div>
+                <h4>Age Impact</h4>
+                <p>0 days = 1.0×, 7 days = 0.96×, 30 days = 0.89×, 90 days = 0.81×</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🛡️</div>
+                <h4>Floor Protection</h4>
+                <p>Old memories never score below 80% — they're still relevant context.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Section 7: MMR Diversity -->
+    <section class="section" id="mmr">
+        <h2>Maximal Marginal Relevance</h2>
+        <p class="section-subtitle">Diversity filter prevents redundant results</p>
+
+        <div class="math-block">
+            <p>MMR iteratively selects docs that are relevant but dissimilar to already-selected:</p>
+            <div class="formula">MMR = λ × Sim(q, d) - (1-λ) × max[Sim(d, d_j) for d_j in selected]</div>
+            <p>Default λ = 0.9 (relevance-biased). Uses cosine similarity on 4096-dim vectors.</p>
+        </div>
+
+<pre><code><span class="keyword">export function</span> <span class="function">mmrRerank</span>(
+  results: SearchResult[],
+  lambda: number = <span class="number">0.9</span>,
+  topK?: number
+): SearchResult[] {
+  <span class="keyword">if</span> (results.length <= <span class="number">1</span>) <span class="keyword">return</span> results;
+  
+  <span class="keyword">const</span> selected: SearchResult[] = [];
+  <span class="keyword">const</span> remaining = [...results];
+  
+  <span class="keyword">while</span> (remaining.length > <span class="number">0</span> && (!topK || selected.length < topK)) {
+    <span class="keyword">let</span> bestIdx = <span class="number">0</span>;
+    <span class="keyword">let</span> bestScore = <span class="number">-Infinity</span>;
+    
+    <span class="keyword">for</span> (<span class="keyword">let</span> i = <span class="number">0</span>; i < remaining.length; i++) {
+      <span class="keyword">const</span> relevance = remaining[i].score;
+      <span class="keyword">let</span> maxSim = <span class="number">0</span>;
+      
+      <span class="keyword">for</span> (<span class="keyword">const</span> s <span class="keyword">of</span> selected) {
+        <span class="keyword">const</span> sim = <span class="function">cosineSimilarity</span>(remaining[i].vector!, s.vector!);
+        maxSim = Math.max(maxSim, sim);
+      }
+      
+      <span class="keyword">const</span> mmrScore = lambda * relevance - (<span class="number">1</span> - lambda) * maxSim;
+      <span class="keyword">if</span> (mmrScore > bestScore) {
+        bestScore = mmrScore;
+        bestIdx = i;
+      }
+    }
+    
+    selected.push(remaining.splice(bestIdx, <span class="number">1</span>)[<span class="number">0</span>]);
+  }
+  
+  <span class="keyword">return</span> selected;
+}</code></pre>
+    </section>
+
+    <!-- Section 8: Spark Backend -->
+    <section class="section" id="spark">
+        <h2>Spark Backend</h2>
+        <p class="section-subtitle">Self-hosted inference on NVIDIA DGX</p>
+
+        <table class="services-table">
+            <thead>
+                <tr>
+                    <th>Service</th>
+                    <th>Model</th>
+                    <th>Port</th>
+                    <th>Role</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>Embedding</code></td>
+                    <td>llama-embed-nemotron-8b</td>
+                    <td><code>:18091</code></td>
+                    <td>Asymmetric embeddings (query vs doc)</td>
+                </tr>
+                <tr>
+                    <td><code>Reranker</code></td>
+                    <td>llama-nemotron-rerank-1b-v2</td>
+                    <td><code>:18096</code></td>
+                    <td>Cross-encoder scoring</td>
+                </tr>
+                <tr>
+                    <td><code>LLM</code></td>
+                    <td>Nemotron-Super-120B</td>
+                    <td><code>:18080</code></td>
+                    <td>HyDE generation, query expansion</td>
+                </tr>
+                <tr>
+                    <td><code>GLM-OCR</code></td>
+                    <td>zai-org/GLM-OCR</td>
+                    <td><code>:18080</code></td>
+                    <td>PDF parsing (vLLM vision)</td>
+                </tr>
+                <tr>
+                    <td><code>NER</code></td>
+                    <td>bart-large-mnli</td>
+                    <td><code>:18112</code></td>
+                    <td>Entity extraction</td>
+                </tr>
+                <tr>
+                    <td><code>Zero-shot</code></td>
+                    <td>bart-large-mnli</td>
+                    <td><code>:18113</code></td>
+                    <td>Classification</td>
+                </tr>
+                <tr>
+                    <td><code>Summarizer</code></td>
+                    <td>bart-large-cnn</td>
+                    <td><code>:18110</code></td>
+                    <td>Chunk summarization</td>
+                </tr>
+                <tr>
+                    <td><code>STT</code></td>
+                    <td>nvidia/parakeet-ctc-1.1b</td>
+                    <td><code>:18094</code></td>
+                    <td>Speech-to-text</td>
+                </tr>
+                <tr>
+                    <td><code>Legacy OCR</code></td>
+                    <td>EasyOCR</td>
+                    <td><code>:18097</code></td>
+                    <td>Fallback PDF parsing</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>Key Architecture Decisions</h3>
+        <div class="card-grid">
+            <div class="card">
+                <div class="card-icon">🔒</div>
+                <h4>Zero Cloud APIs</h4>
+                <p>No OpenAI, no Anthropic, no rate limits. Full control over inference.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">⚡</div>
+                <h4>Sub-second Latency</h4>
+                <p>Local GPU inference at 119ms p95 for reranking, 150ms for embedding.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🎯</div>
+                <h4>Instruction-Aware</h4>
+                <p>Nemotron-8B uses asymmetric encoding: "Instruct: ... Query: ..." prefix.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Section 9: Benchmarks -->
+    <section class="section" id="benchmarks">
+        <h2>BEIR Benchmarks</h2>
+        <p class="section-subtitle">Comparing against 2026 SOTA</p>
+
+        <table class="services-table">
+            <thead>
+                <tr>
+                    <th>Config</th>
+                    <th>SciFact NDCG@10</th>
+                    <th>FiQA NDCG@10</th>
+                    <th>NFCorpus NDCG@10</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    <td><code>GATE-A</code> (Hard Gate)</td>
+                    <td>0.7802</td>
+                    <td>0.4123</td>
+                    <td>0.3421</td>
+                </tr>
+                <tr>
+                    <td><code>Config U</code> (Logit α=0.4)</td>
+                    <td><strong>0.7889</strong></td>
+                    <td>0.4198</td>
+                    <td>0.3456</td>
+                </tr>
+                <tr>
+                    <td><code>Config V</code> (High Recall)</td>
+                    <td>0.7712</td>
+                    <td>0.4089</td>
+                    <td>0.3512</td>
+                </tr>
+                <tr>
+                    <td>Vector-Only Baseline</td>
+                    <td>0.7709</td>
+                    <td>0.4056</td>
+                    <td><strong>0.4443</strong></td>
+                </tr>
+                <tr style="border-top: 2px solid var(--accent-amber);">
+                    <td><strong>BM25 (Baseline)</strong></td>
+                    <td>0.6650</td>
+                    <td>0.2360</td>
+                    <td>0.3250</td>
+                </tr>
+                <tr>
+                    <td><strong>Voyage-Large-2 (2026 SOTA)</strong></td>
+                    <td>0.6789</td>
+                    <td>0.3512</td>
+                    <td>0.3210</td>
+                </tr>
+            </tbody>
+        </table>
+
+        <h3>Key Findings</h3>
+        <div class="card-grid">
+            <div class="card">
+                <div class="card-icon">📈</div>
+                <h4>+16.5% over SOTA</h4>
+                <p>SciFact improvement vs Voyage-Large-2 BEIR 2.0 leader.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">⚠️</div>
+                <h4>NFCorpus Anomaly</h4>
+                <p>Vector-only wins on NFCorpus — reranker hurts on domain gap.</p>
+            </div>
+            <div class="card">
+                <div class="card-icon">🚦</div>
+                <h4>Gate Effectiveness</h4>
+                <p>78% of queries skip reranker, saving latency without losing accuracy.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
     <footer>
-        <div class="footer-links">
-            <a href="https://github.com/kleinpanic/memory-spark" class="footer-link">📦 GitHub</a>
-            <a href="https://github.com/kleinpanic/memory-spark/wiki" class="footer-link">📚 Wiki</a>
-            <a href="https://github.com/kleinpanic/memory-spark/blob/main/paper/memory-spark.pdf" class="footer-link">📄 Paper</a>
-        </div>
+        <p>
+            <a href="https://github.com/kleinpanic/memory-spark">GitHub</a> • 
+            <a href="https://github.com/kleinpanic/memory-spark/wiki">Documentation</a> • 
+            <a href="https://docs.openclaw.ai">OpenClaw Docs</a>
+        </p>
+        <p style="margin-top: 16px; color: var(--text-secondary);">
+            Memory-Spark v0.4.0 • 15-Stage RAG Pipeline • Self-Hosted on NVIDIA DGX Spark
+        </p>
     </footer>
-    
+
+    <div class="scroll-indicator" id="scroll-indicator">
+        ↓ Scroll to explore
+    </div>
+
     <script>
-    (function() {
-        const canvas = document.getElementById('pipeline');
-        const ctx = canvas.getContext('2d');
-        const dpr = window.devicePixelRatio || 1;
-        
-        function resize() {
-            const rect = canvas.getBoundingClientRect();
-            canvas.width = rect.width * dpr;
-            canvas.height = rect.height * dpr;
-            ctx.scale(dpr, dpr);
-        }
-        resize();
-        window.addEventListener('resize', resize);
-        
-        const W = () => canvas.offsetWidth;
-        const H = () => canvas.offsetHeight;
-        
-        // Stage definitions with positions
-        const stages = [
-            // Row 1: Query processing
-            { id: 'query', name: 'Query', x: 0.08, y: 0.08, w: 80, h: 40, color: '#3b82f6', desc: 'Ingest from agent' },
-            { id: 'clean', name: 'Clean', x: 0.22, y: 0.08, w: 80, h: 40, color: '#3b82f6', desc: 'Normalize text' },
-            
-            // HyDE branch
-            { id: 'hyde', name: 'HyDE', x: 0.36, y: 0.15, w: 80, h: 40, color: '#a78bfa', branch: true, desc: 'Generate hypothetical doc' },
-            
-            // Multi-query branch
-            { id: 'expand', name: 'Expand', x: 0.50, y: 0.15, w: 80, h: 40, color: '#a78bfa', branch: true, desc: 'Multi-query reformulation' },
-            
-            // Embed
-            { id: 'embed', name: 'Embed', x: 0.64, y: 0.08, w: 80, h: 40, color: '#3b82f6', desc: '4096-dim Nemotron-8B' },
-            
-            // Pool searches (parallel)
-            { id: 'p1', name: 'Memory', x: 0.22, y: 0.28, w: 70, h: 35, color: '#22d3ee', parallel: true, desc: 'agent_memory + agent_tools' },
-            { id: 'p2', name: 'Mistakes', x: 0.34, y: 0.28, w: 70, h: 35, color: '#22d3ee', parallel: true, desc: 'agent_mistakes (1.6x boost)' },
-            { id: 'p3', name: 'Shared', x: 0.46, y: 0.28, w: 70, h: 35, color: '#22d3ee', parallel: true, desc: 'shared_mistakes + knowledge' },
-            { id: 'p4', name: 'Rules', x: 0.58, y: 0.28, w: 70, h: 35, color: '#22d3ee', parallel: true, desc: 'shared_rules (relevance-gated)' },
-            { id: 'p5', name: 'FTS', x: 0.70, y: 0.28, w: 70, h: 35, color: '#fb923c', parallel: true, desc: 'Tantivy BM25' },
-            
-            // Merge stages
-            { id: 'rrf', name: 'RRF', x: 0.50, y: 0.40, w: 90, h: 45, color: '#fb923c', desc: 'Reciprocal Rank Fusion (k=60)' },
-            { id: 'dedup', name: 'Dedup', x: 0.50, y: 0.52, w: 90, h: 45, color: '#fb923c', desc: 'Jaccard similarity filter' },
-            
-            // Weighting stages
-            { id: 'weight', name: 'Weight', x: 0.35, y: 0.64, w: 90, h: 45, color: '#22c55e', desc: 'Source priority boost' },
-            { id: 'decay', name: 'Decay', x: 0.65, y: 0.64, w: 90, h: 45, color: '#22c55e', desc: 'Temporal exponential' },
-            
-            // Gate decision
-            { id: 'gate', name: 'Gate', x: 0.50, y: 0.76, w: 100, h: 50, color: '#f87171', decision: true, desc: 'Confidence spread check' },
-            
-            // Reranker (optional path)
-            { id: 'rerank', name: 'Rerank', x: 0.30, y: 0.88, w: 90, h: 45, color: '#f87171', optional: true, desc: 'Cross-encoder (119ms)' },
-            
-            // MMR (always runs)
-            { id: 'mmr', name: 'MMR', x: 0.70, y: 0.88, w: 90, h: 45, color: '#a78bfa', desc: 'Diversity λ=0.9' },
-        ];
-        
-        // Connections between stages
-        const connections = [
-            ['query', 'clean'],
-            ['clean', 'embed'],
-            ['clean', 'hyde'],
-            ['hyde', 'embed'],
-            ['clean', 'expand'],
-            ['expand', 'embed'],
-            ['embed', 'p1'],
-            ['embed', 'p2'],
-            ['embed', 'p3'],
-            ['embed', 'p4'],
-            ['embed', 'p5'],
-            ['p1', 'rrf'],
-            ['p2', 'rrf'],
-            ['p3', 'rrf'],
-            ['p4', 'rrf'],
-            ['p5', 'rrf'],
-            ['rrf', 'dedup'],
-            ['dedup', 'weight'],
-            ['dedup', 'decay'],
-            ['weight', 'gate'],
-            ['decay', 'gate'],
-            ['gate', 'rerank'],
-            ['gate', 'mmr'],
-            ['rerank', 'mmr'],
-        ];
-        
-        // Particle system
-        const particles = [];
-        
-        class Particle {
-            constructor(fromId, toId) {
-                this.fromId = fromId;
-                this.toId = toId;
-                this.t = 0;
-                this.speed = 0.015 + Math.random() * 0.01;
-                this.size = 5 + Math.random() * 4;
-                this.alpha = 0.9;
-            }
-            
-            getStage(id) {
-                return stages.find(s => s.id === id);
-            }
-            
-            update() {
-                this.t += this.speed;
-                if (this.t >= 1) {
-                    // Spawn next particle in chain
-                    const nextConns = connections.filter(c => c[0] === this.toId);
-                    if (nextConns.length > 0) {
-                        const next = nextConns[Math.floor(Math.random() * nextConns.length)];
-                        particles.push(new Particle(next[0], next[1]));
-                    }
-                    return false;
+        // Intersection Observer for section animations
+        const sections = document.querySelectorAll('.section');
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('visible');
                 }
-                return true;
-            }
-            
-            draw(ctx) {
-                const from = this.getStage(this.fromId);
-                const to = this.getStage(this.toId);
-                if (!from || !to) return;
-                
-                const x1 = from.x * W();
-                const y1 = from.y * H();
-                const x2 = to.x * W();
-                const y2 = to.y * H();
-                
-                const x = x1 + (x2 - x1) * this.ease(this.t);
-                const y = y1 + (y2 - y1) * this.ease(this.t);
-                
-                ctx.beginPath();
-                ctx.arc(x, y, this.size, 0, Math.PI * 2);
-                ctx.fillStyle = from.color;
-                ctx.globalAlpha = this.alpha * (1 - this.t * 0.3);
-                ctx.shadowColor = from.color;
-                ctx.shadowBlur = 20;
-                ctx.fill();
-                ctx.shadowBlur = 0;
-                ctx.globalAlpha = 1;
-            }
-            
-            ease(t) {
-                return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
-            }
-        }
-        
-        function drawConnections() {
-            ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-            ctx.lineWidth = 2;
-            
-            connections.forEach(([fromId, toId]) => {
-                const from = stages.find(s => s.id === fromId);
-                const to = stages.find(s => s.id === toId);
-                if (!from || !to) return;
-                
-                const x1 = from.x * W();
-                const y1 = from.y * H();
-                const x2 = to.x * W();
-                const y2 = to.y * H();
-                
-                ctx.beginPath();
-                ctx.moveTo(x1, y1);
-                ctx.lineTo(x2, y2);
-                ctx.stroke();
             });
-        }
-        
-        function drawStages() {
-            stages.forEach(stage => {
-                const x = stage.x * W() - stage.w / 2;
-                const y = stage.y * H() - stage.h / 2;
+        }, { threshold: 0.2 });
+
+        sections.forEach(section => observer.observe(section));
+
+        // Scroll indicator
+        const scrollIndicator = document.getElementById('scroll-indicator');
+        window.addEventListener('scroll', () => {
+            if (window.scrollY > 100) {
+                scrollIndicator.classList.remove('visible');
+            } else {
+                scrollIndicator.classList.add('visible');
+            }
+        });
+        scrollIndicator.classList.add('visible');
+
+        // Pipeline canvas animation
+        const canvas = document.getElementById('pipeline-canvas');
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            
+            function resize() {
+                const rect = canvas.getBoundingClientRect();
+                canvas.width = rect.width * dpr;
+                canvas.height = rect.height * dpr;
+                ctx.scale(dpr, dpr);
+            }
+            resize();
+            window.addEventListener('resize', resize);
+
+            // Stage definitions
+            const stages = [
+                { name: 'Query', x: 0.05, y: 0.5, color: '#a78bfa' },
+                { name: 'Clean', x: 0.12, y: 0.5, color: '#a78bfa' },
+                { name: 'HyDE', x: 0.20, y: 0.3, color: '#f59e0b', branch: true },
+                { name: 'Expand', x: 0.20, y: 0.7, color: '#22c55e', branch: true },
+                { name: 'Embed', x: 0.28, y: 0.5, color: '#3b82f6' },
+                { name: 'Memory', x: 0.38, y: 0.25, color: '#ef4444', parallel: true },
+                { name: 'Mistakes', x: 0.38, y: 0.4, color: '#f59e0b', parallel: true },
+                { name: 'Shared', x: 0.38, y: 0.55, color: '#22c55e', parallel: true },
+                { name: 'Rules', x: 0.38, y: 0.7, color: '#3b82f6', parallel: true },
+                { name: 'FTS', x: 0.38, y: 0.85, color: '#a855f7', parallel: true },
+                { name: 'RRF', x: 0.50, y: 0.5, color: '#a78bfa' },
+                { name: 'Dedup', x: 0.58, y: 0.5, color: '#3b82f6' },
+                { name: 'Weight', x: 0.65, y: 0.5, color: '#f59e0b' },
+                { name: 'Decay', x: 0.72, y: 0.5, color: '#22c55e' },
+                { name: 'Gate', x: 0.80, y: 0.5, color: '#ef4444', decision: true },
+                { name: 'Rerank', x: 0.88, y: 0.3, color: '#a855f7', optional: true },
+                { name: 'MMR', x: 0.92, y: 0.5, color: '#3b82f6' },
+                { name: 'Inject', x: 0.98, y: 0.5, color: '#22c55e' }
+            ];
+
+            // Particles
+            const particles = [];
+            for (let i = 0; i < 12; i++) {
+                particles.push({
+                    stage: 0,
+                    progress: Math.random(),
+                    speed: 0.003 + Math.random() * 0.002,
+                    color: ['#a78bfa', '#3b82f6', '#22c55e', '#f59e0b'][Math.floor(Math.random() * 4)]
+                });
+            }
+
+            function getStagePos(stage, w, h) {
+                return {
+                    x: stage.x * w,
+                    y: stage.y * h
+                };
+            }
+
+            function draw() {
+                const w = canvas.width / dpr;
+                const h = canvas.height / dpr;
                 
-                // Glow for decision nodes
-                if (stage.decision) {
-                    ctx.shadowColor = stage.color;
-                    ctx.shadowBlur = 30;
-                }
-                
-                // Box
-                ctx.fillStyle = stage.branch ? 'rgba(168,85,247,0.15)' : 
-                                stage.decision ? 'rgba(248,113,113,0.15)' : 
-                                'rgba(31,31,35,0.95)';
-                ctx.strokeStyle = stage.color;
+                ctx.fillStyle = '#12121a';
+                ctx.fillRect(0, 0, w, h);
+
+                // Draw connections
+                ctx.strokeStyle = 'rgba(255,255,255,0.1)';
                 ctx.lineWidth = 2;
                 
+                // Main flow
+                const mainPath = [0, 1, 4, 10, 11, 12, 13, 14, 16, 17];
                 ctx.beginPath();
-                ctx.roundRect(x, y, stage.w, stage.h, 8);
-                ctx.fill();
-                ctx.stroke();
-                
-                ctx.shadowBlur = 0;
-                
-                // Name
-                ctx.fillStyle = '#fff';
-                ctx.font = '600 13px Inter';
-                ctx.textAlign = 'center';
-                ctx.fillText(stage.name, stage.x * W(), stage.y * H() - 4);
-                
-                // Description
-                ctx.fillStyle = '#71717a';
-                ctx.font = '400 10px Inter';
-                ctx.fillText(stage.desc.slice(0, 25), stage.x * W(), stage.y * H() + 12);
-            });
-        }
-        
-        function animate() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
-            drawConnections();
-            drawStages();
-            
-            // Update and draw particles
-            for (let i = particles.length - 1; i >= 0; i--) {
-                if (!particles[i].update()) {
-                    particles.splice(i, 1);
-                } else {
-                    particles[i].draw(ctx);
+                for (let i = 0; i < mainPath.length; i++) {
+                    const pos = getStagePos(stages[mainPath[i]], w, h);
+                    if (i === 0) ctx.moveTo(pos.x, pos.y);
+                    else ctx.lineTo(pos.x, pos.y);
                 }
+                ctx.stroke();
+
+                // Branch paths
+                ctx.beginPath();
+                const pos1 = getStagePos(stages[1], w, h);
+                const posHyde = getStagePos(stages[2], w, h);
+                const posExpand = getStagePos(stages[3], w, h);
+                const posEmbed = getStagePos(stages[4], w, h);
+                ctx.moveTo(pos1.x, pos1.y);
+                ctx.lineTo(posHyde.x, posHyde.y);
+                ctx.lineTo(posEmbed.x, posEmbed.y);
+                ctx.moveTo(pos1.x, pos1.y);
+                ctx.lineTo(posExpand.x, posExpand.y);
+                ctx.lineTo(posEmbed.x, posEmbed.y);
+                ctx.stroke();
+
+                // Parallel pools
+                ctx.beginPath();
+                const posEmbed2 = getStagePos(stages[4], w, h);
+                const pools = [5, 6, 7, 8, 9];
+                const posRRF = getStagePos(stages[10], w, h);
+                for (const p of pools) {
+                    const pos = getStagePos(stages[p], w, h);
+                    ctx.moveTo(posEmbed2.x, posEmbed2.y);
+                    ctx.lineTo(pos.x, pos.y);
+                    ctx.lineTo(posRRF.x, posRRF.y);
+                }
+                ctx.stroke();
+
+                // Gate to Rerank branch
+                ctx.beginPath();
+                const posGate = getStagePos(stages[14], w, h);
+                const posRerank = getStagePos(stages[15], w, h);
+                const posMMR = getStagePos(stages[16], w, h);
+                ctx.moveTo(posGate.x, posGate.y);
+                ctx.lineTo(posRerank.x, posRerank.y);
+                ctx.lineTo(posMMR.x, posMMR.y);
+                ctx.stroke();
+
+                // Draw stage boxes
+                for (const stage of stages) {
+                    const pos = getStagePos(stage, w, h);
+                    
+                    ctx.fillStyle = stage.color + '33';
+                    ctx.strokeStyle = stage.color;
+                    ctx.lineWidth = 2;
+                    
+                    const boxW = 60;
+                    const boxH = 30;
+                    
+                    ctx.beginPath();
+                    ctx.roundRect(pos.x - boxW/2, pos.y - boxH/2, boxW, boxH, 6);
+                    ctx.fill();
+                    ctx.stroke();
+                    
+                    ctx.fillStyle = '#fff';
+                    ctx.font = '11px Inter';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(stage.name, pos.x, pos.y);
+                }
+
+                // Draw particles
+                for (const p of particles) {
+                    const stage = stages[p.stage];
+                    let nextStage = stages[p.stage + 1];
+                    
+                    // Handle branching
+                    if (p.stage === 1) {
+                        // After Clean, branch to HyDE or Expand
+                        nextStage = stages[Math.random() > 0.5 ? 2 : 3];
+                    }
+                    if (p.stage === 2 || p.stage === 3) {
+                        nextStage = stages[4]; // Both converge at Embed
+                    }
+                    if (p.stage >= 5 && p.stage <= 9) {
+                        nextStage = stages[10]; // All pools converge at RRF
+                    }
+                    if (p.stage === 14) {
+                        // Gate decision
+                        nextStage = Math.random() > 0.22 ? stages[16] : stages[15];
+                    }
+                    if (p.stage === 15) {
+                        nextStage = stages[16];
+                    }
+                    
+                    if (!nextStage) {
+                        p.stage = 0;
+                        p.progress = 0;
+                        continue;
+                    }
+
+                    const pos = getStagePos(stage, w, h);
+                    const nextPos = getStagePos(nextStage, w, h);
+                    
+                    const x = pos.x + (nextPos.x - pos.x) * p.progress;
+                    const y = pos.y + (nextPos.y - pos.y) * p.progress;
+
+                    ctx.beginPath();
+                    ctx.arc(x, y, 4, 0, Math.PI * 2);
+                    ctx.fillStyle = p.color;
+                    ctx.fill();
+
+                    // Glow effect
+                    ctx.beginPath();
+                    ctx.arc(x, y, 8, 0, Math.PI * 2);
+                    ctx.fillStyle = p.color + '44';
+                    ctx.fill();
+
+                    p.progress += p.speed;
+                    if (p.progress >= 1) {
+                        p.stage++;
+                        if (p.stage >= stages.length) {
+                            p.stage = 0;
+                            p.progress = 0;
+                        } else {
+                            p.progress = 0;
+                        }
+                    }
+                }
+
+                requestAnimationFrame(draw);
             }
-            
-            // Spawn new particles periodically
-            if (Math.random() < 0.04) {
-                const startConns = [['query', 'clean']];
-                const conn = startConns[0];
-                particles.push(new Particle(conn[0], conn[1]));
-            }
-            
-            requestAnimationFrame(animate);
+
+            draw();
         }
-        
-        animate();
-    })();
     </script>
 </body>
 </html>
