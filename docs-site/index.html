@@ -527,9 +527,6 @@
     }
     
     function drawConnections() {
-        ctx.strokeStyle = 'rgba(255,255,255,0.04)';
-        ctx.lineWidth = 1.5;
-        
         connections.forEach(([fromId, toId]) => {
             const from = stages.find(s => s.id === fromId);
             const to = stages.find(s => s.id === toId);
@@ -543,16 +540,58 @@
             ctx.beginPath();
             ctx.moveTo(x1, y1);
             
-            // Curved lines for loop back
-            if (fromId === 'response' && toId === 'user') {
-                ctx.quadraticCurveTo(x1 + 50, y1 - 100, x2, y2);
-            } else if (fromId === 'user' && toId === 'query') {
-                ctx.quadraticCurveTo(x1 + 50, y1 - 100, x2, y2);
+            // Route around blocks using bezier curves
+            if (fromId === 'user' && toId === 'query') {
+                // USER to Query - curve up and over
+                ctx.bezierCurveTo(x1 + 60, y1 - 80, x2 - 60, y2 - 80, x2, y2);
+            } else if (fromId === 'response' && toId === 'user') {
+                // Response back to USER - curve down and under
+                ctx.bezierCurveTo(x1 + 60, y1 + 80, x2 + 60, y2 + 80, x2, y2);
+            } else if (from.parallel && to.id === 'rrf') {
+                // Pool to RRF - curve to avoid other pools
+                const midY = (y1 + y2) / 2 + 30;
+                ctx.bezierCurveTo(x1, midY, x2, midY, x2, y2);
+            } else if (from.id === 'embed' && to.parallel) {
+                // Embed to pools - spread out vertically
+                const offset = (to.x - 0.5) * 40;
+                ctx.bezierCurveTo(x1, y1 + 40 + offset, x2, y2 - 40 - offset, x2, y2);
+            } else if (from.id === 'gate' && to.id === 'mmr') {
+                // Gate to MMR - curve right
+                ctx.bezierCurveTo(x1 + 80, y1, x2 - 80, y2, x2, y2);
+            } else if (from.id === 'gate' && to.id === 'rerank') {
+                // Gate to Rerank - curve left
+                ctx.bezierCurveTo(x1 - 80, y1, x2 + 80, y2, x2, y2);
+            } else if (from.id === 'rerank' && to.id === 'mmr') {
+                // Rerank to MMR - curve under
+                ctx.bezierCurveTo(x1, y1 + 50, x2, y2 + 50, x2, y2);
+            } else if (from.id === 'dedup' && to.id === 'weight') {
+                // Dedup to Weight - curve left
+                ctx.bezierCurveTo(x1 - 40, y1 + 30, x2 + 40, y2 - 30, x2, y2);
+            } else if (from.id === 'dedup' && to.id === 'decay') {
+                // Dedup to Decay - curve right
+                ctx.bezierCurveTo(x1 + 40, y1 + 30, x2 - 40, y2 - 30, x2, y2);
+            } else if (from.id === 'mmr' && to.id === 'response') {
+                // MMR to Response
+                ctx.bezierCurveTo(x1 + 60, y1 - 20, x2 - 60, y2 + 20, x2, y2);
+            } else if (Math.abs(y2 - y1) > 50) {
+                // Vertical movement - use S-curve
+                const midY = (y1 + y2) / 2;
+                ctx.bezierCurveTo(x1, midY, x2, midY, x2, y2);
             } else {
+                // Simple diagonal or horizontal
                 ctx.lineTo(x2, y2);
             }
             
+            // Draw with glow effect
+            ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+            ctx.lineWidth = 3;
             ctx.stroke();
+            
+            ctx.strokeStyle = from.color;
+            ctx.lineWidth = 1.5;
+            ctx.globalAlpha = 0.4;
+            ctx.stroke();
+            ctx.globalAlpha = 1;
         });
     }
     
