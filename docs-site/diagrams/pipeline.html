@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>15-Stage Pipeline — Memory-Spark</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        'spark': {
+          'bg': '#0a0a0f',
+          'card': '#12121a',
+          'border': '#1e1e2e',
+          'text': '#cdd6f4',
+          'muted': '#6c7086',
+          'accent': '#89b4fa',
+          'purple': '#cba6f7',
+          'green': '#a6e3a1',
+          'amber': '#f9e2af',
+          'red': '#f38ba8',
+          'cyan': '#94e2d5',
+        }
+      }
+    }
+  }
+}
+</script>
+<style>
+body{background:#0a0a0f;color:#cdd6f4;font-family:Inter,system-ui,sans-serif}
+.stage-card{transition:all .3s}
+.stage-card:hover{transform:translateY(-4px);border-color:#89b4fa}
+.stage-card.active{border-color:#89b4fa;box-shadow:0 0 30px rgba(137,180,250,.2)}
+</style>
+</head>
+<body class="min-h-screen p-8">
+
+<div class="max-w-6xl mx-auto">
+  <a href="../index.html" class="text-spark-muted hover:text-spark-accent text-sm mb-4 inline-block">← Back to Overview</a>
+  
+  <div class="text-center mb-12">
+    <h1 class="text-4xl font-bold mb-4">15-Stage Retrieval Pipeline</h1>
+    <p class="text-spark-muted max-w-2xl mx-auto">
+      Each stage transforms the query and results to improve relevance. Click a stage to see details.
+    </p>
+  </div>
+  
+  <!-- Pipeline Flow -->
+  <div class="grid grid-cols-1 md:grid-cols-5 gap-4 mb-12">
+    
+    <!-- Stage 0: User Query -->
+    <div class="stage-card bg-spark-card border-2 border-spark-purple rounded-xl p-4 cursor-pointer" onclick="selectStage(0)">
+      <div class="text-center">
+        <div class="text-3xl mb-2">👤</div>
+        <div class="font-semibold">S0: User Query</div>
+        <div class="text-xs text-spark-muted mt-1">Input</div>
+      </div>
+    </div>
+    
+    <!-- Stage 1: Query Cleaning -->
+    <div class="stage-card bg-spark-card border border-spark-border rounded-xl p-4 cursor-pointer" onclick="selectStage(1)">
+      <div class="text-center">
+        <div class="text-3xl mb-2">🧹</div>
+        <div class="font-semibold">S1: Clean</div>
+        <div class="text-xs text-spark-muted mt-1">~5ms</div>
+      </div>
+    </div>
+    
+    <!-- Stage 2: HyDE -->
+    <div class="stage-card bg-spark-card border border-spark-border rounded-xl p-4 cursor-pointer" onclick="selectStage(2)">
+      <div class="text-center">
+        <div class="text-3xl mb-2">📄</div>
+        <div class="font-semibold">S2: HyDE</div>
+        <div class="text-xs text-spark-muted mt-1">~400ms (optional)</div>
+      </div>
+    </div>
+    
+    <!-- Stage 3: Multi-Query -->
+    <div class="stage-card bg-spark-card border border-spark-border rounded-xl p-4 cursor-pointer" onclick="selectStage(3)">
+      <div class="text-center">
+        <div class="text-3xl mb-2">🔀</div>
+        <div class="font-semibold">S3: Multi-Query</div>
+        <div class="text-xs text-spark-muted mt-1">~300ms</div>
+      </div>
+    </div>
+    
+    <!-- Stage 4: Embedding -->
+    <div class="stage-card bg-spark-card border-2 border-spark-accent rounded-xl p-4 cursor-pointer" onclick="selectStage(4)">
+      <div class="text-center">
+        <div class="text-3xl mb-2">🧠</div>
+        <div class="font-semibold">S4: Embed</div>
+        <div class="text-xs text-spark-muted mt-1">~50ms</div>
+      </div>
+    </div>
+    
+    <!-- Stage 5: Pool Search -->
+    <div class="stage-card bg-spark-card border border-spark-border rounded-xl p-4 cursor-pointer" onclick="selectStage(5)">
+      <div class="text-center">
+        <div class="text-3xl mb-2">🗄️</div>
+        <div class="font-semibold">S5: Pools</div>
+        <div class="text-xs text-spark-muted mt-1">~80ms (parallel)</div>
+      </div>
+    </div>
+    
+    <!-- Stage 6: Hybrid Search -->
+    <div class="stage-card bg-spark-card border border-spark-border rounded-xl p-4 cursor-pointer" onclick="selectStage(6)">
+      <div class="text-center">
+        <div class="text-3xl mb-2">⚡</div>
+        <div class="font-semibold">S6: Hybrid</div>
+        <div class="text-xs text-spark-muted mt-1">~20ms</div>
+      </div>
+    </div>
+    
+    <!-- Stage 7: RRF Fusion -->
+    <div class="stage-card bg-spark-card border border-spark-border rounded-xl p-4 cursor-pointer" onclick="selectStage(7)">
+      <div class="text-center">
+        <div class="text-3xl mb-2">🔗</div>
+        <div class="font-semibold">S7: RRF</div>
+        <div class="text-xs text-spark-muted mt-1">~5ms</div>
+      </div>
+    </div>
+    
+    <!-- Stage 8: Source Weight -->
+    <div class="stage-card bg-spark-card border border-spark-border rounded-xl p-4 cursor-pointer" onclick="selectStage(8)">
+      <div class="text-center">
+        <div class="text-3xl mb-2">⚖️</div>
+        <div class="font-semibold">S8: Weight</div>
+        <div class="text-xs text-spark-muted mt-1">~2ms</div>
+      </div>
+    </div>
+    
+    <!-- Stage 9: Temporal Decay -->
+    <div class="stage-card bg-spark-card border border-spark-border rounded-xl p-4 cursor-pointer" onclick="selectStage(9)">
+      <div class="text-center">
+        <div class="text-3xl mb-2">⏰</div>
+        <div class="font-semibold">S9: Decay</div>
+        <div class="text-xs text-spark-muted mt-1">~2ms</div>
+      </div>
+    </div>
+    
+    <!-- Stage 10: Gate -->
+    <div class="stage-card bg-spark-card border-2 border-spark-amber rounded-xl p-4 cursor-pointer" onclick="selectStage(10)">
+      <div class="text-center">
+        <div class="text-3xl mb-2">🚦</div>
+        <div class="font-semibold">S10: Gate</div>
+        <div class="text-xs text-spark-muted mt-1">~1ms</div>
+      </div>
+    </div>
+    
+    <!-- Stage 11: Reranker -->
+    <div class="stage-card bg-spark-card border-2 border-spark-green rounded-xl p-4 cursor-pointer" onclick="selectStage(11)">
+      <div class="text-center">
+        <div class="text-3xl mb-2">🎯</div>
+        <div class="font-semibold">S11: Rerank</div>
+        <div class="text-xs text-spark-muted mt-1">~119ms (if run)</div>
+      </div>
+    </div>
+    
+    <!-- Stage 12: MMR -->
+    <div class="stage-card bg-spark-card border border-spark-border rounded-xl p-4 cursor-pointer" onclick="selectStage(12)">
+      <div class="text-center">
+        <div class="text-3xl mb-2">🎲</div>
+        <div class="font-semibold">S12: MMR</div>
+        <div class="text-xs text-spark-muted mt-1">~10ms</div>
+      </div>
+    </div>
+    
+    <!-- Stage 13: Parent Expand -->
+    <div class="stage-card bg-spark-card border border-spark-border rounded-xl p-4 cursor-pointer" onclick="selectStage(13)">
+      <div class="text-center">
+        <div class="text-3xl mb-2">📦</div>
+        <div class="font-semibold">S13: Expand</div>
+        <div class="text-xs text-spark-muted mt-1">~5ms</div>
+      </div>
+    </div>
+    
+    <!-- Stage 14: Top-K -->
+    <div class="stage-card bg-spark-card border border-spark-border rounded-xl p-4 cursor-pointer" onclick="selectStage(14)">
+      <div class="text-center">
+        <div class="text-3xl mb-2">🔝</div>
+        <div class="font-semibold">S14: Top-K</div>
+        <div class="text-xs text-spark-muted mt-1">~1ms</div>
+      </div>
+    </div>
+    
+    <!-- Stage 15: Response -->
+    <div class="stage-card bg-spark-card border-2 border-spark-cyan rounded-xl p-4 cursor-pointer" onclick="selectStage(15)">
+      <div class="text-center">
+        <div class="text-3xl mb-2">💬</div>
+        <div class="font-semibold">S15: Response</div>
+        <div class="text-xs text-spark-muted mt-1">Output</div>
+      </div>
+    </div>
+    
+  </div>
+  
+  <!-- Stage Details -->
+  <div id="stage-details" class="bg-spark-card border border-spark-border rounded-xl p-6">
+    <div class="text-center text-spark-muted">
+      Click a stage above to see details
+    </div>
+  </div>
+</div>
+
+<script>
+const stageDetails = {
+  0: {
+    title: 'S0: User Query',
+    description: 'The user sends a natural language query to the system. This is the raw input that starts the pipeline.',
+    input: 'Natural language string',
+    output: 'Query string',
+    code: `const query = "How do I fix the API timeout error?";`
+  },
+  1: {
+    title: 'S1: Query Cleaning',
+    description: 'Normalize the query: lowercase, trim whitespace, remove special characters, handle edge cases.',
+    input: 'Raw query string',
+    output: 'Cleaned query string',
+    code: `function cleanQuery(query: string): string {
+  return query
+    .toLowerCase()
+    .trim()
+    .replace(/[^\\w\\s?]/g, ' ')
+    .replace(/\\s+/g, ' ');
+}`
+  },
+  2: {
+    title: 'S2: HyDE (Hypothetical Document Embeddings)',
+    description: 'Generate a hypothetical answer using the LLM, then embed that answer. This bridges the gap between questions and answers.',
+    input: 'Cleaned query',
+    output: 'Hypothetical document embedding',
+    code: `// Generate hypothetical answer
+const hydeDoc = await llm.generate(\`
+  Generate a hypothetical answer to: \${query}
+  Max 150 tokens, factual style.
+\`);
+
+// Embed as DOCUMENT (not query)
+const hydeEmbedding = await embed.embedDocument(hydeDoc);`
+  },
+  3: {
+    title: 'S3: Multi-Query Expansion',
+    description: 'Generate 3 query reformulations to improve recall. Each is embedded and searched separately, then results are unioned.',
+    input: 'Cleaned query',
+    output: 'Original + 3 reformulations',
+    code: `const reformulations = await llm.generate(\`
+  Generate 3 search queries for: \${query}
+  Different phrasings, same intent.
+\`);
+
+const allEmbeddings = await Promise.all([
+  embedQuery(query),
+  ...reformulations.map(r => embedQuery(r))
+]);`
+  },
+  4: {
+    title: 'S4: Embedding',
+    description: 'Convert the query to a 4096-dim vector using llama-embed-nemotron-8b. Uses instruction-aware encoding.',
+    input: 'Query string',
+    output: '4096-dim vector',
+    code: `// Instruction-aware encoding
+const instruction = "Represent this query for retrieval";
+const prefixed = \`Instruct: \${instruction}\\nQuery: \${query}\`;
+
+const embedding = await sparkEmbed({
+  text: prefixed,
+  model: "llama-embed-nemotron-8b"
+});`
+  },
+  5: {
+    title: 'S5: Pool Search',
+    description: 'Search 6 memory pools in parallel: Agent Memory, Agent Mistakes, Shared Mistakes, Shared Knowledge, Shared Rules. Each with different weights.',
+    input: 'Query embedding',
+    output: 'Candidates from each pool',
+    code: `const pools = [
+  { name: 'agent_memory', weight: 1.0 },
+  { name: 'agent_mistakes', weight: 1.6 }, // boosted
+  { name: 'shared_mistakes', weight: 1.5 },
+  { name: 'shared_knowledge', weight: 0.8 },
+  { name: 'shared_rules', weight: 1.0 }
+];
+
+const results = await Promise.all(
+  pools.map(p => searchPool(p.name, embedding))
+);`
+  },
+  6: {
+    title: 'S6: Hybrid Search',
+    description: 'Run vector search AND full-text search (BM25) in parallel. Different signals, complementary results.',
+    input: 'Query embedding + query text',
+    output: 'Vector results + FTS results',
+    code: `const [vectorResults, ftsResults] = await Promise.all([
+  vectorSearch(embedding, topK=50),
+  fullTextSearch(query, topK=50)
+]);`
+  },
+  7: {
+    title: 'S7: RRF Fusion',
+    description: 'Merge vector and FTS results using Reciprocal Rank Fusion. Scale-invariant, no normalization needed.',
+    input: 'Vector results + FTS results',
+    output: 'Fused ranked list',
+    code: `function rrfFusion(vec, fts, k=60) {
+  const scores = new Map();
+  
+  vec.forEach((r, i) => {
+    scores.set(r.id, (scores.get(r.id) || 0) + 1/(k + i + 1));
+  });
+  
+  fts.forEach((r, i) => {
+    scores.set(r.id, (scores.get(r.id) || 0) + 1/(k + i + 1));
+  });
+  
+  return [...scores.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([id, score]) => ({ id, score }));
+}`
+  },
+  8: {
+    title: 'S8: Source Weighting',
+    description: 'Apply source-specific boosts. Mistakes get 1.6x boost, knowledge gets 0.8x.',
+    input: 'Fused results',
+    output: 'Weighted results',
+    code: `const sourceWeights = {
+  'agent_mistakes': 1.6,
+  'shared_mistakes': 1.5,
+  'agent_memory': 1.0,
+  'shared_knowledge': 0.8,
+  'shared_rules': 1.0
+};
+
+results.forEach(r => {
+  r.score *= sourceWeights[r.source] || 1.0;
+});`
+  },
+  9: {
+    title: 'S9: Temporal Decay',
+    description: 'Boost recent memories. Exponential decay with a floor of 0.8.',
+    input: 'Weighted results',
+    output: 'Time-decayed results',
+    code: `function temporalDecay(score, ageDays) {
+  const floor = 0.8;
+  const rate = 0.03;
+  const decay = floor + (1 - floor) * Math.exp(-rate * ageDays);
+  return score * decay;
+}
+
+// 0 days = 1.0, 7 days = 0.96, 30 days = 0.89, 365 days = 0.80`
+  },
+  10: {
+    title: 'S10: Dynamic Gate',
+    description: 'Check confidence spread (σ = s₁ - sₖ). Skip reranker if confident or tied.',
+    input: 'Decayed results',
+    output: 'Gate decision',
+    code: `const sigma = results[0].score - results[4].score;
+
+if (sigma > 0.08) {
+  // Vector confident - skip reranker
+  return results;
+} else if (sigma < 0.02) {
+  // Tied set - reranker would gamble
+  return results;
+} else {
+  // Ambiguous - run reranker
+  return runReranker(results);
+}`
+  },
+  11: {
+    title: 'S11: Cross-Encoder Rerank',
+    description: 'Use llama-nemotron-rerank-1b-v2 to rescore top candidates. Query normalization converts statements to questions.',
+    input: 'Ambiguous results',
+    output: 'Reranked results',
+    code: `// Normalize query for reranker
+const normalized = query.startsWith('Is')
+  ? query
+  : \`Is it true that \${query}?\`;
+
+const reranked = await sparkRerank({
+  query: normalized,
+  documents: results.map(r => r.text),
+  model: "llama-nemotron-rerank-1b-v2"
+});`
+  },
+  12: {
+    title: 'S12: MMR Diversity',
+    description: 'Maximal Marginal Relevance ensures diverse results. Balance relevance (λ) vs. novelty (1-λ).',
+    input: 'Ranked results',
+    output: 'Diverse top-K',
+    code: `function mmr(query, candidates, lambda=0.9, k=10) {
+  const selected = [];
+  
+  for (let i = 0; i < k; i++) {
+    const scores = candidates.map(c => {
+      const rel = lambda * similarity(query, c);
+      const div = (1 - lambda) * maxSimilarity(c, selected);
+      return rel - div;
+    });
+    
+    const best = candidates[argmax(scores)];
+    selected.push(best);
+    candidates.remove(best);
+  }
+  
+  return selected;
+}`
+  },
+  13: {
+    title: 'S13: Parent Expansion',
+    description: 'For each child chunk, retrieve the parent document for more context. Hierarchical indexing.',
+    input: 'Child chunks',
+    output: 'Parent contexts',
+    code: `// Each child has parent_id
+const parentIds = results.map(r => r.parent_id);
+
+const parents = await Promise.all(
+  [...new Set(parentIds)].map(id => getParent(id))
+);
+
+// Inject parent context into LLM prompt
+const context = parents.map(p => p.text).join('\\n\\n');`
+  },
+  14: {
+    title: 'S14: Top-K Selection',
+    description: 'Final cut to the configured K (default 10). Return only the best candidates.',
+    input: 'All results',
+    output: 'Top-K results',
+    code: `const topK = results
+  .sort((a, b) => b.score - a.score)
+  .slice(0, config.topK);
+
+return topK;`
+  },
+  15: {
+    title: 'S15: Response Generation',
+    description: 'Return results to the caller. The LLM uses this context to generate the final answer.',
+    input: 'Top-K results',
+    output: 'Structured response',
+    code: `return {
+  results: topK.map(r => ({
+    text: r.text,
+    score: r.score,
+    source: r.source,
+    path: r.path
+  })),
+  metadata: {
+    latency_ms: totalLatency,
+    reranker_used: gatePassed,
+    pool_counts: poolStats
+  }
+};`
+  }
+};
+
+function selectStage(index) {
+  const details = stageDetails[index];
+  const container = document.getElementById('stage-details');
+  
+  // Remove active class from all cards
+  document.querySelectorAll('.stage-card').forEach(c => c.classList.remove('active'));
+  
+  // Add active class to clicked card
+  document.querySelectorAll('.stage-card')[index].classList.add('active');
+  
+  container.innerHTML = `
+    <h2 class="text-2xl font-bold mb-4">${details.title}</h2>
+    <p class="text-spark-muted mb-4">${details.description}</p>
+    <div class="grid md:grid-cols-2 gap-4 mb-4">
+      <div class="bg-spark-bg rounded-lg p-4">
+        <div class="text-xs text-spark-muted uppercase mb-1">Input</div>
+        <div class="font-mono text-sm">${details.input}</div>
+      </div>
+      <div class="bg-spark-bg rounded-lg p-4">
+        <div class="text-xs text-spark-muted uppercase mb-1">Output</div>
+        <div class="font-mono text-sm">${details.output}</div>
+      </div>
+    </div>
+    <div class="bg-spark-bg rounded-lg p-4">
+      <div class="text-xs text-spark-muted uppercase mb-2">Code</div>
+      <pre class="text-sm overflow-x-auto"><code>${details.code}</code></pre>
+    </div>
+  `;
+}
+</script>
+
+</body>
+</html>
