@@ -1411,6 +1411,55 @@
     function drawBackground() {
         ctx.fillStyle = '#0a0b10';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw flow lines (horizontal guides)
+        ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+        ctx.lineWidth = 1;
+        for (let y = 0.1; y < 1; y += 0.1) {
+            ctx.beginPath();
+            ctx.moveTo(0, y * H());
+            ctx.lineTo(W(), y * H());
+            ctx.stroke();
+        }
+        
+        // Draw vertical guides
+        for (let x = 0.1; x < 1; x += 0.1) {
+            ctx.beginPath();
+            ctx.moveTo(x * W(), 0);
+            ctx.lineTo(x * W(), H());
+            ctx.stroke();
+        }
+        
+        // Draw section labels
+        ctx.fillStyle = 'rgba(255,255,255,0.08)';
+        ctx.font = '11px Inter';
+        ctx.textAlign = 'center';
+        
+        // Section backgrounds with labels
+        ctx.fillStyle = 'rgba(0,212,255,0.03)';
+        ctx.fillRect(0, H() * 0.02, W(), H() * 0.18);
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+        ctx.fillText('QUERY PROCESSING', W() * 0.5, H() * 0.05);
+        
+        ctx.fillStyle = 'rgba(48,209,88,0.03)';
+        ctx.fillRect(0, H() * 0.22, W(), H() * 0.12);
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+        ctx.fillText('PARALLEL POOL SEARCH', W() * 0.5, H() * 0.26);
+        
+        ctx.fillStyle = 'rgba(255,159,10,0.03)';
+        ctx.fillRect(0, H() * 0.36, W(), H() * 0.28);
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+        ctx.fillText('FUSION & FILTERING', W() * 0.5, H() * 0.40);
+        
+        ctx.fillStyle = 'rgba(255,69,58,0.03)';
+        ctx.fillRect(0, H() * 0.66, W(), H() * 0.20);
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+        ctx.fillText('DECISION & RERANKING', W() * 0.5, H() * 0.70);
+        
+        ctx.fillStyle = 'rgba(191,90,242,0.03)';
+        ctx.fillRect(0, H() * 0.78, W(), H() * 0.22);
+        ctx.fillStyle = 'rgba(255,255,255,0.1)';
+        ctx.fillText('DIVERSITY & OUTPUT', W() * 0.5, H() * 0.82);
     }
     
     function drawConnections() {
