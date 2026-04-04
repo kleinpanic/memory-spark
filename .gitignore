@@ -44,3 +44,18 @@ paper/*.fdb_latexmk
 paper/*.fls
 paper/*.synctex.gz
 golden-dataset.json
+
+# Agent-only artifacts (not project deliverables)
+.git-rewrite/
+**/AGENTS.md
+**/SOUL.md
+**/IDENTITY.md
+**/USER.md
+**/HEARTBEAT.md
+**/MEMORY.md
+**/BOOTSTRAP.md
+**/TOOLS.md
+**/STATE-AGENT*.md
+**/RESEARCH-AGENT*.md
+**/.agent-*
+**/agent-notes*/
