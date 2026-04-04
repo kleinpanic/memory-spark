@@ -858,7 +858,7 @@
 
 <nav>
     <a href="#" class="nav-logo">
-        <span>⚡</span> Memory-Spark
+        <span>MS</span> Memory-Spark
     </a>
     <button class="nav-toggle" aria-label="Toggle navigation">
         <span></span>
@@ -874,8 +874,8 @@
         <li><a href="#embedder-deep-dive">Embedder</a></li>
         <li><a href="#fusion-deep-dive">Fusion</a></li>
         <li><a href="#benchmarks">Benchmarks</a></li>
-        <li><a href="paper.pdf" target="_blank">📄 Paper</a></li>
-        <li><a href="https://github.com/exampleuser/memory-spark" target="_blank">GitHub ↗</a></li>
+        <li><a href="paper.pdf" target="_blank">Paper</a></li>
+        <li><a href="https://github.com/exampleuser/memory-spark" target="_blank">GitHub -></a></li>
     </ul>
 </nav>
 
@@ -934,7 +934,7 @@
 <section class="content-section" id="why">
     <h2>Why Does It Exist?</h2>
     <p>
-        Traditional Retrieval-Augmented Generation (RAG) often suffers from "semantic noise"—retrieving documents that are mathematically similar but contextually irrelevant. Most existing solutions rely on a single-shot vector search that fails to account for the nuance of human intent or the complex relationships within specialized domains.
+        Traditional Retrieval-Augmented Generation (RAG) often suffers from "semantic noise"--retrieving documents that are mathematically similar but contextually irrelevant. Most existing solutions rely on a single-shot vector search that fails to account for the nuance of human intent or the complex relationships within specialized domains.
     </p>
     <p>
         Memory-Spark exists because "good enough" retrieval isn't sufficient for production-grade AI agents. The system treats memory as a multi-stage pipeline, applying rigorous filtering, reranking, and validation at every step. This ensures that the agent receives only the most high-signal information, significantly reducing hallucination rates and improving overall coherence.
@@ -968,7 +968,7 @@
 <!-- GATE LOGIC DEEP DIVE -->
 <section class="deep-dive" id="gate-deep-dive">
     <div class="deep-dive-header">
-        <h2>🚦 Dynamic Reranker Gate</h2>
+        <h2>Dynamic Reranker Gate</h2>
         <p>The key to 50% latency reduction without accuracy loss</p>
     </div>
     
@@ -976,24 +976,24 @@
     
     <div class="deep-dive-content">
         <p>
-            The Dynamic Gate computes <strong>σ = max(score) − min(score)</strong> over the <strong>top-5 vector candidates</strong> (exactly what <code style="font-family: 'JetBrains Mono', monospace;">computeRerankerGate()</code> uses). It then checks two thresholds: <strong>high=0.08</strong> and <strong>low=0.02</strong>. In hard mode, reranking is skipped when vector results are already confident (<code style="font-family: 'JetBrains Mono', monospace;">σ &gt; 0.08</code>) or too tied to add reliable signal (<code style="font-family: 'JetBrains Mono', monospace;">σ &lt; 0.02</code>), and only runs in the middle band.
+            The Dynamic Gate computes <strong>sigma = max(score) - min(score)</strong> over the <strong>top-5 vector candidates</strong> (exactly what <code style="font-family: 'JetBrains Mono', monospace;">computeRerankerGate()</code> uses). It then checks two thresholds: <strong>high=0.08</strong> and <strong>low=0.02</strong>. In hard mode, reranking is skipped when vector results are already confident (<code style="font-family: 'JetBrains Mono', monospace;">sigma &gt; 0.08</code>) or too tied to add reliable signal (<code style="font-family: 'JetBrains Mono', monospace;">sigma &lt; 0.02</code>), and only runs in the middle band.
         </p>
     </div>
     
     <div class="gate-grid">
         <div class="gate-card">
-            <div class="gate-condition confident">σ > 0.08</div>
-            <div class="gate-desc">High confidence spread — the top result is clearly better. Vector search already found the answer.</div>
+            <div class="gate-condition confident">sigma > 0.08</div>
+            <div class="gate-desc">High confidence spread -- the top result is clearly better. Vector search already found the answer.</div>
             <div class="gate-result skip">SKIP RERANKER</div>
         </div>
         <div class="gate-card">
-            <div class="gate-condition tied">σ < 0.02</div>
-            <div class="gate-desc">Tied results — scores are too close. Reranker won't add meaningful signal.</div>
+            <div class="gate-condition tied">sigma < 0.02</div>
+            <div class="gate-desc">Tied results -- scores are too close. Reranker won't add meaningful signal.</div>
             <div class="gate-result skip">SKIP RERANKER</div>
         </div>
         <div class="gate-card">
-            <div class="gate-condition ambiguous">0.02 ≤ σ ≤ 0.08</div>
-            <div class="gate-desc">Ambiguous zone — results are neither clearly confident nor tied. Cross-encoder can help.</div>
+            <div class="gate-condition ambiguous">0.02 <= sigma <= 0.08</div>
+            <div class="gate-desc">Ambiguous zone -- results are neither clearly confident nor tied. Cross-encoder can help.</div>
             <div class="gate-result run">RUN RERANKER</div>
         </div>
     </div>
@@ -1002,7 +1002,7 @@
 <!-- POOL ARCHITECTURE DEEP DIVE -->
 <section class="deep-dive" id="pools-deep-dive">
     <div class="deep-dive-header">
-        <h2>🗄️ Pool Architecture + LanceDB</h2>
+        <h2>Pool Architecture + LanceDB</h2>
         <p>All pools stored in LanceDB with IVF_PQ indexing; logical isolation via metadata columns</p>
     </div>
     
@@ -1010,7 +1010,7 @@
     
     <div class="pool-grid">
         <div class="pool-card" style="border-color: var(--neon-cyan);">
-            <h3><span style="color: var(--neon-cyan);">🧠</span> Agent Memory</h3>
+            <h3><span style="color: var(--neon-cyan);">[MEM]</span> Agent Memory</h3>
             <div class="weight" style="color: var(--neon-cyan);">Weight: 1.0x</div>
             <ul>
                 <li>General working memory</li>
@@ -1019,7 +1019,7 @@
             </ul>
         </div>
         <div class="pool-card" style="border-color: var(--neon-green);">
-            <h3><span style="color: var(--neon-green);">⚠️</span> Agent Mistakes</h3>
+            <h3><span style="color: var(--neon-green);">[ERR]</span> Agent Mistakes</h3>
             <div class="weight" style="color: var(--neon-green);">Weight: 1.6x (BOOSTED)</div>
             <ul>
                 <li>Past errors and corrections</li>
@@ -1028,7 +1028,7 @@
             </ul>
         </div>
         <div class="pool-card" style="border-color: var(--neon-green);">
-            <h3><span style="color: var(--neon-green);">💡</span> Shared Mistakes</h3>
+            <h3><span style="color: var(--neon-green);">[SHR]</span> Shared Mistakes</h3>
             <div class="weight" style="color: var(--neon-green);">Weight: 1.6x (BOOSTED)</div>
             <ul>
                 <li>Cross-agent learned lessons</li>
@@ -1037,7 +1037,7 @@
             </ul>
         </div>
         <div class="pool-card" style="border-color: var(--neon-orange);">
-            <h3><span style="color: var(--neon-orange);">📖</span> Shared Knowledge</h3>
+            <h3><span style="color: var(--neon-orange);">[KB]</span> Shared Knowledge</h3>
             <div class="weight" style="color: var(--neon-orange);">Weight: 0.8x</div>
             <ul>
                 <li>Reference docs and manuals</li>
@@ -1046,7 +1046,7 @@
             </ul>
         </div>
         <div class="pool-card" style="border-color: var(--neon-cyan);">
-            <h3><span style="color: var(--neon-cyan);">📜</span> Shared Rules</h3>
+            <h3><span style="color: var(--neon-cyan);">[RULE]</span> Shared Rules</h3>
             <div class="weight" style="color: var(--neon-cyan);">Weight: 1.0x</div>
             <ul>
                 <li>Governing policies</li>
@@ -1055,7 +1055,7 @@
             </ul>
         </div>
         <div class="pool-card" style="border-color: var(--neon-yellow);">
-            <h3><span style="color: var(--neon-yellow);">🔍</span> FTS Index</h3>
+            <h3><span style="color: var(--neon-yellow);">[FTS]</span> FTS Index</h3>
             <div class="weight" style="color: var(--neon-yellow);">BM25 Full-Text</div>
             <ul>
                 <li>Tantivy BM25 search</li>
@@ -1069,7 +1069,7 @@
 <!-- RERANKER DEEP DIVE -->
 <section class="deep-dive" id="reranker-deep-dive">
     <div class="deep-dive-header">
-        <h2>🎯 Reranker Deep-Dive</h2>
+        <h2>Reranker Deep-Dive</h2>
         <p>Cross-encoder precision for final ranking</p>
     </div>
 
@@ -1080,7 +1080,7 @@
             Memory-Spark first uses a fast <strong>bi-encoder</strong> to retrieve candidate chunks, then applies a <strong>cross-encoder</strong> (Nemotron-1B-Rerank) to score each <strong>(query, document) pair</strong> directly. This second stage is slower but far more accurate for final ordering.
         </p>
         <p>
-            The reranker often produces compressed scores in the <strong>0.83-1.00</strong> band, so query normalization and spread-aware logic are critical. Normalizing shorthand into explicit questions (declarative → interrogative) sharpens pairwise relevance.
+            The reranker often produces compressed scores in the <strong>0.83-1.00</strong> band, so query normalization and spread-aware logic are critical. Normalizing shorthand into explicit questions (declarative -> interrogative) sharpens pairwise relevance.
         </p>
     </div>
 
@@ -1091,7 +1091,7 @@
         </div>
         <div class="concept-card">
             <h3>Score Compression + Normalization</h3>
-            <p>Reranker outputs are tightly clustered near 1.0. Query normalization helps by making intent explicit: "capital of france" → "What is the capital of France?"</p>
+            <p>Reranker outputs are tightly clustered near 1.0. Query normalization helps by making intent explicit: "capital of france" -> "What is the capital of France?"</p>
         </div>
         <div class="concept-card">
             <h3>Spread Guard</h3>
@@ -1103,8 +1103,8 @@
 <!-- EMBEDDER DEEP DIVE -->
 <section class="deep-dive" id="embedder-deep-dive">
     <div class="deep-dive-header">
-        <h2>🧠 Embedder Deep-Dive</h2>
-        <p>Text → 4096-dim vectors via Nemotron-8B</p>
+        <h2>Embedder Deep-Dive</h2>
+        <p>Text -> 4096-dim vectors via Nemotron-8B</p>
     </div>
     
     <canvas class="deep-dive-canvas" id="embedder-canvas"></canvas>
@@ -1137,7 +1137,7 @@
 <!-- FUSION DEEP DIVE -->
 <section class="deep-dive" id="fusion-deep-dive">
     <div class="deep-dive-header">
-        <h2>🔗 Score Fusion</h2>
+        <h2>Score Fusion</h2>
         <p>RRF, MMR diversity, and temporal decay formulas</p>
     </div>
     
@@ -1145,7 +1145,7 @@
     
     <div class="formula-box">
         <h3 style="color: var(--neon-orange);">Reciprocal Rank Fusion (RRF)</h3>
-        <div class="formula">RRF(d) = Σ 1/(k + rank(d))</div>
+        <div class="formula">RRF(d) = SUM 1/(k + rank(d))</div>
         <div class="formula-note">
             Scale-invariant merging of vector and BM25 results. Smoothing constant <strong>k=60</strong>.<br>
             Documents appearing high in both lists get an "agreement bonus."
@@ -1153,17 +1153,17 @@
     </div>
     
     <div class="formula-box">
-        <h3 style="color: var(--neon-purple);">MMR Diversity (λ=0.9)</h3>
-        <div class="formula">MMR = λ·sim(q,d) - (1-λ)·max sim(d,dᵢ)</div>
+        <h3 style="color: var(--neon-purple);">MMR Diversity (lambda=0.9)</h3>
+        <div class="formula">MMR = lambda * sim(q,d) - (1-lambda) * max sim(d,d_i)</div>
         <div class="formula-note">
-            Balances relevance vs. redundancy. High λ (0.9) favors relevance.<br>
+            Balances relevance vs. redundancy. High lambda (0.9) favors relevance.<br>
             Prevents returning 10 nearly-identical chunks.
         </div>
     </div>
     
     <div class="formula-box">
         <h3 style="color: var(--neon-green);">Temporal Decay</h3>
-        <div class="formula">score · (0.8 + 0.2·e^(-0.03·age))</div>
+        <div class="formula">score  *  (0.8 + 0.2 * e^(-0.03 * age))</div>
         <div class="formula-note">
             Exponential decay with 0.8 floor. Recent memories get boosted.<br>
             0 days=1.0x, 7 days=0.96x, 30 days=0.89x, 365 days=0.80x
@@ -1174,7 +1174,7 @@
 <!-- BENCHMARKS -->
 <section class="deep-dive" id="benchmarks">
     <div class="deep-dive-header">
-        <h2>📊 Benchmark Results</h2>
+        <h2>Benchmark Results</h2>
         <p>Performance on the BEIR benchmark suite</p>
     </div>
     
@@ -1210,13 +1210,13 @@
 <!-- SERVICES -->
 <section class="deep-dive" id="services">
     <div class="deep-dive-header">
-        <h2>🔧 Spark Backend Services</h2>
+        <h2>Spark Backend Services</h2>
         <p>Self-hosted on NVIDIA DGX Spark (zero cloud API calls)</p>
     </div>
     
     <div class="pool-grid">
         <div class="pool-card">
-            <h3><span style="color: var(--neon-cyan);">🧠</span> Embedding :18091</h3>
+            <h3><span style="color: var(--neon-cyan);">[EMB]</span> Embedding :18091</h3>
             <ul>
                 <li>llama-embed-nemotron-8b</li>
                 <li>4096 dimensions</li>
@@ -1224,7 +1224,7 @@
             </ul>
         </div>
         <div class="pool-card">
-            <h3><span style="color: var(--neon-red);">🎯</span> Reranker :18096</h3>
+            <h3><span style="color: var(--neon-red);">[RRK]</span> Reranker :18096</h3>
             <ul>
                 <li>llama-nemotron-rerank-1b-v2</li>
                 <li>Cross-encoder</li>
@@ -1232,7 +1232,7 @@
             </ul>
         </div>
         <div class="pool-card">
-            <h3><span style="color: var(--neon-purple);">🤖</span> LLM :18080</h3>
+            <h3><span style="color: var(--neon-purple);">[LLM]</span> LLM :18080</h3>
             <ul>
                 <li>Nemotron-Super-120B</li>
                 <li>HyDE generation</li>
@@ -1240,7 +1240,7 @@
             </ul>
         </div>
         <div class="pool-card">
-            <h3><span style="color: var(--neon-orange);">👁️</span> GLM-OCR :18080</h3>
+            <h3><span style="color: var(--neon-orange);">[OCR]</span> GLM-OCR :18080</h3>
             <ul>
                 <li>zai-org/GLM-OCR (0.9B)</li>
                 <li>PDF parsing</li>
@@ -1248,7 +1248,7 @@
             </ul>
         </div>
         <div class="pool-card">
-            <h3><span style="color: var(--neon-green);">🏷️</span> NER :18112</h3>
+            <h3><span style="color: var(--neon-green);">[NER]</span> NER :18112</h3>
             <ul>
                 <li>Named Entity Recognition</li>
                 <li>Entity extraction</li>
@@ -1256,7 +1256,7 @@
             </ul>
         </div>
         <div class="pool-card">
-            <h3><span style="color: var(--neon-yellow);">🎲</span> Zero-Shot :18113</h3>
+            <h3><span style="color: var(--neon-yellow);">[CLS]</span> Zero-Shot :18113</h3>
             <ul>
                 <li>bart-large-mnli</li>
                 <li>Zero-shot classification</li>
@@ -1273,7 +1273,7 @@
         <a href="https://github.com/exampleuser/memory-spark/blob/main/paper/memory-spark.pdf">Paper</a>
     </div>
     <div class="footer-copy">
-        Memory-Spark v0.4.0 • Built with Nemotron on NVIDIA DGX Spark
+        Memory-Spark v0.4.0 - Built with Nemotron on NVIDIA DGX Spark
     </div>
 </footer>
 
@@ -1310,7 +1310,7 @@
     
     // 15 stages
     const stages = [
-        { id: 'user', name: 'USER', x: 0.08, y: 0.50, w: 100, h: 50, color: COLORS.user, icon: '👤' },
+        { id: 'user', name: 'USER', x: 0.08, y: 0.50, w: 100, h: 50, color: COLORS.user, icon: 'USER' },
         { id: 'query', name: 'Query', x: 0.22, y: 0.08, w: 90, h: 40, color: COLORS.query },
         { id: 'clean', name: 'Clean', x: 0.38, y: 0.08, w: 90, h: 40, color: COLORS.query },
         { id: 'hyde', name: 'HyDE', x: 0.35, y: 0.16, w: 85, h: 38, color: COLORS.embed, branch: true },
@@ -1833,8 +1833,8 @@
         ctx.fillStyle = COLORS.muted;
         ctx.font = `600 ${FS(10)}px Inter`;
         ctx.textAlign = 'left';
-        ctx.fillText('Query fan-out →', W() * 0.03, H() * 0.08);
-        ctx.fillText('→ Weighted merge', W() * 0.55, H() * 0.08);
+        ctx.fillText('Query fan-out ->', W() * 0.03, H() * 0.08);
+        ctx.fillText('-> Weighted merge', W() * 0.55, H() * 0.08);
 
         pools.forEach((pool) => {
             drawPath(query, pool, COLORS.line, 0.55);
@@ -1932,16 +1932,16 @@
         {
             label: 'Scenario C: Ambiguous middle band',
             scores: [0.83, 0.80, 0.78, 0.76, 0.75],
-            rationale: 'Some separation exists, but not enough certainty — rerank can help.',
+            rationale: 'Some separation exists, but not enough certainty -- rerank can help.',
         },
     ];
 
     const cycleMs = 4800;
 
     function decisionForSigma(sigma) {
-        if (sigma > HIGH) return { action: 'SKIP RERANKER', reason: `σ > ${HIGH.toFixed(2)} (hard-gate-high)`, color: COLORS.confident };
-        if (sigma < LOW) return { action: 'SKIP RERANKER', reason: `σ < ${LOW.toFixed(2)} (hard-gate-low)`, color: COLORS.tied };
-        return { action: 'RUN RERANKER', reason: `${LOW.toFixed(2)} ≤ σ ≤ ${HIGH.toFixed(2)} (hard-gate-pass)`, color: COLORS.ambiguous };
+        if (sigma > HIGH) return { action: 'SKIP RERANKER', reason: `sigma > ${HIGH.toFixed(2)} (hard-gate-high)`, color: COLORS.confident };
+        if (sigma < LOW) return { action: 'SKIP RERANKER', reason: `sigma < ${LOW.toFixed(2)} (hard-gate-low)`, color: COLORS.tied };
+        return { action: 'RUN RERANKER', reason: `${LOW.toFixed(2)} <= sigma <= ${HIGH.toFixed(2)} (hard-gate-pass)`, color: COLORS.ambiguous };
     }
 
     function draw(ts) {
@@ -2023,7 +2023,7 @@
         ctx.font = `600 ${labelSize}px JetBrains Mono`;
         ctx.fillStyle = COLORS.text;
         const sigmaY = leftY + leftH - 74;
-        ctx.fillText('σ = max(top5) - min(top5)', leftX + 12, sigmaY);
+        ctx.fillText('sigma = max(top5) - min(top5)', leftX + 12, sigmaY);
         ctx.fillText(`  = ${maxScore.toFixed(3)} - ${minScore.toFixed(3)} = ${sigma.toFixed(3)}`, leftX + 12, sigmaY + 18);
 
         ctx.fillStyle = COLORS.muted;
@@ -2036,16 +2036,16 @@
         ctx.fillText('Threshold checks', rightX + 12, rightY + 22);
 
         const checks = [
-            { line: `if (σ > ${HIGH.toFixed(2)}) → SKIP`, pass: sigma > HIGH },
-            { line: `else if (σ < ${LOW.toFixed(2)}) → SKIP`, pass: !(sigma > HIGH) && sigma < LOW },
-            { line: 'else → RUN', pass: sigma >= LOW && sigma <= HIGH },
+            { line: `if (sigma > ${HIGH.toFixed(2)}) -> SKIP`, pass: sigma > HIGH },
+            { line: `else if (sigma < ${LOW.toFixed(2)}) -> SKIP`, pass: !(sigma > HIGH) && sigma < LOW },
+            { line: 'else -> RUN', pass: sigma >= LOW && sigma <= HIGH },
         ];
 
         checks.forEach((c, idx) => {
             const y = rightY + 46 + idx * 24;
             ctx.fillStyle = c.pass ? d.color : COLORS.muted;
             ctx.font = `500 ${smallSize}px JetBrains Mono`;
-            ctx.fillText(`${c.pass ? '✓' : '•'} ${c.line}`, rightX + 12, y);
+            ctx.fillText(`${c.pass ? 'OK' : '-'} ${c.line}`, rightX + 12, y);
         });
 
         ctx.textAlign = 'center';
@@ -2112,7 +2112,7 @@
     const cycleDuration = phaseDuration * 4;
 
     function truncate(text, maxChars) {
-        return text.length <= maxChars ? text : `${text.slice(0, maxChars - 1)}…`;
+        return text.length <= maxChars ? text : `${text.slice(0, maxChars - 1)}...`;
     }
 
     function drawCard(x, y, w, h, color) {
@@ -2268,11 +2268,11 @@
         const guardTooTight = spread < 0.02;
         ctx.fillStyle = guardTooTight ? COLORS.orange : COLORS.green;
         ctx.font = '600 11px JetBrains Mono';
-        ctx.fillText(`spread guard: Δ=${spread.toFixed(3)} ${guardTooTight ? '< 0.02 -> SKIP' : '>= 0.02 -> RUN'}`, left, H() * 0.91);
+        ctx.fillText(`spread guard: delta=${spread.toFixed(3)} ${guardTooTight ? '< 0.02 -> SKIP' : '>= 0.02 -> RUN'}`, left, H() * 0.91);
 
         ctx.fillStyle = COLORS.orange;
         ctx.font = '500 10px JetBrains Mono';
-        ctx.fillText('tight-score fallback example: [0.991, 0.987, 0.984] -> Δ=0.007 -> SKIP reranker', left, H() * 0.94);
+        ctx.fillText('tight-score fallback example: [0.991, 0.987, 0.984] -> delta=0.007 -> SKIP reranker', left, H() * 0.94);
 
         ctx.fillStyle = COLORS.text;
         ctx.font = '600 12px Inter';
@@ -2339,13 +2339,13 @@
             
             let x;
             if (this.t < 0.4) {
-                // Phase 1: Text → Model
+                // Phase 1: Text -> Model
                 x = startX + (modelX - startX) * (this.t / 0.4);
             } else if (this.t < 0.6) {
                 // Phase 2: Inside model (processing)
                 x = modelX;
             } else {
-                // Phase 3: Model → Vector
+                // Phase 3: Model -> Vector
                 x = modelX + (endX - modelX) * ((this.t - 0.6) / 0.4);
             }
             
@@ -2432,7 +2432,7 @@
         const pulse = Math.sin(frameCount * 0.1) * 0.3 + 0.7;
         ctx.fillStyle = `rgba(168,85,247,${pulse})`;
         ctx.font = '8px Inter';
-        ctx.fillText('● processing', w * 0.375, h * 0.68);
+        ctx.fillText('* processing', w * 0.375, h * 0.68);
         
         // 3. Prefix box (Instruction)
         ctx.fillStyle = 'rgba(255,159,10,0.1)';
@@ -2488,28 +2488,28 @@
         ctx.strokeStyle = 'rgba(255,255,255,0.2)';
         ctx.lineWidth = 2;
         
-        // Arrow 1: Query → Model
+        // Arrow 1: Query -> Model
         ctx.beginPath();
         ctx.moveTo(w * 0.25, h * 0.5);
         ctx.lineTo(w * 0.30, h * 0.5);
         ctx.stroke();
         drawArrowHead(ctx, w * 0.30, h * 0.5, 0);
         
-        // Arrow 2: Model → Prefix (horizontal)
+        // Arrow 2: Model -> Prefix (horizontal)
         ctx.beginPath();
         ctx.moveTo(w * 0.45, h * 0.5);
         ctx.lineTo(w * 0.48, h * 0.5);
         ctx.stroke();
         drawArrowHead(ctx, w * 0.48, h * 0.5, 0);
         
-        // Arrow 3: Prefix → Vector
+        // Arrow 3: Prefix -> Vector
         ctx.beginPath();
         ctx.moveTo(w * 0.66, h * 0.5);
         ctx.lineTo(w * 0.70, h * 0.5);
         ctx.stroke();
         drawArrowHead(ctx, w * 0.70, h * 0.5, 0);
         
-        // Arrow 4: Vector → LanceDB
+        // Arrow 4: Vector -> LanceDB
         ctx.beginPath();
         ctx.moveTo(w * 0.825, h * 0.65);
         ctx.lineTo(w * 0.825, h * 0.70);
