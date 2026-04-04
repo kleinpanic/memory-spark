@@ -10,25 +10,29 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
         :root {
-            --bg: #09090b;
-            --bg-elevated: #18181b;
-            --bg-card: #1f1f23;
-            --fg: #fafafa;
+            /* Base colors */
+            --bg-dark: #050508;
+            --bg-card: #0d0d12;
+            --fg: #e4e4e7;
             --fg-muted: #71717a;
-            --border: #27272a;
-            --blue: #3b82f6;
-            --cyan: #22d3ee;
-            --green: #22c55e;
-            --orange: #fb923c;
-            --purple: #a78bfa;
-            --red: #f87171;
+            --border: #1a1a1f;
+            
+            /* Neon accent colors */
+            --neon-blue: #00d4ff;
+            --neon-purple: #bf5af2;
+            --neon-green: #30d158;
+            --neon-orange: #ff9f0a;
+            --neon-red: #ff453a;
+            --neon-cyan: #64d2ff;
+            --neon-yellow: #ffd60a;
         }
         
         body {
             font-family: 'Inter', system-ui, sans-serif;
-            background: var(--bg);
+            background: var(--bg-dark);
             color: var(--fg);
             line-height: 1.6;
+            overflow-x: hidden;
         }
         
         /* Nav */
@@ -39,7 +43,7 @@
             right: 0;
             z-index: 100;
             padding: 1rem 2rem;
-            background: rgba(9,9,11,0.8);
+            background: rgba(5,5,8,0.9);
             backdrop-filter: blur(20px);
             border-bottom: 1px solid var(--border);
             display: flex;
@@ -48,7 +52,7 @@
         }
         
         .nav-logo {
-            font-size: 1.2rem;
+            font-size: 1.1rem;
             font-weight: 700;
             color: var(--fg);
             text-decoration: none;
@@ -56,6 +60,8 @@
             align-items: center;
             gap: 0.5rem;
         }
+        
+        .nav-logo span { color: var(--neon-orange); }
         
         .nav-links {
             display: flex;
@@ -66,368 +72,173 @@
         .nav-links a {
             color: var(--fg-muted);
             text-decoration: none;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             transition: color 0.2s;
         }
         
-        .nav-links a:hover { color: var(--fg); }
+        .nav-links a:hover { color: var(--neon-blue); }
         
         /* Hero */
         .hero {
-            min-height: 100vh;
+            min-height: 60vh;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: 2rem;
+            padding: 6rem 2rem 2rem;
             text-align: center;
             background: 
-                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(59,130,246,0.15), transparent),
-                radial-gradient(ellipse 60% 40% at 80% 60%, rgba(168,85,247,0.08), transparent),
-                var(--bg);
+                radial-gradient(ellipse 100% 80% at 50% 0%, rgba(0,212,255,0.08), transparent 50%),
+                var(--bg-dark);
         }
         
         .hero h1 {
-            font-size: clamp(2.5rem, 7vw, 5rem);
+            font-size: clamp(2rem, 6vw, 4rem);
             font-weight: 700;
             letter-spacing: -0.03em;
-            background: linear-gradient(135deg, #fff 0%, #7dd3fc 50%, #a78bfa 100%);
+            background: linear-gradient(135deg, #fff 0%, var(--neon-blue) 50%, var(--neon-purple) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            margin-bottom: 1rem;
+            margin-bottom: 0.75rem;
         }
         
         .hero p {
-            font-size: clamp(1rem, 2vw, 1.25rem);
+            font-size: 1.1rem;
             color: var(--fg-muted);
-            max-width: 700px;
-            margin-bottom: 3rem;
+            max-width: 600px;
         }
-        
-        .hero strong { color: var(--cyan); font-weight: 500; }
         
         /* Stats */
         .stats {
             display: flex;
-            gap: 2rem;
+            gap: 3rem;
             flex-wrap: wrap;
             justify-content: center;
+            margin-top: 2rem;
         }
         
-        .stat {
-            text-align: center;
-        }
+        .stat { text-align: center; }
         
         .stat-value {
-            font-size: 2.5rem;
+            font-size: 2rem;
             font-weight: 700;
-            background: linear-gradient(135deg, var(--green), var(--cyan));
+            background: linear-gradient(135deg, var(--neon-green), var(--neon-cyan));
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
         
         .stat-label {
-            font-size: 0.8rem;
+            font-size: 0.75rem;
             color: var(--fg-muted);
             text-transform: uppercase;
-            letter-spacing: 0.05em;
+            letter-spacing: 0.08em;
         }
         
-        /* Sections */
-        section {
-            padding: 5rem 2rem;
-            max-width: 1400px;
-            margin: 0 auto;
-        }
-        
-        .section-title {
-            font-size: 2rem;
-            font-weight: 600;
-            text-align: center;
-            margin-bottom: 0.5rem;
-        }
-        
-        .section-subtitle {
-            color: var(--fg-muted);
-            text-align: center;
-            margin-bottom: 3rem;
-        }
-        
-        /* Pipeline Canvas - CENTERPIECE */
+        /* Pipeline Canvas Section */
         #pipeline-section {
-            width: 100%;
-            padding: 0;
-            max-width: none;
+            position: relative;
+            background: var(--bg-dark);
         }
         
         #pipeline {
             width: 100%;
-            height: 1000px;
-            background: var(--bg);
-            position: relative;
-            overflow: hidden;
+            height: 900px;
+            display: block;
+        }
+        
+        /* Section Labels */
+        .section-label {
+            position: absolute;
+            left: 2rem;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.15em;
+            color: var(--fg-muted);
+            opacity: 0.6;
         }
         
         /* Diagram Links */
         .diagram-links {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 1.5rem;
-            margin-top: 3rem;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            padding: 2rem;
+            max-width: 1200px;
+            margin: 0 auto;
         }
         
         .diagram-link {
-            background: var(--bg-elevated);
+            background: var(--bg-card);
             border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 1.5rem;
+            border-radius: 12px;
+            padding: 1.25rem;
             text-decoration: none;
             color: var(--fg);
             transition: all 0.3s ease;
         }
         
         .diagram-link:hover {
-            border-color: var(--cyan);
-            transform: translateY(-4px);
+            border-color: var(--neon-blue);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 20px rgba(0,212,255,0.1);
         }
         
         .diagram-link h3 {
-            font-size: 1.1rem;
-            margin-bottom: 0.5rem;
-            display: flex;
-            align-items: center;
-            gap: 0.5rem;
+            font-size: 1rem;
+            margin-bottom: 0.25rem;
         }
         
         .diagram-link p {
             color: var(--fg-muted);
-            font-size: 0.9rem;
+            font-size: 0.85rem;
         }
-        
-        /* Gate Decision */
-        .gate-section {
-            background: var(--bg-elevated);
-            border-radius: 24px;
-            padding: 3rem;
-            margin: 3rem 0;
-        }
-        
-        .gate-header {
-            display: flex;
-            align-items: center;
-            gap: 1rem;
-            margin-bottom: 2rem;
-        }
-        
-        .gate-icon {
-            width: 48px;
-            height: 48px;
-            background: linear-gradient(135deg, var(--orange), var(--red));
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.5rem;
-        }
-        
-        .gate-title { font-size: 1.5rem; font-weight: 600; }
-        
-        .gate-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 1.5rem;
-        }
-        
-        @media (max-width: 900px) {
-            .gate-grid { grid-template-columns: 1fr; }
-        }
-        
-        .gate-card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 1.5rem;
-            transition: all 0.3s ease;
-        }
-        
-        .gate-card:hover {
-            transform: translateY(-4px);
-            border-color: var(--blue);
-        }
-        
-        .gate-condition {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 1.25rem;
-            margin-bottom: 0.75rem;
-        }
-        
-        .gate-condition.confident { color: var(--green); }
-        .gate-condition.tied { color: var(--orange); }
-        .gate-condition.ambiguous { color: var(--red); }
-        
-        .gate-desc {
-            color: var(--fg-muted);
-            font-size: 0.9rem;
-            margin-bottom: 1rem;
-        }
-        
-        .gate-result {
-            display: inline-block;
-            padding: 0.5rem 1rem;
-            border-radius: 8px;
-            font-weight: 600;
-            font-size: 0.9rem;
-        }
-        
-        .gate-result.skip {
-            background: rgba(34,197,94,0.15);
-            color: var(--green);
-        }
-        
-        .gate-result.run {
-            background: rgba(248,113,113,0.15);
-            color: var(--red);
-        }
-        
-        /* Formula */
-        .formula-box {
-            background: linear-gradient(135deg, rgba(59,130,246,0.1), rgba(168,85,247,0.05));
-            border: 1px solid var(--blue);
-            border-radius: 24px;
-            padding: 3rem;
-            text-align: center;
-            margin: 3rem 0;
-        }
-        
-        .formula-title {
-            font-size: 1.25rem;
-            font-weight: 600;
-            margin-bottom: 1.5rem;
-        }
-        
-        .formula {
-            font-family: 'Times New Roman', serif;
-            font-size: 2.5rem;
-            color: var(--cyan);
-            margin: 1.5rem 0;
-        }
-        
-        .formula-note {
-            color: var(--fg-muted);
-            max-width: 600px;
-            margin: 0 auto;
-        }
-        
-        /* Architecture */
-        .arch-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 1.5rem;
-        }
-        
-        @media (max-width: 900px) {
-            .arch-grid { grid-template-columns: 1fr; }
-        }
-        
-        .arch-card {
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
-            border-radius: 16px;
-            padding: 2rem;
-            transition: all 0.3s ease;
-        }
-        
-        .arch-card:hover {
-            border-color: var(--blue);
-            transform: translateY(-4px);
-        }
-        
-        .arch-card.highlight {
-            border-color: var(--cyan);
-            background: linear-gradient(135deg, rgba(34,211,238,0.1), transparent);
-        }
-        
-        .arch-card h3 {
-            display: flex;
-            align-items: center;
-            gap: 0.75rem;
-            font-size: 1.1rem;
-            margin-bottom: 1rem;
-        }
-        
-        .arch-icon {
-            width: 36px;
-            height: 36px;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 1.1rem;
-        }
-        
-        .arch-card ul {
-            list-style: none;
-            color: var(--fg-muted);
-            font-size: 0.9rem;
-        }
-        
-        .arch-card li {
-            padding: 0.5rem 0;
-            border-bottom: 1px solid var(--border);
-        }
-        
-        .arch-card li:last-child { border-bottom: none; }
         
         /* Footer */
         footer {
             text-align: center;
-            padding: 3rem 2rem;
+            padding: 2rem;
             border-top: 1px solid var(--border);
+            background: var(--bg-card);
         }
         
         .footer-links {
             display: flex;
             justify-content: center;
             gap: 2rem;
-            flex-wrap: wrap;
         }
         
-        .footer-link {
+        .footer-links a {
             color: var(--fg-muted);
             text-decoration: none;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             transition: color 0.2s;
         }
         
-        .footer-link:hover { color: var(--cyan); }
+        .footer-links a:hover { color: var(--neon-blue); }
     </style>
 </head>
 <body>
 
 <nav>
     <a href="#" class="nav-logo">
-        <span style="color: var(--orange);">⚡</span>
-        Memory-Spark
+        <span>⚡</span> Memory-Spark
     </a>
     <ul class="nav-links">
         <li><a href="#pipeline-section">Pipeline</a></li>
-        <li><a href="#gate">Gate Logic</a></li>
-        <li><a href="#pools">Pools</a></li>
-        <li><a href="#fusion">Fusion</a></li>
-        <li><a href="#services">Services</a></li>
+        <li><a href="diagrams/gate.html">Gate</a></li>
+        <li><a href="diagrams/pools.html">Pools</a></li>
+        <li><a href="diagrams/fusion.html">Fusion</a></li>
     </ul>
 </nav>
 
 <div class="hero">
-    <h1>Memory-Spark</h1>
-    <p>
-        A <strong>15-stage RAG pipeline</strong> with dynamic gating, RRF fusion, 
-        and pool-based memory. Educational architecture for visual learners.
-    </p>
+    <h1>15-Stage RAG Pipeline</h1>
+    <p>Educational architecture for visual learners. Trace the query from USER through retrieval, fusion, gating, and back to USER.</p>
     <div class="stats">
         <div class="stat">
             <div class="stat-value">78.9%</div>
-            <div class="stat-label">NDCG@10 (SciFact)</div>
+            <div class="stat-label">NDCG@10</div>
         </div>
         <div class="stat">
             <div class="stat-value">626ms</div>
@@ -435,299 +246,52 @@
         </div>
         <div class="stat">
             <div class="stat-value">78%</div>
-            <div class="stat-label">Reranker Skip</div>
-        </div>
-        <div class="stat">
-            <div class="stat-value">15</div>
-            <div class="stat-label">Pipeline Stages</div>
+            <div class="stat-label">Gate Skip Rate</div>
         </div>
     </div>
 </div>
 
-<!-- PIPELINE CANVAS - CENTERPIECE -->
+<!-- PIPELINE CANVAS -->
 <section id="pipeline-section">
     <canvas id="pipeline"></canvas>
     
-    <div style="max-width: 1400px; margin: 0 auto; padding: 2rem;">
-        <h2 class="section-title">Interactive Diagrams</h2>
-        <p class="section-subtitle">Click to explore each component in detail</p>
-        
-        <div class="diagram-links">
-            <a href="diagrams/pipeline.html" class="diagram-link">
-                <h3>📊 Full Pipeline</h3>
-                <p>Stage-by-stage breakdown with code snippets and latency metrics</p>
-            </a>
-            <a href="diagrams/gate.html" class="diagram-link">
-                <h3>🚦 Gate Logic</h3>
-                <p>Hard/soft gate decision tree with σ spread visualization</p>
-            </a>
-            <a href="diagrams/pools.html" class="diagram-link">
-                <h3>🗄️ Pool Architecture</h3>
-                <p>6 memory pools with weights, boosts, and isolation</p>
-            </a>
-            <a href="diagrams/fusion.html" class="diagram-link">
-                <h3>🔗 Score Fusion</h3>
-                <p>RRF, MMR diversity, and temporal decay formulas</p>
-            </a>
-            <a href="diagrams/query.html" class="diagram-link">
-                <h3>🔍 Query Processing</h3>
-                <p>HyDE, multi-query expansion, and embedding</p>
-            </a>
-            <a href="diagrams/embedder.html" class="diagram-link">
-                <h3>🧠 Embedder</h3>
-                <p>How Nemotron-8B creates 4096-dim vectors</p>
-            </a>
-            <a href="diagrams/reranker.html" class="diagram-link">
-                <h3>🎯 Reranker</h3>
-                <p>Cross-encoder scoring and query normalization</p>
-            </a>
-        </div>
-    </div>
-</section>
-
-<!-- GATE LOGIC -->
-<section id="gate">
-    <div class="gate-section">
-        <div class="gate-header">
-            <div class="gate-icon">⚡</div>
-            <div class="gate-title">Dynamic Reranker Gate</div>
-        </div>
-        <p class="section-subtitle" style="margin-bottom: 2rem;">
-            The key to 50% latency reduction without accuracy loss
-        </p>
-        
-        <div class="gate-grid">
-            <div class="gate-card">
-                <div class="gate-condition confident">σ > 0.08</div>
-                <div class="gate-desc">
-                    High confidence spread — the top result is clearly better than the rest.
-                    Vector search already found the right answer.
-                </div>
-                <div class="gate-result skip">SKIP RERANKER</div>
-            </div>
-            
-            <div class="gate-card">
-                <div class="gate-condition tied">σ < 0.02</div>
-                <div class="gate-desc">
-                    Tied results — scores are too close to discriminate.
-                    Reranker won't add meaningful signal here.
-                </div>
-                <div class="gate-result skip">SKIP RERANKER</div>
-            </div>
-            
-            <div class="gate-card">
-                <div class="gate-condition ambiguous">0.02 ≤ σ ≤ 0.08</div>
-                <div class="gate-desc">
-                    Ambiguous zone — results are neither clearly confident nor tied.
-                    Cross-encoder can help disambiguate.
-                </div>
-                <div class="gate-result run">RUN RERANKER</div>
-            </div>
-        </div>
-    </div>
-</section>
-
-<!-- RRF FUSION -->
-<section id="fusion">
-    <div class="formula-box">
-        <div class="formula-title">Reciprocal Rank Fusion</div>
-        <div class="formula">RRF(d) = Σ 1/(k + rank(d))</div>
-        <div class="formula-note">
-            Scale-invariant merging of vector and BM25 results. 
-            Smoothing constant <strong>k=60</strong> prevents rank #1 from dominating.
-            Documents appearing high in both lists get an "agreement bonus."
-        </div>
-    </div>
-    
     <div class="diagram-links">
-        <a href="diagrams/fusion.html#rrf" class="diagram-link">
-            <h3>🔗 RRF Deep-Dive</h3>
-            <p>Why score-based fusion fails, and how rank-based solves it</p>
+        <a href="diagrams/pipeline.html" class="diagram-link">
+            <h3>📊 Full Pipeline</h3>
+            <p>Stage-by-stage breakdown with code and latency</p>
         </a>
-        <a href="diagrams/fusion.html#mmr" class="diagram-link">
-            <h3>🎲 MMR Diversity</h3>
-            <p>Balancing relevance vs. redundancy with λ parameter</p>
+        <a href="diagrams/gate.html" class="diagram-link">
+            <h3>🚦 Gate Logic</h3>
+            <p>Dynamic reranker gating with σ spread</p>
         </a>
-        <a href="diagrams/fusion.html#decay" class="diagram-link">
-            <h3>⏰ Temporal Decay</h3>
-            <p>Prioritizing recent memories with exponential decay</p>
+        <a href="diagrams/pools.html" class="diagram-link">
+            <h3>🗄️ Pools</h3>
+            <p>6 memory pools with isolation and weights</p>
         </a>
-    </div>
-</section>
-
-<!-- POOL ARCHITECTURE -->
-<section id="pools">
-    <h2 class="section-title">Pool Architecture</h2>
-    <p class="section-subtitle">
-        Separate memory pools with different weights and priorities
-    </p>
-    
-    <div class="arch-grid">
-        <div class="arch-card">
-            <h3>
-                <div class="arch-icon" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8);">🧠</div>
-                Agent Memory
-            </h3>
-            <ul>
-                <li>General working memory</li>
-                <li>Pool-isolated per agent</li>
-                <li>Weight: 1.0x</li>
-            </ul>
-        </div>
-        
-        <div class="arch-card" style="border-color: var(--red);">
-            <h3>
-                <div class="arch-icon" style="background: linear-gradient(135deg, #f87171, #dc2626);">⚠️</div>
-                Agent Mistakes
-            </h3>
-            <ul>
-                <li>Past errors and corrections</li>
-                <li>1.6x boost (highest priority)</li>
-                <li>Learn from failures</li>
-            </ul>
-        </div>
-        
-        <div class="arch-card" style="border-color: var(--orange);">
-            <h3>
-                <div class="arch-icon" style="background: linear-gradient(135deg, #fb923c, #ea580c);">💡</div>
-                Shared Mistakes
-            </h3>
-            <ul>
-                <li>Cross-agent learned lessons</li>
-                <li>1.5x boost</li>
-                <li>Organizational knowledge</li>
-            </ul>
-        </div>
-        
-        <div class="arch-card">
-            <h3>
-                <div class="arch-icon" style="background: linear-gradient(135deg, #22d3ee, #06b6d4);">📖</div>
-                Shared Knowledge
-            </h3>
-            <ul>
-                <li>Reference docs and manuals</li>
-                <li>Weight: 0.8x</li>
-                <li>Background context</li>
-            </ul>
-        </div>
-        
-        <div class="arch-card">
-            <h3>
-                <div class="arch-icon" style="background: linear-gradient(135deg, #a78bfa, #7c3aed);">📜</div>
-                Shared Rules
-            </h3>
-            <ul>
-                <li>Governing policies</li>
-                <li>Relevance-gated</li>
-                <li>Constraint injection</li>
-            </ul>
-        </div>
-        
-        <div class="arch-card">
-            <h3>
-                <div class="arch-icon" style="background: linear-gradient(135deg, #22c55e, #16a34a);">🔍</div>
-                FTS Index
-            </h3>
-            <ul>
-                <li>Tantivy BM25</li>
-                <li>Keyword matching</li>
-                <li>Hybrid with vector</li>
-            </ul>
-        </div>
-    </div>
-    
-    <div style="text-align: center; margin-top: 2rem;">
-        <a href="diagrams/pools.html" style="color: var(--cyan);">View detailed pool diagram →</a>
-    </div>
-</section>
-
-<!-- SERVICES -->
-<section id="services">
-    <h2 class="section-title">Spark Backend Services</h2>
-    <p class="section-subtitle">
-        Self-hosted on NVIDIA DGX Spark (zero cloud API calls)
-    </p>
-    
-    <div class="arch-grid">
-        <div class="arch-card">
-            <h3>
-                <div class="arch-icon" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8);">🧠</div>
-                Embedding :18091
-            </h3>
-            <ul>
-                <li>llama-embed-nemotron-8b</li>
-                <li>4096 dimensions</li>
-                <li>Instruction-aware</li>
-            </ul>
-        </div>
-        
-        <div class="arch-card highlight">
-            <h3>
-                <div class="arch-icon" style="background: linear-gradient(135deg, #22d3ee, #06b6d4);">🎯</div>
-                Reranker :18096
-            </h3>
-            <ul>
-                <li>llama-nemotron-rerank-1b-v2</li>
-                <li>Cross-encoder</li>
-                <li>Query normalization</li>
-            </ul>
-        </div>
-        
-        <div class="arch-card">
-            <h3>
-                <div class="arch-icon" style="background: linear-gradient(135deg, #a78bfa, #7c3aed);">🤖</div>
-                LLM :18080
-            </h3>
-            <ul>
-                <li>Nemotron-Super-120B</li>
-                <li>HyDE generation</li>
-                <li>Multi-query expansion</li>
-            </ul>
-        </div>
-        
-        <div class="arch-card">
-            <h3>
-                <div class="arch-icon" style="background: linear-gradient(135deg, #fb923c, #ea580c);">👁️</div>
-                GLM-OCR :18080
-            </h3>
-            <ul>
-                <li>zai-org/GLM-OCR (0.9B)</li>
-                <li>PDF parsing</li>
-                <li>vLLM served</li>
-            </ul>
-        </div>
-        
-        <div class="arch-card">
-            <h3>
-                <div class="arch-icon" style="background: linear-gradient(135deg, #22c55e, #16a34a);">🏷️</div>
-                NER :18112
-            </h3>
-            <ul>
-                <li>Named Entity Recognition</li>
-                <li>Entity extraction</li>
-                <li>Metadata enrichment</li>
-            </ul>
-        </div>
-        
-        <div class="arch-card">
-            <h3>
-                <div class="arch-icon" style="background: linear-gradient(135deg, #f87171, #dc2626);">🎲</div>
-                Zero-Shot :18113
-            </h3>
-            <ul>
-                <li>bart-large-mnli</li>
-                <li>Zero-shot classification</li>
-                <li>Category inference</li>
-            </ul>
-        </div>
+        <a href="diagrams/fusion.html" class="diagram-link">
+            <h3>🔗 Fusion</h3>
+            <p>RRF, MMR diversity, temporal decay</p>
+        </a>
+        <a href="diagrams/query.html" class="diagram-link">
+            <h3>🔍 Query Processing</h3>
+            <p>HyDE, multi-query expansion, embedding</p>
+        </a>
+        <a href="diagrams/embedder.html" class="diagram-link">
+            <h3>🧠 Embedder</h3>
+            <p>How Nemotron-8B creates vectors</p>
+        </a>
+        <a href="diagrams/reranker.html" class="diagram-link">
+            <h3>🎯 Reranker</h3>
+            <p>Cross-encoder scoring mechanics</p>
+        </a>
     </div>
 </section>
 
 <footer>
     <div class="footer-links">
-        <a href="https://github.com/kleinpanic/memory-spark" class="footer-link">📦 GitHub</a>
-        <a href="https://github.com/kleinpanic/memory-spark/wiki" class="footer-link">📚 Wiki</a>
-        <a href="https://github.com/kleinpanic/memory-spark/blob/main/paper/memory-spark.pdf" class="footer-link">📄 Paper</a>
+        <a href="https://github.com/kleinpanic/memory-spark">GitHub</a>
+        <a href="https://github.com/kleinpanic/memory-spark/wiki">Wiki</a>
+        <a href="https://github.com/kleinpanic/memory-spark/blob/main/paper/memory-spark.pdf">Paper</a>
     </div>
 </footer>
 
@@ -736,6 +300,20 @@
     const canvas = document.getElementById('pipeline');
     const ctx = canvas.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
+    
+    // Neon color palette
+    const COLORS = {
+        user: '#bf5af2',      // Purple - USER node
+        query: '#00d4ff',     // Cyan - Query processing
+        embed: '#64d2ff',     // Light cyan - Embedding
+        pools: '#30d158',     // Green - Pool search
+        fusion: '#ff9f0a',    // Orange - Fusion stages
+        gate: '#ff453a',      // Red - Gate decision
+        rerank: '#ff453a',    // Red - Reranker
+        mmr: '#bf5af2',       // Purple - MMR
+        response: '#00d4ff',  // Cyan - Response
+        particle: '#ffffff',  // White particles
+    };
     
     function resize() {
         const rect = canvas.getBoundingClientRect();
@@ -749,70 +327,80 @@
     const W = () => canvas.offsetWidth;
     const H = () => canvas.offsetHeight;
     
-    // Stage definitions with positions - THIS IS THE CENTERPIECE
-    const stages = [
-        // Row 1: Query processing (USER INPUT)
-        { id: 'user', name: 'USER', x: 0.05, y: 0.05, w: 90, h: 45, color: '#a78bfa', desc: 'Ask question', icon: '👤' },
-        { id: 'query', name: 'Query', x: 0.15, y: 0.05, w: 80, h: 40, color: '#3b82f6', desc: 'Ingest from agent' },
-        { id: 'clean', name: 'Clean', x: 0.28, y: 0.05, w: 80, h: 40, color: '#3b82f6', desc: 'Normalize text' },
-        
-        // HyDE branch
-        { id: 'hyde', name: 'HyDE', x: 0.42, y: 0.12, w: 80, h: 40, color: '#a78bfa', branch: true, desc: 'Hypothetical doc' },
-        
-        // Multi-query branch
-        { id: 'expand', name: 'Expand', x: 0.56, y: 0.12, w: 80, h: 40, color: '#a78bfa', branch: true, desc: 'Multi-query' },
-        
-        // Embed
-        { id: 'embed', name: 'Embed', x: 0.72, y: 0.05, w: 80, h: 40, color: '#3b82f6', desc: '4096-dim vector' },
-        { id: 'embed2', name: 'Embed', x: 0.72, y: 0.18, w: 80, h: 40, color: '#a78bfa', branch: true, desc: 'HyDE/Expand embed' },
-        
-        // Pool searches (parallel)
-        { id: 'p1', name: 'Memory', x: 0.18, y: 0.28, w: 70, h: 35, color: '#22d3ee', parallel: true, desc: 'agent_memory' },
-        { id: 'p2', name: 'Mistakes', x: 0.30, y: 0.28, w: 70, h: 35, color: '#22d3ee', parallel: true, desc: '1.6x boost' },
-        { id: 'p3', name: 'Shared', x: 0.42, y: 0.28, w: 70, h: 35, color: '#22d3ee', parallel: true, desc: 'cross-agent' },
-        { id: 'p4', name: 'Rules', x: 0.54, y: 0.28, w: 70, h: 35, color: '#22d3ee', parallel: true, desc: 'policies' },
-        { id: 'p5', name: 'FTS', x: 0.66, y: 0.28, w: 70, h: 35, color: '#fb923c', parallel: true, desc: 'BM25' },
-        
-        // Merge stages
-        { id: 'rrf', name: 'RRF', x: 0.45, y: 0.40, w: 90, h: 45, color: '#fb923c', desc: 'Rank fusion k=60' },
-        { id: 'dedup', name: 'Dedup', x: 0.45, y: 0.52, w: 90, h: 45, color: '#fb923c', desc: 'Jaccard filter' },
-        
-        // Weighting stages
-        { id: 'weight', name: 'Weight', x: 0.32, y: 0.64, w: 90, h: 45, color: '#22c55e', desc: 'Source boost' },
-        { id: 'decay', name: 'Decay', x: 0.58, y: 0.64, w: 90, h: 45, color: '#22c55e', desc: 'Temporal' },
-        
-        // Gate decision
-        { id: 'gate', name: 'GATE', x: 0.45, y: 0.76, w: 100, h: 50, color: '#f87171', decision: true, desc: 'σ spread check' },
-        
-        // Reranker (optional path)
-        { id: 'rerank', name: 'Rerank', x: 0.28, y: 0.88, w: 90, h: 45, color: '#f87171', optional: true, desc: 'Cross-encoder' },
-        
-        // MMR (always runs)
-        { id: 'mmr', name: 'MMR', x: 0.62, y: 0.88, w: 90, h: 45, color: '#a78bfa', desc: 'Diversity λ=0.9' },
-        
-        // Response (USER OUTPUT)
-        { id: 'response', name: 'RESPONSE', x: 0.85, y: 0.76, w: 100, h: 50, color: '#22d3ee', desc: 'To LLM', icon: '💬' },
-        { id: 'user-out', name: 'USER', x: 0.85, y: 0.92, w: 90, h: 45, color: '#a78bfa', desc: 'Answer', icon: '👤' },
+    // Background section colors (subtle gradients)
+    const sections = [
+        { y: 0.00, h: 0.18, color: 'rgba(0,212,255,0.02)', label: 'QUERY PROCESSING' },
+        { y: 0.18, h: 0.18, color: 'rgba(48,209,88,0.02)', label: 'POOL SEARCH' },
+        { y: 0.36, h: 0.22, color: 'rgba(255,159,10,0.02)', label: 'FUSION & FILTERING' },
+        { y: 0.58, h: 0.22, color: 'rgba(255,69,58,0.02)', label: 'GATING & RERANKING' },
+        { y: 0.80, h: 0.20, color: 'rgba(191,90,242,0.02)', label: 'DIVERSITY & OUTPUT' },
     ];
     
-    // Connections between stages
+    // 15 stages with SINGLE USER node
+    const stages = [
+        // USER - center left, loops back
+        { id: 'user', name: 'USER', x: 0.08, y: 0.50, w: 100, h: 50, color: COLORS.user, desc: 'Query In', icon: '👤' },
+        
+        // QUERY PROCESSING (row 1)
+        { id: 'query', name: 'Query', x: 0.22, y: 0.08, w: 90, h: 40, color: COLORS.query, desc: 'Ingest' },
+        { id: 'clean', name: 'Clean', x: 0.38, y: 0.08, w: 90, h: 40, color: COLORS.query, desc: 'Normalize' },
+        
+        // Branches
+        { id: 'hyde', name: 'HyDE', x: 0.35, y: 0.16, w: 85, h: 38, color: COLORS.embed, desc: 'Hypothetical', branch: true },
+        { id: 'expand', name: 'Expand', x: 0.52, y: 0.16, w: 85, h: 38, color: COLORS.embed, desc: 'Multi-Query', branch: true },
+        
+        // EMBED
+        { id: 'embed', name: 'Embed', x: 0.68, y: 0.08, w: 90, h: 40, color: COLORS.embed, desc: '4096-dim' },
+        
+        // POOL SEARCH (parallel)
+        { id: 'p1', name: 'Memory', x: 0.18, y: 0.26, w: 80, h: 36, color: COLORS.pools, desc: '1.0x', parallel: true },
+        { id: 'p2', name: 'Mistakes', x: 0.32, y: 0.26, w: 80, h: 36, color: COLORS.pools, desc: '1.6x', parallel: true },
+        { id: 'p3', name: 'Shared', x: 0.46, y: 0.26, w: 80, h: 36, color: COLORS.pools, desc: '1.5x', parallel: true },
+        { id: 'p4', name: 'Rules', x: 0.60, y: 0.26, w: 80, h: 36, color: COLORS.pools, desc: 'gated', parallel: true },
+        { id: 'p5', name: 'FTS', x: 0.74, y: 0.26, w: 80, h: 36, color: COLORS.fusion, desc: 'BM25', parallel: true },
+        
+        // FUSION
+        { id: 'rrf', name: 'RRF', x: 0.50, y: 0.38, w: 100, h: 45, color: COLORS.fusion, desc: 'k=60' },
+        { id: 'dedup', name: 'Dedup', x: 0.50, y: 0.48, w: 100, h: 45, color: COLORS.fusion, desc: 'Jaccard' },
+        
+        // WEIGHTING
+        { id: 'weight', name: 'Weight', x: 0.36, y: 0.58, w: 95, h: 42, color: COLORS.fusion, desc: 'Source boost' },
+        { id: 'decay', name: 'Decay', x: 0.64, y: 0.58, w: 95, h: 42, color: COLORS.fusion, desc: 'Temporal' },
+        
+        // GATE
+        { id: 'gate', name: 'GATE', x: 0.50, y: 0.70, w: 110, h: 50, color: COLORS.gate, desc: 'σ spread', decision: true },
+        
+        // RERANKER (optional)
+        { id: 'rerank', name: 'Rerank', x: 0.30, y: 0.82, w: 95, h: 42, color: COLORS.rerank, desc: 'Cross-enc', optional: true },
+        
+        // MMR
+        { id: 'mmr', name: 'MMR', x: 0.70, y: 0.82, w: 95, h: 42, color: COLORS.mmr, desc: 'λ=0.9' },
+        
+        // RESPONSE (loops back to USER)
+        { id: 'response', name: 'Response', x: 0.88, y: 0.50, w: 90, h: 45, color: COLORS.response, desc: 'To LLM' },
+    ];
+    
+    // Connections
     const connections = [
+        // USER to Query
         ['user', 'query'],
+        
+        // Query processing
         ['query', 'clean'],
         ['clean', 'embed'],
         ['clean', 'hyde'],
-        ['hyde', 'embed2'],
+        ['hyde', 'embed'],
         ['clean', 'expand'],
-        ['expand', 'embed2'],
+        ['expand', 'embed'],
+        
+        // To pools
         ['embed', 'p1'],
         ['embed', 'p2'],
         ['embed', 'p3'],
         ['embed', 'p4'],
-        ['embed2', 'p1'],
-        ['embed2', 'p2'],
-        ['embed2', 'p3'],
-        ['embed2', 'p4'],
         ['embed', 'p5'],
+        
+        // Fusion
         ['p1', 'rrf'],
         ['p2', 'rrf'],
         ['p3', 'rrf'],
@@ -821,14 +409,23 @@
         ['rrf', 'dedup'],
         ['dedup', 'weight'],
         ['dedup', 'decay'],
+        
+        // Gate
         ['weight', 'gate'],
         ['decay', 'gate'],
+        
+        // Reranker path
         ['gate', 'rerank'],
+        
+        // MMR path
         ['gate', 'mmr'],
         ['rerank', 'mmr'],
-        ['gate', 'response'],
+        
+        // To Response
         ['mmr', 'response'],
-        ['response', 'user-out'],
+        
+        // LOOP BACK to USER
+        ['response', 'user'],
     ];
     
     // Particle system
@@ -839,9 +436,8 @@
             this.fromId = fromId;
             this.toId = toId;
             this.t = 0;
-            this.speed = 0.012 + Math.random() * 0.008;
-            this.size = 6 + Math.random() * 4;
-            this.alpha = 0.9;
+            this.speed = 0.008 + Math.random() * 0.006;
+            this.size = 5 + Math.random() * 3;
         }
         
         getStage(id) {
@@ -851,7 +447,6 @@
         update() {
             this.t += this.speed;
             if (this.t >= 1) {
-                // Spawn next particle in chain
                 const nextConns = connections.filter(c => c[0] === this.toId);
                 if (nextConns.length > 0) {
                     const next = nextConns[Math.floor(Math.random() * nextConns.length)];
@@ -875,20 +470,20 @@
             const x = x1 + (x2 - x1) * this.ease(this.t);
             const y = y1 + (y2 - y1) * this.ease(this.t);
             
-            // Glow effect
+            // Glow
             ctx.beginPath();
-            ctx.arc(x, y, this.size * 1.5, 0, Math.PI * 2);
+            ctx.arc(x, y, this.size * 2, 0, Math.PI * 2);
             ctx.fillStyle = from.color;
-            ctx.globalAlpha = this.alpha * 0.3 * (1 - this.t * 0.3);
+            ctx.globalAlpha = 0.3 * (1 - this.t * 0.5);
             ctx.fill();
             
-            // Core particle
+            // Core
             ctx.beginPath();
             ctx.arc(x, y, this.size, 0, Math.PI * 2);
             ctx.fillStyle = '#fff';
-            ctx.globalAlpha = this.alpha * (1 - this.t * 0.3);
+            ctx.globalAlpha = 0.9 * (1 - this.t * 0.3);
             ctx.shadowColor = from.color;
-            ctx.shadowBlur = 15;
+            ctx.shadowBlur = 10;
             ctx.fill();
             ctx.shadowBlur = 0;
             ctx.globalAlpha = 1;
@@ -899,9 +494,41 @@
         }
     }
     
+    function drawBackground() {
+        // Clear
+        ctx.fillStyle = '#050508';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        // Section backgrounds
+        sections.forEach(section => {
+            const y = section.y * H();
+            const h = section.h * H();
+            
+            ctx.fillStyle = section.color;
+            ctx.fillRect(0, y, W(), h);
+            
+            // Section label
+            ctx.fillStyle = 'rgba(255,255,255,0.15)';
+            ctx.font = '500 9px Inter';
+            ctx.textAlign = 'left';
+            ctx.fillText(section.label, 16, y + 16);
+        });
+        
+        // Vertical section dividers
+        ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+        ctx.lineWidth = 1;
+        sections.forEach(section => {
+            const y = section.y * H();
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(W(), y);
+            ctx.stroke();
+        });
+    }
+    
     function drawConnections() {
-        ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-        ctx.lineWidth = 2;
+        ctx.strokeStyle = 'rgba(255,255,255,0.04)';
+        ctx.lineWidth = 1.5;
         
         connections.forEach(([fromId, toId]) => {
             const from = stages.find(s => s.id === fromId);
@@ -915,7 +542,16 @@
             
             ctx.beginPath();
             ctx.moveTo(x1, y1);
-            ctx.lineTo(x2, y2);
+            
+            // Curved lines for loop back
+            if (fromId === 'response' && toId === 'user') {
+                ctx.quadraticCurveTo(x1 + 50, y1 - 100, x2, y2);
+            } else if (fromId === 'user' && toId === 'query') {
+                ctx.quadraticCurveTo(x1 + 50, y1 - 100, x2, y2);
+            } else {
+                ctx.lineTo(x2, y2);
+            }
+            
             ctx.stroke();
         });
     }
@@ -928,68 +564,56 @@
             // Glow for decision nodes
             if (stage.decision) {
                 ctx.shadowColor = stage.color;
-                ctx.shadowBlur = 30;
+                ctx.shadowBlur = 25;
             }
             
-            // Box
-            ctx.fillStyle = stage.branch ? 'rgba(168,85,247,0.12)' : 
-                            stage.decision ? 'rgba(248,113,113,0.12)' : 
-                            stage.parallel ? 'rgba(34,211,238,0.08)' :
-                            'rgba(31,31,35,0.9)';
+            // Box background
+            ctx.fillStyle = stage.branch ? 'rgba(100,210,255,0.08)' :
+                            stage.parallel ? 'rgba(48,209,88,0.08)' :
+                            stage.decision ? 'rgba(255,69,58,0.1)' :
+                            stage.optional ? 'rgba(255,69,58,0.06)' :
+                            'rgba(13,13,18,0.95)';
+            
             ctx.strokeStyle = stage.color;
-            ctx.lineWidth = 2;
+            ctx.lineWidth = stage.decision ? 2.5 : 1.5;
             
             ctx.beginPath();
-            ctx.roundRect(x, y, stage.w, stage.h, 8);
+            ctx.roundRect(x, y, stage.w, stage.h, 6);
             ctx.fill();
             ctx.stroke();
             
             ctx.shadowBlur = 0;
             
-            // Icon if present
+            // Icon
             if (stage.icon) {
-                ctx.font = '20px sans-serif';
+                ctx.font = '22px sans-serif';
                 ctx.textAlign = 'center';
-                ctx.fillText(stage.icon, stage.x * W(), stage.y * H() - 8);
+                ctx.fillText(stage.icon, stage.x * W(), stage.y * H() - 6);
             }
             
             // Name
             ctx.fillStyle = '#fff';
             ctx.font = '600 11px Inter';
             ctx.textAlign = 'center';
-            ctx.fillText(stage.name, stage.x * W(), stage.y * H() + (stage.icon ? 8 : 2));
+            ctx.fillText(stage.name, stage.x * W(), stage.y * H() + (stage.icon ? 12 : 2));
             
             // Description
             if (!stage.icon) {
-                ctx.fillStyle = '#71717a';
+                ctx.fillStyle = 'rgba(255,255,255,0.4)';
                 ctx.font = '400 9px Inter';
-                ctx.fillText(stage.desc.slice(0, 20), stage.x * W(), stage.y * H() + 14);
+                ctx.fillText(stage.desc, stage.x * W(), stage.y * H() + 14);
             }
         });
-    }
-    
-    // Labels
-    function drawLabels() {
-        ctx.fillStyle = '#52525b';
-        ctx.font = '500 10px Inter';
-        ctx.textAlign = 'left';
-        
-        ctx.fillText('USER INPUT', 20, 30);
-        ctx.fillText('QUERY PROCESSING', W() * 0.28, H() * 0.05 + 60);
-        ctx.fillText('PARALLEL POOL SEARCH', W() * 0.18, H() * 0.28 + 50);
-        ctx.fillText('FUSION & FILTERING', W() * 0.32, H() * 0.52 + 60);
-        ctx.fillText('GATING & RERANKING', W() * 0.28, H() * 0.76 + 60);
-        ctx.fillText('USER OUTPUT', W() * 0.85 - 40, H() * 0.92 + 60);
     }
     
     function animate() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
+        drawBackground();
         drawConnections();
         drawStages();
-        drawLabels();
         
-        // Update and draw particles
+        // Particles
         for (let i = particles.length - 1; i >= 0; i--) {
             if (!particles[i].update()) {
                 particles.splice(i, 1);
@@ -998,8 +622,8 @@
             }
         }
         
-        // Spawn new particles periodically
-        if (Math.random() < 0.03) {
+        // Spawn from USER
+        if (Math.random() < 0.025) {
             particles.push(new Particle('user', 'query'));
         }
         
