@@ -1699,7 +1699,7 @@
 
     function getAnchorPoints() {
         const query = { x: W() * 0.08, y: H() * 0.5 };
-        const merge = { x: W() * 0.9, y: H() * 0.62 };
+        const merge = { x: W() * 0.9, y: H() * 0.65 };
         const baseX = W() * 0.45;
         const topY = H() * 0.26;
         const rowGap = H() * 0.22;
@@ -1880,8 +1880,10 @@
     
     function resize() {
         const rect = canvas.getBoundingClientRect();
-        canvas.width = rect.width * dpr;
-        canvas.height = rect.height * dpr;
+        const w = Math.max(rect.width || 0, canvas.clientWidth || 0, 320);
+        const h = Math.max(rect.height || 0, canvas.clientHeight || 0, 240);
+        canvas.width = w * dpr;
+        canvas.height = h * dpr;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
     resize();
@@ -1933,7 +1935,13 @@
     const cycleDuration = 4000;
 
     function drawFrame(ts) {
-        ctx.clearRect(0, 0, W(), H());
+        const width = W();
+        const height = H();
+        if (width < 40 || height < 40) {
+            requestAnimationFrame(drawFrame);
+            return;
+        }
+        ctx.clearRect(0, 0, width, height);
         
         const cycleIndex = Math.floor(ts / cycleDuration);
         const scenario = scenarios[cycleIndex % scenarios.length];
@@ -1945,9 +1953,13 @@
         // Title
         ctx.font = `600 ${titleSize}px sans-serif`;
         ctx.fillStyle = COLORS.text;
+        ctx.strokeStyle = 'rgba(0,0,0,0.55)';
+        ctx.lineWidth = 3;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
+        ctx.strokeText(`Dynamic Gate — ${scenario.label}`, W() * 0.5, H() * 0.12);
         ctx.fillText(`Dynamic Gate — ${scenario.label}`, W() * 0.5, H() * 0.12);
+        ctx.textBaseline = 'alphabetic';
 
         // Scores region
         const leftX = W() * 0.08;
