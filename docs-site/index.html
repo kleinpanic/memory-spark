@@ -331,6 +331,14 @@
             background: rgba(10,11,16,0.5);
             border: 1px solid rgba(255,255,255,0.05);
         }
+
+        #pools-canvas {
+            height: 460px;
+        }
+
+        #reranker-canvas {
+            height: 500px;
+        }
         
         .deep-dive-content {
             max-width: 800px;
@@ -473,6 +481,37 @@
         }
         
         .pool-card li:last-child { border-bottom: none; }
+
+        .concept-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            max-width: 1000px;
+            margin: 2rem auto;
+        }
+
+        @media (max-width: 800px) {
+            .concept-grid { grid-template-columns: 1fr; }
+        }
+
+        .concept-card {
+            background: var(--bg-card);
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 12px;
+            padding: 1.25rem;
+        }
+
+        .concept-card h3 {
+            font-size: 0.95rem;
+            margin-bottom: 0.6rem;
+            color: var(--text-primary);
+        }
+
+        .concept-card p {
+            color: var(--text-secondary);
+            font-size: 0.88rem;
+            margin: 0;
+        }
         
         /* BENCHMARKS */
         .benchmarks-grid {
@@ -563,6 +602,7 @@
         <li><a href="#why">Why</a></li>
         <li><a href="#pipeline-section">Pipeline</a></li>
         <li><a href="#gate-deep-dive">Gate</a></li>
+        <li><a href="#reranker-deep-dive">Reranker</a></li>
         <li><a href="#fusion-deep-dive">Fusion</a></li>
         <li><a href="#benchmarks">Benchmarks</a></li>
     </ul>
@@ -692,7 +732,7 @@
 <section class="deep-dive" id="pools-deep-dive">
     <div class="deep-dive-header">
         <h2>🗄️ Pool Architecture</h2>
-        <p>6 isolated memory pools with different weights and priorities</p>
+        <p>Query fan-out runs in parallel across 6 pools; weights are applied after retrieval on return flow</p>
     </div>
     
     <canvas class="deep-dive-canvas" id="pools-canvas"></canvas>
@@ -707,36 +747,36 @@
                 <li>Session context storage</li>
             </ul>
         </div>
-        <div class="pool-card" style="border-color: var(--neon-red);">
-            <h3><span style="color: var(--neon-red);">⚠️</span> Agent Mistakes</h3>
-            <div class="weight" style="color: var(--neon-red);">Weight: 1.6x (BOOSTED)</div>
+        <div class="pool-card" style="border-color: var(--neon-green);">
+            <h3><span style="color: var(--neon-green);">⚠️</span> Agent Mistakes</h3>
+            <div class="weight" style="color: var(--neon-green);">Weight: 1.6x (BOOSTED)</div>
             <ul>
                 <li>Past errors and corrections</li>
                 <li>Highest priority retrieval</li>
                 <li>Learn from failures</li>
             </ul>
         </div>
-        <div class="pool-card" style="border-color: var(--neon-orange);">
-            <h3><span style="color: var(--neon-orange);">💡</span> Shared Mistakes</h3>
-            <div class="weight" style="color: var(--neon-orange);">Weight: 1.5x</div>
+        <div class="pool-card" style="border-color: var(--neon-green);">
+            <h3><span style="color: var(--neon-green);">💡</span> Shared Mistakes</h3>
+            <div class="weight" style="color: var(--neon-green);">Weight: 1.6x (BOOSTED)</div>
             <ul>
                 <li>Cross-agent learned lessons</li>
                 <li>Organizational knowledge</li>
                 <li>Prevent repeat failures</li>
             </ul>
         </div>
-        <div class="pool-card" style="border-color: var(--neon-blue);">
-            <h3><span style="color: var(--neon-blue);">📖</span> Shared Knowledge</h3>
-            <div class="weight" style="color: var(--neon-blue);">Weight: 0.8x</div>
+        <div class="pool-card" style="border-color: var(--neon-orange);">
+            <h3><span style="color: var(--neon-orange);">📖</span> Shared Knowledge</h3>
+            <div class="weight" style="color: var(--neon-orange);">Weight: 0.8x</div>
             <ul>
                 <li>Reference docs and manuals</li>
                 <li>Background context</li>
                 <li>External documentation</li>
             </ul>
         </div>
-        <div class="pool-card" style="border-color: var(--neon-purple);">
-            <h3><span style="color: var(--neon-purple);">📜</span> Shared Rules</h3>
-            <div class="weight" style="color: var(--neon-purple);">Weight: 1.0x (gated)</div>
+        <div class="pool-card" style="border-color: var(--neon-cyan);">
+            <h3><span style="color: var(--neon-cyan);">📜</span> Shared Rules</h3>
+            <div class="weight" style="color: var(--neon-cyan);">Weight: 1.0x</div>
             <ul>
                 <li>Governing policies</li>
                 <li>Relevance-gated injection</li>
@@ -751,6 +791,40 @@
                 <li>Keyword matching</li>
                 <li>Hybrid with vector</li>
             </ul>
+        </div>
+    </div>
+</section>
+
+<!-- RERANKER DEEP DIVE -->
+<section class="deep-dive" id="reranker-deep-dive">
+    <div class="deep-dive-header">
+        <h2>🎯 Reranker Deep-Dive</h2>
+        <p>Cross-encoder precision for final ranking</p>
+    </div>
+
+    <canvas class="deep-dive-canvas" id="reranker-canvas"></canvas>
+
+    <div class="deep-dive-content">
+        <p>
+            Memory-Spark first uses a fast <strong>bi-encoder</strong> to retrieve candidate chunks, then applies a <strong>cross-encoder</strong> (Nemotron-1B-Rerank) to score each <strong>(query, document) pair</strong> directly. This second stage is slower but far more accurate for final ordering.
+        </p>
+        <p>
+            The reranker often produces compressed scores in the <strong>0.83-1.00</strong> band, so query normalization and spread-aware logic are critical. Normalizing shorthand into explicit questions (declarative → interrogative) sharpens pairwise relevance.
+        </p>
+    </div>
+
+    <div class="concept-grid">
+        <div class="concept-card">
+            <h3>Cross-Encoder vs Bi-Encoder</h3>
+            <p>Bi-encoder is fast for recall (single embedding pass). Cross-encoder reads query and document together, so it costs more per candidate but resolves semantic ties better.</p>
+        </div>
+        <div class="concept-card">
+            <h3>Score Compression + Normalization</h3>
+            <p>Reranker outputs are tightly clustered near 1.0. Query normalization helps by making intent explicit: "capital of france" → "What is the capital of France?"</p>
+        </div>
+        <div class="concept-card">
+            <h3>Spread Guard</h3>
+            <p>If top candidate scores are too tight (very small spread), reranking can be skipped to save latency because extra computation adds little signal.</p>
         </div>
     </div>
 </section>
@@ -1216,6 +1290,234 @@
     animate();
 })();
 
+// Pool Architecture Deep Dive Animation
+(function() {
+    let canvas = document.getElementById('pools-canvas');
+    const section = document.getElementById('pools-deep-dive');
+    if (!canvas && section) {
+        const grid = section.querySelector('.pool-grid');
+        canvas = document.createElement('canvas');
+        canvas.className = 'deep-dive-canvas';
+        canvas.id = 'pools-canvas';
+        if (grid) {
+            section.insertBefore(canvas, grid);
+        } else {
+            section.appendChild(canvas);
+        }
+    }
+    if (!canvas) return;
+
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+
+    const COLORS = {
+        bg: '#0a0b10',
+        text: '#f1f5f9',
+        muted: '#94a3b8',
+        normal: '#64d2ff',
+        boosted: '#30d158',
+        reduced: '#ff9f0a',
+        bm25: '#ffd60a',
+        line: 'rgba(255,255,255,0.14)',
+    };
+
+    const pools = [
+        { name: 'Agent Memory', weight: '1.0x', weightValue: 1.0, color: COLORS.normal },
+        { name: 'Agent Mistakes', weight: '1.6x', weightValue: 1.6, color: COLORS.boosted },
+        { name: 'Shared Mistakes', weight: '1.6x', weightValue: 1.6, color: COLORS.boosted },
+        { name: 'Shared Knowledge', weight: '0.8x', weightValue: 0.8, color: COLORS.reduced },
+        { name: 'Shared Rules', weight: '1.0x', weightValue: 1.0, color: COLORS.normal },
+        { name: 'FTS/Tantivy', weight: 'BM25', weightValue: 1.0, color: COLORS.bm25, bm25: true },
+    ];
+
+    const particles = [];
+    let cycleCounter = 0;
+
+    function resize() {
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    const W = () => canvas.offsetWidth;
+    const H = () => canvas.offsetHeight;
+
+    function getAnchorPoints() {
+        const query = { x: W() * 0.08, y: H() * 0.5 };
+        const merge = { x: W() * 0.9, y: H() * 0.5 };
+        const baseX = W() * 0.45;
+        const topY = H() * 0.26;
+        const rowGap = H() * 0.22;
+        const colGap = W() * 0.2;
+
+        pools.forEach((pool, i) => {
+            const row = Math.floor(i / 3);
+            const col = i % 3;
+            pool.x = baseX + col * colGap;
+            pool.y = topY + row * rowGap;
+        });
+
+        return { query, merge };
+    }
+
+    function pointOnPath(a, b, t) {
+        const cp1x = a.x + (b.x - a.x) * 0.35;
+        const cp1y = a.y;
+        const cp2x = a.x + (b.x - a.x) * 0.65;
+        const cp2y = b.y;
+        const mt = 1 - t;
+        return {
+            x: mt * mt * mt * a.x + 3 * mt * mt * t * cp1x + 3 * mt * t * t * cp2x + t * t * t * b.x,
+            y: mt * mt * mt * a.y + 3 * mt * mt * t * cp1y + 3 * mt * t * t * cp2y + t * t * t * b.y,
+        };
+    }
+
+    function drawPath(a, b, color, alpha) {
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        const cp1x = a.x + (b.x - a.x) * 0.35;
+        const cp1y = a.y;
+        const cp2x = a.x + (b.x - a.x) * 0.65;
+        const cp2y = b.y;
+        ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, b.x, b.y);
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = alpha;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+    }
+
+    class PoolParticle {
+        constructor(pool, direction, cycleId) {
+            this.pool = pool;
+            this.direction = direction;
+            this.cycleId = cycleId;
+            this.t = 0;
+            this.speed = direction === 'out' ? 0.02 : 0.018;
+            this.radius = direction === 'back' ? 4 + pool.weightValue * 1.6 : 3.5;
+        }
+
+        update(query, merge) {
+            this.t += this.speed;
+            if (this.t >= 1) {
+                if (this.direction === 'out') {
+                    particles.push(new PoolParticle(this.pool, 'back', this.cycleId));
+                }
+                return false;
+            }
+            const from = this.direction === 'out' ? query : this.pool;
+            const to = this.direction === 'out' ? this.pool : merge;
+            this.pos = pointOnPath(from, to, this.ease(this.t));
+            return true;
+        }
+
+        ease(t) {
+            return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+        }
+
+        draw() {
+            const color = this.pool.color;
+            ctx.beginPath();
+            ctx.arc(this.pos.x, this.pos.y, this.radius * 1.8, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.globalAlpha = 0.18;
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(this.pos.x, this.pos.y, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.globalAlpha = 0.95;
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 10;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            ctx.globalAlpha = 1;
+
+            if (this.direction === 'back' && this.t > 0.25 && this.t < 0.75) {
+                ctx.font = '600 11px JetBrains Mono';
+                ctx.fillStyle = this.pool.color;
+                ctx.textAlign = 'left';
+                const label = this.pool.bm25 ? 'BM25' : `x${this.pool.weightValue.toFixed(1)}`;
+                ctx.fillText(label, this.pos.x + 8, this.pos.y - 8);
+            }
+        }
+    }
+
+    function drawNode(x, y, w, h, color, title, subtitle) {
+        ctx.beginPath();
+        ctx.roundRect(x - w / 2, y - h / 2, w, h, 8);
+        ctx.fillStyle = 'rgba(28,31,46,0.96)';
+        ctx.fill();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        ctx.fillStyle = COLORS.text;
+        ctx.font = '600 12px Inter';
+        ctx.textAlign = 'center';
+        ctx.fillText(title, x, y - 4);
+
+        ctx.fillStyle = color;
+        ctx.font = '500 10px JetBrains Mono';
+        ctx.fillText(subtitle, x, y + 11);
+    }
+
+    function drawFrame() {
+        const { query, merge } = getAnchorPoints();
+        ctx.fillStyle = COLORS.bg;
+        ctx.fillRect(0, 0, W(), H());
+
+        ctx.fillStyle = COLORS.muted;
+        ctx.font = '600 12px Inter';
+        ctx.textAlign = 'left';
+        ctx.fillText('1) Query fan-out (parallel)', W() * 0.03, H() * 0.08);
+        ctx.fillText('2) Pool retrieval completes independently', W() * 0.35, H() * 0.08);
+        ctx.fillText('3) Weighting is applied on return (after search)', W() * 0.62, H() * 0.08);
+
+        pools.forEach((pool) => {
+            drawPath(query, pool, COLORS.line, 0.55);
+            drawPath(pool, merge, pool.color, 0.32);
+            drawNode(pool.x, pool.y, 140, 50, pool.color, pool.name, pool.bm25 ? 'BM25 search' : `weight ${pool.weight}`);
+        });
+
+        drawNode(query.x, query.y, 108, 56, COLORS.normal, 'Query', 'incoming');
+        drawNode(merge.x, merge.y, 128, 56, '#ffffff', 'Merge', 'weighted results');
+    }
+
+    function spawnParallelCycle() {
+        cycleCounter += 1;
+        pools.forEach((pool) => {
+            particles.push(new PoolParticle(pool, 'out', cycleCounter));
+        });
+    }
+
+    let tick = 0;
+    function animate() {
+        drawFrame();
+        const { query, merge } = getAnchorPoints();
+
+        for (let i = particles.length - 1; i >= 0; i -= 1) {
+            if (!particles[i].update(query, merge)) {
+                particles.splice(i, 1);
+            } else {
+                particles[i].draw();
+            }
+        }
+
+        tick += 1;
+        if (tick % 48 === 0) {
+            spawnParallelCycle();
+        }
+        requestAnimationFrame(animate);
+    }
+
+    spawnParallelCycle();
+    animate();
+})();
+
 // Gate Deep Dive Animation
 (function() {
     const canvas = document.getElementById('gate-canvas');
@@ -1227,91 +1529,443 @@
         const rect = canvas.getBoundingClientRect();
         canvas.width = rect.width * dpr;
         canvas.height = rect.height * dpr;
-        ctx.scale(dpr, dpr);
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
     resize();
     window.addEventListener('resize', resize);
     
     const W = () => canvas.offsetWidth;
     const H = () => canvas.offsetHeight;
-    
-    // Gate visualization - showing σ spread
-    const particles = [];
-    
-    class GateParticle {
-        constructor() {
-            this.x = W() * 0.2;
-            this.y = H() * 0.5;
-            this.scores = [];
-            for (let i = 0; i < 5; i++) {
-                this.scores.push(0.5 + Math.random() * 0.5);
-            }
-            this.spread = Math.max(...this.scores) - Math.min(...this.scores);
-            this.t = 0;
-            this.speed = 0.01 + Math.random() * 0.005;
+
+    const COLORS = {
+        confident: '#30d158',
+        tied: '#ff9f0a',
+        ambiguous: '#ff453a',
+        text: '#f1f5f9',
+        muted: '#94a3b8',
+        line: 'rgba(148,163,184,0.35)',
+        card: 'rgba(28,31,46,0.88)'
+    };
+
+    const scenarios = [
+        {
+            label: 'Confident spread',
+            scores: [0.92, 0.81, 0.74, 0.69, 0.63],
+            decision: 'SKIP RERANKER',
+            rule: 'σ > 0.08',
+            color: COLORS.confident,
+            explanation: 'Clear winner: vector search is already confident.'
+        },
+        {
+            label: 'Tied scores',
+            scores: [0.740, 0.735, 0.731, 0.728, 0.723],
+            decision: 'SKIP RERANKER',
+            rule: 'σ < 0.02',
+            color: COLORS.tied,
+            explanation: 'Near tie: reranker is unlikely to add signal.'
+        },
+        {
+            label: 'Ambiguous middle zone',
+            scores: [0.82, 0.79, 0.77, 0.76, 0.75],
+            decision: 'RUN RERANKER',
+            rule: '0.02 <= σ <= 0.08',
+            color: COLORS.ambiguous,
+            explanation: 'Close but not tied: cross-encoder can disambiguate.'
         }
-        
-        update() {
-            this.t += this.speed;
-            return this.t < 1;
-        }
-        
-        draw(ctx) {
-            const x = this.x + (W() * 0.6) * this.t;
-            const y = this.y;
-            
-            // Draw scores as dots
-            const spreadY = this.spread * 50;
-            
-            // Glow
-            ctx.beginPath();
-            ctx.arc(x, y, 20, 0, Math.PI * 2);
-            ctx.fillStyle = this.spread > 0.08 ? 'rgba(48,209,88,0.2)' : 
-                            this.spread < 0.02 ? 'rgba(255,159,10,0.2)' : 'rgba(255,69,58,0.2)';
-            ctx.fill();
-            
-            // Core
-            ctx.beginPath();
-            ctx.arc(x, y, 8, 0, Math.PI * 2);
-            ctx.fillStyle = '#fff';
-            ctx.globalAlpha = 0.9;
-            ctx.fill();
-            ctx.globalAlpha = 1;
-        }
+    ];
+
+    const phaseDuration = 2200;
+    const cycleDuration = phaseDuration * 3;
+
+    function clamp(v, min, max) {
+        return Math.max(min, Math.min(max, v));
     }
-    
-    function animate() {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
-        // Draw gate box
-        ctx.strokeStyle = 'rgba(255,69,58,0.5)';
-        ctx.lineWidth = 2;
+
+    function lerp(a, b, t) {
+        return a + (b - a) * t;
+    }
+
+    function drawAxes(left, top, width, height) {
+        ctx.strokeStyle = COLORS.line;
+        ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.roundRect(W() * 0.35, H() * 0.2, W() * 0.3, H() * 0.6, 12);
+        ctx.moveTo(left, top + height);
+        ctx.lineTo(left + width, top + height);
         ctx.stroke();
-        
-        // Labels
-        ctx.fillStyle = '#fff';
-        ctx.font = '600 12px Inter';
+
+        ctx.fillStyle = COLORS.muted;
+        ctx.font = '500 11px Inter';
         ctx.textAlign = 'center';
-        ctx.fillText('σ', W() * 0.5, H() * 0.5);
-        
-        if (Math.random() < 0.03) {
-            particles.push(new GateParticle());
+        [0.6, 0.7, 0.8, 0.9].forEach((tick) => {
+            const x = left + ((tick - 0.6) / 0.32) * width;
+            ctx.fillText(tick.toFixed(1), x, top + height + 18);
+        });
+        ctx.fillText('candidate score', left + width / 2, top + height + 34);
+    }
+
+    function drawScenario(nowMs) {
+        const cycleIndex = Math.floor(nowMs / cycleDuration);
+        const scenario = scenarios[cycleIndex % scenarios.length];
+        const local = nowMs % cycleDuration;
+
+        const phase = Math.floor(local / phaseDuration);
+        const phaseT = (local % phaseDuration) / phaseDuration;
+
+        const left = W() * 0.08;
+        const chartTop = H() * 0.28;
+        const chartWidth = W() * 0.56;
+        const chartHeight = H() * 0.42;
+        const decisionX = W() * 0.70;
+        const decisionY = H() * 0.26;
+        const decisionW = W() * 0.24;
+        const decisionH = H() * 0.52;
+
+        const maxScore = Math.max(...scenario.scores);
+        const minScore = Math.min(...scenario.scores);
+        const sigma = maxScore - minScore;
+
+        drawAxes(left, chartTop, chartWidth, chartHeight);
+
+        ctx.fillStyle = COLORS.text;
+        ctx.font = '600 14px Inter';
+        ctx.textAlign = 'left';
+        ctx.fillText('Input: candidate results with vector scores', left, H() * 0.12);
+
+        const revealCount = phase === 0
+            ? Math.max(1, Math.floor(lerp(1, scenario.scores.length + 0.999, phaseT)))
+            : scenario.scores.length;
+
+        scenario.scores.forEach((score, i) => {
+            if (i >= revealCount) return;
+            const y = chartTop + (i + 1) * (chartHeight / (scenario.scores.length + 1));
+            const x = left + ((score - 0.6) / 0.32) * chartWidth;
+
+            ctx.fillStyle = COLORS.muted;
+            ctx.font = '500 12px JetBrains Mono';
+            ctx.textAlign = 'left';
+            ctx.fillText(`c${i + 1}`, left - 28, y + 4);
+
+            ctx.beginPath();
+            ctx.arc(x, y, 6, 0, Math.PI * 2);
+            ctx.fillStyle = scenario.color;
+            ctx.fill();
+
+            ctx.fillStyle = COLORS.text;
+            ctx.textAlign = 'left';
+            ctx.fillText(score.toFixed(3), x + 12, y + 4);
+        });
+
+        ctx.fillStyle = COLORS.muted;
+        ctx.font = '500 12px Inter';
+        ctx.textAlign = 'left';
+        ctx.fillText(`Scenario: ${scenario.label}`, left, H() * 0.18);
+
+        if (phase >= 1) {
+            const maxX = left + ((maxScore - 0.6) / 0.32) * chartWidth;
+            const minX = left + ((minScore - 0.6) / 0.32) * chartWidth;
+            const spreadY = chartTop + chartHeight + 52;
+            const spreadProgress = phase === 1 ? clamp(phaseT * 1.2, 0, 1) : 1;
+
+            ctx.strokeStyle = scenario.color;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(minX, spreadY);
+            ctx.lineTo(lerp(minX, maxX, spreadProgress), spreadY);
+            ctx.stroke();
+
+            ctx.fillStyle = scenario.color;
+            ctx.font = '600 13px JetBrains Mono';
+            ctx.textAlign = 'left';
+            ctx.fillText(`σ = max - min = ${maxScore.toFixed(3)} - ${minScore.toFixed(3)} = ${sigma.toFixed(3)}`, left, spreadY - 12);
         }
-        
-        for (let i = particles.length - 1; i >= 0; i--) {
-            if (!particles[i].update()) {
-                particles.splice(i, 1);
-            } else {
-                particles[i].draw(ctx);
-            }
+
+        ctx.fillStyle = COLORS.card;
+        ctx.strokeStyle = 'rgba(148,163,184,0.35)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.roundRect(decisionX, decisionY, decisionW, decisionH, 10);
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = COLORS.text;
+        ctx.font = '600 13px Inter';
+        ctx.textAlign = 'left';
+        ctx.fillText('Gate Decision', decisionX + 14, decisionY + 24);
+
+        ctx.font = '500 12px JetBrains Mono';
+        ctx.fillStyle = COLORS.muted;
+        ctx.fillText('Rule check:', decisionX + 14, decisionY + 50);
+        ctx.fillText('σ > 0.08  -> SKIP', decisionX + 14, decisionY + 70);
+        ctx.fillText('σ < 0.02  -> SKIP', decisionX + 14, decisionY + 90);
+        ctx.fillText('else           -> RUN', decisionX + 14, decisionY + 110);
+
+        if (phase >= 2) {
+            const pulse = 0.75 + 0.25 * Math.sin(nowMs / 180);
+            ctx.globalAlpha = pulse;
+            ctx.fillStyle = scenario.color;
+            ctx.font = '700 16px Inter';
+            ctx.fillText(scenario.decision, decisionX + 14, decisionY + 156);
+            ctx.globalAlpha = 1;
+
+            ctx.fillStyle = scenario.color;
+            ctx.font = '600 12px JetBrains Mono';
+            ctx.fillText(`Condition: ${scenario.rule}`, decisionX + 14, decisionY + 182);
+
+            ctx.fillStyle = COLORS.text;
+            ctx.font = '500 12px Inter';
+            ctx.fillText(scenario.explanation, decisionX + 14, decisionY + 208);
+        } else {
+            ctx.fillStyle = COLORS.muted;
+            ctx.font = '500 12px Inter';
+            ctx.fillText('Waiting for σ calculation...', decisionX + 14, decisionY + 156);
         }
-        
+
+        const stepText = phase === 0
+            ? 'Step 1: Gather top-k candidates from vector search.'
+            : phase === 1
+            ? 'Step 2: Compute spread σ = max_score - min_score.'
+            : 'Step 3: Apply thresholds and decide SKIP vs RUN.';
+        ctx.fillStyle = COLORS.text;
+        ctx.font = '600 13px Inter';
+        ctx.textAlign = 'left';
+        ctx.fillText(stepText, left, H() * 0.94);
+    }
+
+    function animate(ts) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawScenario(ts);
         requestAnimationFrame(animate);
     }
-    
-    animate();
+
+    requestAnimationFrame(animate);
+})();
+
+// Reranker Deep Dive Animation
+(function() {
+    const canvas = document.getElementById('reranker-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+
+    function resize() {
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    const W = () => canvas.offsetWidth;
+    const H = () => canvas.offsetHeight;
+
+    const COLORS = {
+        bg: '#0a0b10',
+        card: 'rgba(28,31,46,0.94)',
+        line: 'rgba(148,163,184,0.35)',
+        text: '#f1f5f9',
+        muted: '#94a3b8',
+        cyan: '#64d2ff',
+        green: '#30d158',
+        orange: '#ff9f0a',
+        red: '#ff453a',
+    };
+
+    const rawQuery = 'capital of france';
+    const normalizedQuery = 'What is the capital of France?';
+    const exampleQuery = 'What is the capital of France?';
+    const docs = [
+        { label: 'd1', text: 'Paris is the capital city of France and seat of government.', bi: 0.910, rerank: 0.996 },
+        { label: 'd2', text: 'France is a country in Western Europe with many regions.', bi: 0.905, rerank: 0.914 },
+        { label: 'd3', text: 'Lyon is a major French city known for cuisine.', bi: 0.899, rerank: 0.861 },
+        { label: 'd4', text: 'The Eiffel Tower is a landmark in Paris, France.', bi: 0.896, rerank: 0.889 },
+    ];
+
+    const phaseDuration = 2600;
+    const cycleDuration = phaseDuration * 4;
+
+    function truncate(text, maxChars) {
+        return text.length <= maxChars ? text : `${text.slice(0, maxChars - 1)}…`;
+    }
+
+    function drawCard(x, y, w, h, color) {
+        ctx.beginPath();
+        ctx.roundRect(x, y, w, h, 10);
+        ctx.fillStyle = COLORS.card;
+        ctx.fill();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+    }
+
+    function drawCompressionBand(x, y, w, h, activeCount) {
+        drawCard(x, y, w, h, COLORS.orange);
+        ctx.fillStyle = COLORS.text;
+        ctx.font = '600 12px Inter';
+        ctx.fillText('Cross-encoder relevance scores (compressed)', x + 12, y + 22);
+
+        const axisLeft = x + 18;
+        const axisRight = x + w - 18;
+        const axisY = y + h - 30;
+
+        ctx.strokeStyle = COLORS.line;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(axisLeft, axisY);
+        ctx.lineTo(axisRight, axisY);
+        ctx.stroke();
+
+        ctx.fillStyle = COLORS.muted;
+        ctx.font = '500 10px JetBrains Mono';
+        ctx.textAlign = 'center';
+        [0.83, 0.9, 1.0].forEach((t) => {
+            const px = axisLeft + ((t - 0.83) / 0.17) * (axisRight - axisLeft);
+            ctx.fillText(t.toFixed(2), px, axisY + 14);
+        });
+        ctx.textAlign = 'left';
+
+        docs.forEach((doc, idx) => {
+            if (idx >= activeCount) return;
+            const px = axisLeft + ((doc.rerank - 0.83) / 0.17) * (axisRight - axisLeft);
+            const py = y + 46 + idx * 24;
+            ctx.beginPath();
+            ctx.arc(px, py, 5, 0, Math.PI * 2);
+            ctx.fillStyle = COLORS.orange;
+            ctx.fill();
+            ctx.fillStyle = COLORS.text;
+            ctx.font = '500 11px JetBrains Mono';
+            ctx.fillText(`${doc.label}: ${doc.rerank.toFixed(3)}`, x + 12, py + 4);
+        });
+    }
+
+    function drawFrame(ts) {
+        ctx.fillStyle = COLORS.bg;
+        ctx.fillRect(0, 0, W(), H());
+
+        const phase = Math.floor((ts % cycleDuration) / phaseDuration);
+        const phaseT = ((ts % cycleDuration) % phaseDuration) / phaseDuration;
+        const scoredCount = phase < 2 ? 0 : Math.max(1, Math.floor((docs.length + 0.99) * phaseT));
+
+        const left = W() * 0.04;
+        const top = H() * 0.08;
+        const laneW = W() * 0.58;
+        const laneH = H() * 0.66;
+
+        drawCard(left, top, laneW, laneH, COLORS.cyan);
+        ctx.fillStyle = COLORS.text;
+        ctx.font = '600 13px Inter';
+        ctx.fillText('Input candidates from bi-encoder retrieval', left + 12, top + 22);
+
+        const queryY = top + 52;
+        ctx.fillStyle = COLORS.muted;
+        ctx.font = '500 11px Inter';
+        ctx.fillText('Example query:', left + 12, queryY);
+        ctx.fillStyle = COLORS.text;
+        ctx.font = '600 12px JetBrains Mono';
+        ctx.fillText(`"${exampleQuery}"`, left + 12, queryY + 17);
+
+        ctx.fillStyle = COLORS.muted;
+        ctx.font = '500 11px Inter';
+        ctx.fillText('Original retrieval form (declarative):', left + 12, queryY + 36);
+        ctx.fillStyle = COLORS.text;
+        ctx.font = '600 12px JetBrains Mono';
+        ctx.fillText(`"${rawQuery}"`, left + 12, queryY + 53);
+
+        if (phase >= 1) {
+            ctx.fillStyle = COLORS.green;
+            ctx.font = '500 11px Inter';
+            ctx.fillText('Normalized query (interrogative):', left + 12, queryY + 72);
+            ctx.fillStyle = COLORS.text;
+            ctx.font = '600 12px JetBrains Mono';
+            ctx.fillText(`"${normalizedQuery}"`, left + 12, queryY + 89);
+        }
+
+        docs.forEach((doc, idx) => {
+            const y = top + 160 + idx * 56;
+            drawCard(left + 12, y, laneW - 24, 46, COLORS.line);
+            ctx.fillStyle = COLORS.text;
+            ctx.font = '500 11px Inter';
+            ctx.fillText(`${doc.label}  ${truncate(doc.text, 64)}`, left + 22, y + 17);
+            ctx.fillStyle = COLORS.cyan;
+            ctx.font = '600 10px JetBrains Mono';
+            ctx.fillText(`bi=${doc.bi.toFixed(3)}`, left + 22, y + 33);
+
+            if (phase >= 2 && idx < scoredCount) {
+                ctx.fillStyle = COLORS.red;
+                ctx.fillText(`pair score=${doc.rerank.toFixed(3)}`, left + 146, y + 33);
+            }
+        });
+
+        const rightX = W() * 0.66;
+        const rightW = W() * 0.30;
+
+        drawCard(rightX, top, rightW, H() * 0.30, COLORS.red);
+        ctx.fillStyle = COLORS.text;
+        ctx.font = '600 12px Inter';
+        ctx.fillText('Nemotron-1B-Rerank cross-encoder', rightX + 12, top + 22);
+        ctx.fillStyle = COLORS.muted;
+        ctx.font = '500 11px Inter';
+        ctx.fillText('Scores each (query, document) pair jointly.', rightX + 12, top + 40);
+        ctx.fillText('Higher accuracy than bi-encoder, but slower.', rightX + 12, top + 56);
+
+        if (phase >= 2) {
+            ctx.fillStyle = COLORS.red;
+            ctx.font = '600 11px JetBrains Mono';
+            ctx.fillText(`processing pair ${Math.min(scoredCount, docs.length)}/${docs.length}`, rightX + 12, top + 79);
+        } else {
+            ctx.fillStyle = COLORS.muted;
+            ctx.font = '600 11px JetBrains Mono';
+            ctx.fillText('waiting for normalized query...', rightX + 12, top + 79);
+        }
+
+        drawCompressionBand(rightX, top + H() * 0.34, rightW, H() * 0.24, scoredCount);
+
+        const ranked = [...docs].sort((a, b) => b.rerank - a.rerank);
+        drawCard(rightX, top + H() * 0.61, rightW, H() * 0.30, COLORS.green);
+        ctx.fillStyle = COLORS.text;
+        ctx.font = '600 12px Inter';
+        ctx.fillText('Final reranked order', rightX + 12, top + H() * 0.61 + 22);
+
+        ranked.forEach((doc, idx) => {
+            const y = top + H() * 0.61 + 44 + idx * 18;
+            const show = phase >= 3;
+            ctx.fillStyle = show ? COLORS.green : COLORS.muted;
+            ctx.font = '500 10px JetBrains Mono';
+            const line = show
+                ? `${idx + 1}. ${doc.label}  score=${doc.rerank.toFixed(3)}`
+                : `${idx + 1}. waiting...`;
+            ctx.fillText(line, rightX + 12, y);
+        });
+
+        const spread = ranked[0].rerank - ranked[ranked.length - 1].rerank;
+        const guardTooTight = spread < 0.02;
+        ctx.fillStyle = guardTooTight ? COLORS.orange : COLORS.green;
+        ctx.font = '600 11px JetBrains Mono';
+        ctx.fillText(`spread guard: Δ=${spread.toFixed(3)} ${guardTooTight ? '< 0.02 -> SKIP' : '>= 0.02 -> RUN'}`, left, H() * 0.91);
+
+        ctx.fillStyle = COLORS.orange;
+        ctx.font = '500 10px JetBrains Mono';
+        ctx.fillText('tight-score fallback example: [0.991, 0.987, 0.984] -> Δ=0.007 -> SKIP reranker', left, H() * 0.94);
+
+        ctx.fillStyle = COLORS.text;
+        ctx.font = '600 12px Inter';
+        const stepText = phase === 0
+            ? 'Step 1: Retrieve top-k candidates with fast bi-encoder.'
+            : phase === 1
+            ? 'Step 2: Normalize query to explicit question form.'
+            : phase === 2
+            ? 'Step 3: Cross-encoder assigns per-pair relevance scores.'
+            : 'Step 4: Sort by cross-encoder score for final ranking.';
+        ctx.fillText(stepText, left, H() * 0.97);
+    }
+
+    function animate(ts) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        drawFrame(ts);
+        requestAnimationFrame(animate);
+    }
+
+    requestAnimationFrame(animate);
 })();
 
 // Fusion Deep Dive Animation
