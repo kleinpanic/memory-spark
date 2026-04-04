@@ -60,8 +60,9 @@ export interface RerankConfig {
     baseUrl: string;
     apiKey?: string;
     model: string;
-    /** Minimum score spread (max - min) for reranker results to be trusted.
-     *  If spread is below this, fall back to input ordering. Default: 0.01 */
+    /** Minimum score spread for reranker results to be trusted.
+     *  Compared against recovered logit spread (Phase 10A), not raw sigmoid.
+     *  If logit spread is below this, fall back to input ordering. Default: 0.5 */
     minScoreSpread?: number;
   };
   topN: number;
@@ -86,7 +87,7 @@ export interface RerankConfig {
    * - "rrf": Reciprocal Rank Fusion (Phase 12). Scale-invariant, no normalization.
    *   Fuses based on rank positions, not scores. Recommended.
    *
-   * Default: "score" (backward compatible)
+   * Default: "rrf" (scale-invariant, recommended since Phase 12)
    */
   blendMode?: "score" | "rrf";
   /** RRF k constant. Lower = top ranks dominate more. Default: 60 (standard) */
@@ -103,9 +104,10 @@ export interface RerankConfig {
    * the reranker is more likely to mess up a confident ranking.
    *
    * Gate modes:
-   * - "off": No gating (backward compatible)
+   * - "off": No gating
    * - "hard": Skip reranker entirely if spread > threshold (trust vector)
-   *           or if spread < lowThreshold (tied set — reranker is gambling)
+   *           or if spread < lowThreshold (tied set — reranker is gambling).
+   *           Default. Production-recommended (GATE-A).
    * - "soft": Dynamically adjust vector weight based on spread.
    *           High spread → high vector weight → trust vector.
    *           Low spread → lower vector weight → let reranker try.
@@ -430,8 +432,17 @@ function buildDefaults(sparkHost: string, sparkToken: string | undefined): Memor
         baseUrl: `http://${sparkHost}:18096/v1`,
         apiKey: sparkToken,
         model: "nvidia/llama-nemotron-rerank-1b-v2",
+        minScoreSpread: 0.5, // Logit-space threshold (Phase 10A)
       },
       topN: 40, // P2-A fix: raised from 20 to match DEFAULT_MAX_RERANK_CANDIDATES
+      scoreBlendAlpha: 0,
+      blendMode: "rrf", // Phase 12: scale-invariant rank fusion
+      rrfK: 60,
+      rrfVectorWeight: 1.0,
+      rrfRerankerWeight: 1.0,
+      rerankerGate: "hard", // Phase 12 Fix 2: GATE-A production default
+      rerankerGateThreshold: 0.08,
+      rerankerGateLowThreshold: 0.02,
     },
     autoRecall: {
       enabled: true,
