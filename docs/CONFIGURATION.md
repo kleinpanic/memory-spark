@@ -1,6 +1,6 @@
 # memory-spark Configuration Reference
 
-> **Auto-generated from `src/config.ts` — v0.4.0 (2026-04-02)**
+> **Verified against `src/config.ts` — v0.4.0 (2026-04-04)**
 
 memory-spark is configured via OpenClaw's plugin config system. All fields have sensible defaults — you only need to override what you want to change.
 
@@ -34,7 +34,7 @@ For a remote Spark node:
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `backend` | `"lancedb"` | `"lancedb"` | Storage backend (only LanceDB supported) |
-| `lancedbDir` | string | `~/.openclaw/memory-spark/lancedb` | LanceDB data directory |
+| `lancedbDir` | string | `~/.openclaw/data/memory-spark/lancedb` | LanceDB data directory |
 | `sparkHost` | string | `"localhost"` | Override all Spark endpoint hostnames |
 | `sparkBearerToken` | string | from env | Override `SPARK_BEARER_TOKEN` env var |
 
@@ -49,7 +49,7 @@ For a remote Spark node:
 | `embed.spark.apiKey` | string | from env | Bearer token |
 | `embed.spark.model` | string | `nvidia/llama-embed-nemotron-8b` | Embedding model |
 | `embed.spark.dimensions` | number | `4096` | Vector dimensions |
-| `embed.spark.queryInstruction` | string | `"Given a query, retrieve relevant passages..."` | Instruction prefix for asymmetric query embeddings. Documents are embedded raw (no prefix). Required for instruction-tuned models like llama-embed-nemotron-8b. |
+| `embed.spark.queryInstruction` | string | `"Given a question, retrieve relevant passages that answer the query"` | Instruction prefix for asymmetric query embeddings. Documents are embedded raw (no prefix). Required for instruction-tuned models like llama-embed-nemotron-8b. |
 | `embed.openai.apiKey` | string | — | OpenAI API key |
 | `embed.openai.model` | string | `text-embedding-3-small` | OpenAI model |
 | `embed.gemini.model` | string | `gemini-embedding-001` | Gemini model |
@@ -64,10 +64,10 @@ For a remote Spark node:
 | `rerank.spark.baseUrl` | string | `http://localhost:18096/v1` | Spark reranker endpoint |
 | `rerank.spark.apiKey` | string | from env | Bearer token |
 | `rerank.spark.model` | string | `nvidia/llama-nemotron-rerank-1b-v2` | Reranker model |
-| `rerank.spark.minScoreSpread` | number | `0.01` | Min score spread to trust reranker results |
-| `rerank.topN` | number | `5` | Number of candidates to rerank |
+| `rerank.spark.minScoreSpread` | number | `0.5` | Min logit-space spread to trust reranker (Phase 10A: operates on recovered logits, not raw sigmoid) |
+| `rerank.topN` | number | `40` | Max candidates sent to cross-encoder (P2-A fix: raised from 20 to match DEFAULT_MAX_RERANK_CANDIDATES) |
 | `rerank.scoreBlendAlpha` | number | `0.0` | Score interpolation: 0=pure reranker, 1=ignore reranker |
-| `rerank.blendMode` | `"score"` \| `"rrf"` | `"score"` | Blend strategy. `"rrf"` recommended (scale-invariant) |
+| `rerank.blendMode` | `"score"` \| `"rrf"` | `"rrf"` | Blend strategy. `"rrf"` is default and recommended (scale-invariant) |
 | `rerank.rrfK` | number | `60` | RRF smoothing constant (lower = top ranks dominate more) |
 | `rerank.rrfVectorWeight` | number | `1.0` | RRF vector rank weight |
 | `rerank.rrfRerankerWeight` | number | `1.0` | RRF reranker rank weight |
@@ -78,7 +78,7 @@ Skip the cross-encoder when vector retrieval is already confident or tied (reran
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `rerank.rerankerGate` | `"off"` \| `"hard"` \| `"soft"` | `"off"` | Gate mode. `"hard"` = production recommended (GATE-A) |
+| `rerank.rerankerGate` | `"off"` \| `"hard"` \| `"soft"` | `"hard"` | Gate mode. `"hard"` = production default (GATE-A) |
 | `rerank.rerankerGateThreshold` | number | `0.08` | High spread: skip reranker (vector confident) |
 | `rerank.rerankerGateLowThreshold` | number | `0.02` | Low spread: skip reranker (tied set, gambling) |
 
@@ -94,8 +94,8 @@ Skip the cross-encoder when vector retrieval is already confident or tied (reran
 | `autoRecall.agents` | string[] | `["*"]` | Agents to enable recall for (`"*"` = all) |
 | `autoRecall.ignoreAgents` | string[] | `[]` | Agents to exclude (overrides `agents`) |
 | `autoRecall.maxResults` | number | `5` | Maximum memories to inject |
-| `autoRecall.minScore` | number | `0.65` | Minimum relevance score to inject |
-| `autoRecall.queryMessageCount` | number | `4` | Recent messages to build query from |
+| `autoRecall.minScore` | number | `0.75` | Minimum relevance score to inject |
+| `autoRecall.queryMessageCount` | number | `2` | Recent messages to build query from |
 | `autoRecall.maxInjectionTokens` | number | `2000` | Token budget for injected memories |
 | `autoRecall.ftsEnabled` | boolean | `true` | Enable hybrid search (vector + BM25 FTS) |
 | `autoRecall.overfetchMultiplier` | number | `4` | Overfetch factor for initial search |
@@ -162,7 +162,7 @@ Formula: `score *= floor + (1 - floor) * exp(-rate * ageDays)`
 | `autoCapture.agents` | string[] | `["*"]` | Agents to capture from |
 | `autoCapture.ignoreAgents` | string[] | `[]` | Agents to exclude |
 | `autoCapture.categories` | string[] | `["fact", "decision", "preference", ...]` | Categories to capture |
-| `autoCapture.minConfidence` | number | `0.75` | Minimum classifier confidence |
+| `autoCapture.minConfidence` | number | `0.6` | Minimum classifier confidence |
 | `autoCapture.minMessageLength` | number | `30` | Min chars to consider for capture |
 | `autoCapture.useClassifier` | boolean | `true` | Use Spark zero-shot classifier (falls back to heuristic) |
 
@@ -188,11 +188,11 @@ Formula: `score *= floor + (1 - floor) * exp(-rate * ageDays)`
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `hyde.enabled` | boolean | `true` | Enable HyDE for improved retrieval |
-| `hyde.llmUrl` | string | `http://localhost:18080/v1` | vLLM chat completions URL |
+| `hyde.llmUrl` | string | `http://localhost:18080/v1/chat/completions` | vLLM chat completions URL |
 | `hyde.model` | string | Nemotron-Super | LLM model for hypothetical docs |
 | `hyde.maxTokens` | number | `150` | Max tokens for generated doc |
 | `hyde.temperature` | number | `0.7` | Generation temperature |
-| `hyde.timeoutMs` | number | `10000` | LLM call timeout |
+| `hyde.timeoutMs` | number | `30000` | LLM call timeout (best-effort; HyDE silently falls back on timeout) |
 | `hyde.apiKey` | string | from env | Bearer token |
 
 ---
@@ -216,7 +216,7 @@ Formula: `score *= floor + (1 - floor) * exp(-rate * ageDays)`
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `fts.enabled` | boolean | `true` | Enable BM25 alongside vector search |
-| `fts.sigmoidMidpoint` | number | `3.0` | BM25 sigmoid midpoint for score normalization |
+| `fts.sigmoidMidpoint` | number | `10.0` | BM25 sigmoid midpoint for score normalization |
 
 ---
 
@@ -270,12 +270,12 @@ These are auto-configured from `sparkHost`. Only override individually if servic
 |-----|---------|---------|
 | `spark.embed` | `http://localhost:18091/v1` | Embedding (llama-embed-nemotron-8b) |
 | `spark.rerank` | `http://localhost:18096/v1` | Reranking (llama-nemotron-rerank-1b-v2) |
-| `spark.ner` | `http://localhost:18091/v1` | Named Entity Recognition |
-| `spark.zeroShot` | `http://localhost:8013/v1` | Zero-shot classifier |
-| `spark.stt` | `http://localhost:8014/v1` | Speech-to-text |
-| `spark.ocr` | `http://localhost:18080/ocr` | Legacy OCR |
-| `spark.glmOcr` | `http://localhost:18099/v1` | GLM-OCR (vision) |
-| `spark.summarizer` | `http://localhost:18080/v1` | Summarization LLM |
+| `spark.ocr` | `http://localhost:18097` | Legacy OCR fallback |
+| `spark.glmOcr` | `http://localhost:18080/v1` | GLM-OCR via OpenAI-compatible vision/chat endpoint |
+| `spark.ner` | `http://localhost:18112` | Named Entity Recognition |
+| `spark.zeroShot` | `http://localhost:18113` | Zero-shot classifier |
+| `spark.summarizer` | `http://localhost:18110` | Summarization endpoint |
+| `spark.stt` | `http://localhost:18094` | Speech-to-text |
 
 ---
 
@@ -295,12 +295,12 @@ These are auto-configured from `sparkHost`. Only override individually if servic
   },
   "autoRecall": {
     "maxResults": 5,
-    "minScore": 0.65,
+    "minScore": 0.75,
     "maxInjectionTokens": 2000,
     "mmrLambda": 0.9
   },
   "autoCapture": {
-    "minConfidence": 0.75,
+    "minConfidence": 0.6,
     "useClassifier": true
   }
 }

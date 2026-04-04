@@ -17,7 +17,7 @@
   <img src="https://img.shields.io/badge/NDCG%4010-0.7889-58a6ff" alt="NDCG@10">
   <img src="https://img.shields.io/badge/MRR-0.7572-3fb950" alt="MRR">
   <img src="https://img.shields.io/badge/Recall%4010-0.9243-d29922" alt="Recall@10">
-  <img src="https://img.shields.io/badge/Tests-483%2F483-brightgreen" alt="Tests">
+  <img src="https://img.shields.io/badge/Tests-697%20passing-brightgreen" alt="Tests">
   <img src="https://img.shields.io/badge/Tools-18-58a6ff" alt="Tools">
 </p>
 
@@ -195,7 +195,7 @@ sequenceDiagram
 
     alt High spread (skip reranker - 78%)
         Gate->>Pipeline: SKIP reranker
-    else Low spread (fire reranker - 22%)
+    else Mid spread (fire reranker - 21%)
         Gate->>Reranker: Cross-encode
         Reranker-->>Pipeline: Re-ranked scores
         Pipeline->>Pipeline: 11. RRF blend
@@ -262,10 +262,10 @@ graph TB
         E[LLM Service<br/>:18080<br/>Nemotron-120B]
         F[OCR Service<br/>:18097<br/>EasyOCR]
         G[GLM-OCR Service<br/>:18080<br/>vLLM vision]
-        H[NER Service<br/>:18112<br/>bert-large-NER]
-        I[Zero-Shot Classifier<br/>:18113<br/>bart-large-mnli]
-        J[Summarizer Service<br/>:18110<br/>bart-large-cnn]
-        K[STT Service<br/>:18094<br/>Whisper-large-v3]
+        H[NER Service<br/>:18112]
+        I[Zero-Shot Classifier<br/>:18113]
+        J[Summarizer Service<br/>:18110]
+        K[STT Service<br/>:18094]
     end
     
     subgraph STORAGE["Local Storage"]
@@ -298,10 +298,10 @@ graph TB
 | Reranker | nvidia/llama-nemotron-rerank-1b-v2 | 18096 | Cross-encoder scoring |
 | LLM | Nemotron-Super-120B-A12B (NVFP4) | 18080 | HyDE + GLM-OCR |
 | OCR (legacy) | EasyOCR | 18097 | Scanned PDF fallback |
-| NER | bert-large-NER | 18112 | Named entity extraction |
-| Zero-shot | bart-large-mnli | 18113 | Intent classification |
-| Summarizer | bart-large-cnn | 18110 | Document summarization |
-| STT | Whisper-large-v3 | 18094 | Speech-to-text |
+| NER | configured service | 18112 | Named entity extraction |
+| Zero-shot | configured service | 18113 | Intent classification |
+| Summarizer | configured service | 18110 | Document summarization |
+| STT | configured service | 18094 | Speech-to-text |
 | Storage | LanceDB (IVF_PQ + FTS) | local | Vector + keyword index |
 
 All ML inference runs on a local NVIDIA DGX Spark — **zero cloud API calls**.
@@ -392,8 +392,10 @@ In `~/.openclaw/openclaw.json`:
           },
 
           // HyDE (Hypothetical Document Embeddings)
+          // This example disables HyDE for a lower-latency setup.
+          // Source defaults in src/config.ts enable it by default.
           "hyde": {
-            "enabled": false,  // Default OFF due to latency
+            "enabled": false,
             "llmUrl": "http://SPARK_HOST:18080/v1/chat/completions",
             "model": "nvidia/nemotron-super-120b",
             "maxTokens": 150,
@@ -404,7 +406,7 @@ In `~/.openclaw/openclaw.json`:
           // Full-text search (BM25)
           "fts": {
             "enabled": true,
-            "sigmoidMidpoint": 3.0
+            "sigmoidMidpoint": 10.0
           },
 
           // Document chunking
@@ -449,8 +451,9 @@ In `~/.openclaw/openclaw.json`:
           "autoCapture": {
             "enabled": true,
             "agents": ["main", "dev"],
-            "qualityThreshold": 0.7,
-            "dedupThreshold": 0.92
+            "minConfidence": 0.7,
+            "minMessageLength": 30,
+            "useClassifier": true
           },
 
           // Spark service endpoints
@@ -481,7 +484,7 @@ In `~/.openclaw/openclaw.json`:
 | `fts` | Full-text search | `enabled`, `sigmoidMidpoint` |
 | `chunk` | Document chunking | `maxTokens`, `hierarchical`, `parentMaxTokens`, `childMaxTokens` |
 | `autoRecall` | Memory injection | `enabled`, `agents`, `maxResults`, `mmrLambda`, `temporalDecay` |
-| `autoCapture` | Fact extraction | `enabled`, `agents`, `qualityThreshold`, `dedupThreshold` |
+| `autoCapture` | Fact extraction | `enabled`, `agents`, `minConfidence`, `minMessageLength`, `useClassifier` |
 | `spark` | Service endpoints | `embed`, `rerank`, `ocr`, `glmOcr`, `ner`, `zeroShot`, `summarizer`, `stt` |
 
 > **Full Schema:** [`src/config.ts`](src/config.ts) is the authoritative source with detailed JSDoc comments.
@@ -491,9 +494,7 @@ In `~/.openclaw/openclaw.json`:
 | Mode | Behavior | Use Case |
 |------|----------|----------|
 | `"off"` | Always call reranker | Baseline comparison |
-| `"hard"` | Skip if spread > 0.08 or < 0.02 | **Production default** - 78% skip |
-| `"soft"` | Dynamically weight vector vs reranker | Experimental adaptive |
-| `"hard"` | Skip if σ > 0.08 or σ < 0.02 | **Production default** — 78% skip rate |
+| `"hard"` | Skip if σ > 0.08 or σ < 0.02 | **Production default** — ~78% skip rate |
 | `"soft"` | Dynamically weight vector vs reranker | Experimental — adaptive blending |
 
 #### Temporal Decay Formula
@@ -633,7 +634,7 @@ xychart-beta
 └─────────────────────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  RERANK (2 stages)                                          [22% FIRE] │
+│  RERANK (2 stages)                                          [21% FIRE] │
 ├───────────────────────────────────────────────────────────────────────────────┤
 │  11· Cross-Encoder │ Nemotron-1B-rerank       │ → [0.987, 0.876, ...]        │
 │  12· RRF Blend     │ vec ⊕ rerank             │ → Final ranking               │

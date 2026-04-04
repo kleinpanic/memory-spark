@@ -79,7 +79,7 @@
   <!-- Embed -->
   <rect x="568" y="96" width="140" height="44" rx="8" fill="#161b22" stroke="#58a6ff" stroke-width="1.5"/>
   <text x="638" y="116" text-anchor="middle" class="label">Embed (4096d)</text>
-  <text x="638" y="130" text-anchor="middle" class="detail">nemotron-8b · :18081</text>
+  <text x="638" y="130" text-anchor="middle" class="detail">nemotron-8b · :18091</text>
 
   <!-- ══════════════════ ROW 2: SEARCH (y=160) ══════════════════ -->
   <text x="24" y="174" class="section" fill="#58a6ff">④ Search</text>
@@ -181,13 +181,13 @@
 
   <!-- FIRE path (red, right) -->
   <line x1="140" y1="400" x2="200" y2="400" stroke="#f85149" stroke-width="1.5" marker-end="url(#ar)"/>
-  <text x="168" y="392" class="detail" fill="#f85149" font-weight="700">FIRE 22%</text>
+  <text x="168" y="392" class="detail" fill="#f85149" font-weight="700">FIRE 21%</text>
 
   <!-- Cross-Encoder -->
   <rect x="202" y="376" width="170" height="48" rx="8" fill="#161b22" stroke="#f85149" stroke-width="1.5"/>
   <circle cx="216" cy="388" r="8" fill="#f85149"/><text x="216" y="392" text-anchor="middle" class="stage-num">10</text>
   <text x="297" y="396" text-anchor="middle" class="label">Cross-Encoder</text>
-  <text x="297" y="412" text-anchor="middle" class="detail">rerank-1b-v2 · :18098</text>
+  <text x="297" y="412" text-anchor="middle" class="detail">rerank-1b-v2 · :18096</text>
 
   <line x1="372" y1="400" x2="408" y2="400" stroke="#484f58" marker-end="url(#a)"/>
 
@@ -258,11 +258,11 @@
   <!-- ══════════════════ RIGHT PANEL: INFRA ══════════════════ -->
   <rect x="920" y="290" width="260" height="150" rx="10" fill="#161b22" stroke="#30363d"/>
   <text x="940" y="314" class="section" fill="#58a6ff">Infrastructure</text>
-  <text x="940" y="336" class="detail">EMBED   llama-embed-nemotron-8b    :18081</text>
-  <text x="940" y="354" class="detail">RERANK  llama-nemotron-rerank-1b   :18098</text>
+  <text x="940" y="336" class="detail">EMBED   llama-embed-nemotron-8b    :18091</text>
+  <text x="940" y="354" class="detail">RERANK  llama-nemotron-rerank-1b   :18096</text>
   <text x="940" y="372" class="detail">LLM    Nemotron-Super-120B        :18080</text>
-  <text x="940" y="390" class="detail">NER    bert-large-NER              :18112</text>
-  <text x="940" y="408" class="detail">ZSHOT  bart-large-mnli              :8013</text>
+  <text x="940" y="390" class="detail">NER    configured service          :18112</text>
+  <text x="940" y="408" class="detail">ZSHOT  configured service          :18113</text>
   <text x="940" y="426" class="detail">STORE  LanceDB (local, IVF_PQ+FTS)</text>
 
   <!-- ══════════════════ BOTTOM: METRICS BAR ══════════════════ -->
