@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+  id-token: write
+
 jobs:
   # ═══════════════════════════════════════════════════════════════════════
   # QUALITY GATE - Must pass before any merge
