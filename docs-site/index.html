@@ -159,39 +159,145 @@
         }
         
         /* Diagram Links */
-        .diagram-links {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 1rem;
-            padding: 2rem;
+        /* Section styles for single-page */
+        .content-section {
+            padding: 4rem 2rem;
             max-width: 1200px;
             margin: 0 auto;
         }
         
-        .diagram-link {
+        .content-section h2 {
+            font-size: 1.75rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            text-align: center;
+        }
+        
+        .content-section .subtitle {
+            color: var(--fg-muted);
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+        
+        /* Gate cards */
+        .gate-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+        }
+        
+        @media (max-width: 800px) {
+            .gate-grid { grid-template-columns: 1fr; }
+        }
+        
+        .gate-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            text-align: center;
+        }
+        
+        .gate-condition {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+        
+        .gate-condition.confident { color: var(--neon-green); }
+        .gate-condition.tied { color: var(--neon-orange); }
+        .gate-condition.ambiguous { color: var(--neon-red); }
+        
+        .gate-desc {
+            color: var(--fg-muted);
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+        
+        .gate-result {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+        
+        .gate-result.skip {
+            background: rgba(48,209,88,0.15);
+            color: var(--neon-green);
+        }
+        
+        .gate-result.run {
+            background: rgba(255,69,58,0.15);
+            color: var(--neon-red);
+        }
+        
+        /* Pool grid */
+        .pool-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+        }
+        
+        @media (max-width: 800px) {
+            .pool-grid { grid-template-columns: 1fr; }
+        }
+        
+        .pool-card {
             background: var(--bg-card);
             border: 1px solid var(--border);
             border-radius: 12px;
             padding: 1.25rem;
-            text-decoration: none;
-            color: var(--fg);
-            transition: all 0.3s ease;
         }
         
-        .diagram-link:hover {
-            border-color: var(--neon-blue);
-            transform: translateY(-2px);
-            box-shadow: 0 4px 20px rgba(0,212,255,0.1);
-        }
-        
-        .diagram-link h3 {
+        .pool-card h3 {
             font-size: 1rem;
-            margin-bottom: 0.25rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
         }
         
-        .diagram-link p {
+        .pool-card .weight {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.9rem;
+            opacity: 0.8;
+        }
+        
+        .pool-card ul {
+            list-style: none;
             color: var(--fg-muted);
             font-size: 0.85rem;
+        }
+        
+        .pool-card li {
+            padding: 0.4rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .pool-card li:last-child { border-bottom: none; }
+        
+        /* Formula box */
+        .formula-box {
+            background: linear-gradient(135deg, rgba(0,212,255,0.05), rgba(191,90,242,0.03));
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+            margin: 1.5rem 0;
+        }
+        
+        .formula {
+            font-family: 'Times New Roman', serif;
+            font-size: 1.75rem;
+            color: var(--neon-cyan);
+            margin: 1rem 0;
+        }
+        
+        .formula-note {
+            color: var(--fg-muted);
+            font-size: 0.9rem;
         }
         
         /* Footer */
@@ -254,36 +360,182 @@
 <!-- PIPELINE CANVAS -->
 <section id="pipeline-section">
     <canvas id="pipeline"></canvas>
+</section>
+
+<!-- GATE LOGIC SECTION -->
+<section class="content-section" id="gate-section">
+    <h2>Dynamic Reranker Gate</h2>
+    <p class="subtitle">The key to 50% latency reduction without accuracy loss</p>
     
-    <div class="diagram-links">
-        <a href="diagrams/pipeline.html" class="diagram-link">
-            <h3>📊 Full Pipeline</h3>
-            <p>Stage-by-stage breakdown with code and latency</p>
-        </a>
-        <a href="diagrams/gate.html" class="diagram-link">
-            <h3>🚦 Gate Logic</h3>
-            <p>Dynamic reranker gating with σ spread</p>
-        </a>
-        <a href="diagrams/pools.html" class="diagram-link">
-            <h3>🗄️ Pools</h3>
-            <p>6 memory pools with isolation and weights</p>
-        </a>
-        <a href="diagrams/fusion.html" class="diagram-link">
-            <h3>🔗 Fusion</h3>
-            <p>RRF, MMR diversity, temporal decay</p>
-        </a>
-        <a href="diagrams/query.html" class="diagram-link">
-            <h3>🔍 Query Processing</h3>
-            <p>HyDE, multi-query expansion, embedding</p>
-        </a>
-        <a href="diagrams/embedder.html" class="diagram-link">
-            <h3>🧠 Embedder</h3>
-            <p>How Nemotron-8B creates vectors</p>
-        </a>
-        <a href="diagrams/reranker.html" class="diagram-link">
-            <h3>🎯 Reranker</h3>
-            <p>Cross-encoder scoring mechanics</p>
-        </a>
+    <div class="gate-grid">
+        <div class="gate-card">
+            <div class="gate-condition confident">σ > 0.08</div>
+            <div class="gate-desc">High confidence spread — the top result is clearly better. Vector search already found the answer.</div>
+            <div class="gate-result skip">SKIP RERANKER</div>
+        </div>
+        <div class="gate-card">
+            <div class="gate-condition tied">σ < 0.02</div>
+            <div class="gate-desc">Tied results — scores are too close. Reranker won't add meaningful signal here.</div>
+            <div class="gate-result skip">SKIP RERANKER</div>
+        </div>
+        <div class="gate-card">
+            <div class="gate-condition ambiguous">0.02 ≤ σ ≤ 0.08</div>
+            <div class="gate-desc">Ambiguous zone — results are neither clearly confident nor tied. Cross-encoder can help.</div>
+            <div class="gate-result run">RUN RERANKER</div>
+        </div>
+    </div>
+</section>
+
+<!-- POOL ARCHITECTURE SECTION -->
+<section class="content-section" id="pools-section" style="background: var(--bg-card);">
+    <h2>Pool Architecture</h2>
+    <p class="subtitle">6 isolated memory pools with different weights and priorities</p>
+    
+    <div class="pool-grid">
+        <div class="pool-card" style="border-color: var(--neon-cyan);">
+            <h3><span style="color: var(--neon-cyan);">🧠</span> Agent Memory</h3>
+            <div class="weight" style="color: var(--neon-cyan);">Weight: 1.0x</div>
+            <ul>
+                <li>General working memory</li>
+                <li>Pool-isolated per agent</li>
+                <li>Session context storage</li>
+            </ul>
+        </div>
+        <div class="pool-card" style="border-color: var(--neon-red);">
+            <h3><span style="color: var(--neon-red);">⚠️</span> Agent Mistakes</h3>
+            <div class="weight" style="color: var(--neon-red);">Weight: 1.6x (BOOSTED)</div>
+            <ul>
+                <li>Past errors and corrections</li>
+                <li>Highest priority retrieval</li>
+                <li>Learn from failures</li>
+            </ul>
+        </div>
+        <div class="pool-card" style="border-color: var(--neon-orange);">
+            <h3><span style="color: var(--neon-orange);">💡</span> Shared Mistakes</h3>
+            <div class="weight" style="color: var(--neon-orange);">Weight: 1.5x</div>
+            <ul>
+                <li>Cross-agent learned lessons</li>
+                <li>Organizational knowledge</li>
+                <li>Prevent repeat failures</li>
+            </ul>
+        </div>
+        <div class="pool-card" style="border-color: var(--neon-blue);">
+            <h3><span style="color: var(--neon-blue);">📖</span> Shared Knowledge</h3>
+            <div class="weight" style="color: var(--neon-blue);">Weight: 0.8x</div>
+            <ul>
+                <li>Reference docs and manuals</li>
+                <li>Background context</li>
+                <li>External documentation</li>
+            </ul>
+        </div>
+        <div class="pool-card" style="border-color: var(--neon-purple);">
+            <h3><span style="color: var(--neon-purple);">📜</span> Shared Rules</h3>
+            <div class="weight" style="color: var(--neon-purple);">Weight: 1.0x (gated)</div>
+            <ul>
+                <li>Governing policies</li>
+                <li>Relevance-gated injection</li>
+                <li>Constraint enforcement</li>
+            </ul>
+        </div>
+        <div class="pool-card" style="border-color: var(--neon-yellow);">
+            <h3><span style="color: var(--neon-yellow);">🔍</span> FTS Index</h3>
+            <div class="weight" style="color: var(--neon-yellow);">BM25 Full-Text</div>
+            <ul>
+                <li>Tantivy BM25 search</li>
+                <li>Keyword matching</li>
+                <li>Hybrid with vector</li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<!-- SCORE FUSION SECTION -->
+<section class="content-section" id="fusion-section">
+    <h2>Score Fusion</h2>
+    <p class="subtitle">RRF, MMR diversity, and temporal decay formulas</p>
+    
+    <div class="formula-box">
+        <h3 style="color: var(--neon-orange); font-size: 1rem; margin-bottom: 0.5rem;">Reciprocal Rank Fusion (RRF)</h3>
+        <div class="formula">RRF(d) = Σ 1/(k + rank(d))</div>
+        <div class="formula-note">
+            Scale-invariant merging of vector and BM25 results. Smoothing constant <strong>k=60</strong>.<br>
+            Documents appearing high in both lists get an "agreement bonus."
+        </div>
+    </div>
+    
+    <div class="formula-box">
+        <h3 style="color: var(--neon-purple); font-size: 1rem; margin-bottom: 0.5rem;">MMR Diversity (λ=0.9)</h3>
+        <div class="formula">MMR = λ·sim(q,d) - (1-λ)·max sim(d,dᵢ)</div>
+        <div class="formula-note">
+            Balances relevance vs. redundancy. High λ (0.9) favors relevance.<br>
+            Prevents returning 10 nearly-identical chunks.
+        </div>
+    </div>
+    
+    <div class="formula-box">
+        <h3 style="color: var(--neon-green); font-size: 1rem; margin-bottom: 0.5rem;">Temporal Decay</h3>
+        <div class="formula">score · (0.8 + 0.2·e^(-0.03·age))</div>
+        <div class="formula-note">
+            Exponential decay with 0.8 floor. Recent memories get boosted.<br>
+            0 days=1.0x, 7 days=0.96x, 30 days=0.89x, 365 days=0.80x
+        </div>
+    </div>
+</section>
+
+<!-- SERVICES SECTION -->
+<section class="content-section" id="services-section" style="background: var(--bg-card);">
+    <h2>Spark Backend Services</h2>
+    <p class="subtitle">Self-hosted on NVIDIA DGX Spark (zero cloud API calls)</p>
+    
+    <div class="pool-grid">
+        <div class="pool-card">
+            <h3><span style="color: var(--neon-cyan);">🧠</span> Embedding :18091</h3>
+            <ul>
+                <li>llama-embed-nemotron-8b</li>
+                <li>4096 dimensions</li>
+                <li>Instruction-aware</li>
+            </ul>
+        </div>
+        <div class="pool-card">
+            <h3><span style="color: var(--neon-red);">🎯</span> Reranker :18096</h3>
+            <ul>
+                <li>llama-nemotron-rerank-1b-v2</li>
+                <li>Cross-encoder</li>
+                <li>Query normalization</li>
+            </ul>
+        </div>
+        <div class="pool-card">
+            <h3><span style="color: var(--neon-purple);">🤖</span> LLM :18080</h3>
+            <ul>
+                <li>Nemotron-Super-120B</li>
+                <li>HyDE generation</li>
+                <li>Multi-query expansion</li>
+            </ul>
+        </div>
+        <div class="pool-card">
+            <h3><span style="color: var(--neon-orange);">👁️</span> GLM-OCR :18080</h3>
+            <ul>
+                <li>zai-org/GLM-OCR (0.9B)</li>
+                <li>PDF parsing</li>
+                <li>vLLM served</li>
+            </ul>
+        </div>
+        <div class="pool-card">
+            <h3><span style="color: var(--neon-green);">🏷️</span> NER :18112</h3>
+            <ul>
+                <li>Named Entity Recognition</li>
+                <li>Entity extraction</li>
+                <li>Metadata enrichment</li>
+            </ul>
+        </div>
+        <div class="pool-card">
+            <h3><span style="color: var(--neon-yellow);">🎲</span> Zero-Shot :18113</h3>
+            <ul>
+                <li>bart-large-mnli</li>
+                <li>Zero-shot classification</li>
+                <li>Category inference</li>
+            </ul>
+        </div>
     </div>
 </section>
 
