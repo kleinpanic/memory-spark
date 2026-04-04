@@ -745,13 +745,22 @@
                 height: 600px;
             }
             
-            .deep-dive-canvas,
-            #pools-canvas,
+            .deep-dive-canvas {
+                height: 350px;
+                max-width: 100%;
+            }
+            
+            #gate-canvas {
+                height: 400px;
+            }
+            
+            #pools-canvas {
+                height: 380px;
+            }
+            
             #reranker-canvas,
-            #gate-canvas,
             #fusion-canvas {
                 height: 300px;
-                max-width: 100%;
             }
             
             .content-section,
@@ -1682,8 +1691,11 @@
     const W = () => canvas.offsetWidth;
     const H = () => canvas.offsetHeight;
     
-    // Scale font size based on canvas height
-    const FS = (base) => Math.max(8, Math.floor(base * H() / 300));
+    // Scale font size based on canvas height - ensure minimum readable size
+    const FS = (base) => {
+        const scaled = Math.floor(base * H() / 400);
+        return Math.max(9, Math.min(scaled, base)); // Between 9px and base
+    };
 
     function getAnchorPoints() {
         const query = { x: W() * 0.08, y: H() * 0.5 };
@@ -1878,8 +1890,11 @@
     const W = () => canvas.offsetWidth;
     const H = () => canvas.offsetHeight;
     
-    // Scale font size based on canvas height
-    const FS = (base) => Math.max(8, Math.floor(base * H() / 300));
+    // Scale font size based on canvas height - ensure minimum readable size
+    const FS = (base) => {
+        const scaled = Math.floor(base * H() / 400);
+        return Math.max(9, Math.min(scaled, base)); // Between 9px and base
+    };
 
     const COLORS = {
         confident: '#30d158',
