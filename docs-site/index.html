@@ -377,6 +377,10 @@
             height: 460px;
         }
 
+        #gate-canvas {
+            min-height: 420px;
+        }
+
         #reranker-canvas {
             height: 500px;
         }
@@ -811,6 +815,10 @@
             #reranker-canvas {
                 height: 250px;
             }
+
+            #gate-canvas {
+                height: 360px;
+            }
             
             .pool-card,
             .gate-card,
@@ -968,7 +976,7 @@
     
     <div class="deep-dive-content">
         <p>
-            The Dynamic Gate analyzes the <strong>confidence spread</strong> (σ) of the initial vector search results to determine whether the cross-encoder reranker should be invoked. This prevents unnecessary computation when the initial retrieval is already high-confidence.
+            The Dynamic Gate computes <strong>σ = max(score) − min(score)</strong> over the <strong>top-5 vector candidates</strong> (exactly what <code style="font-family: 'JetBrains Mono', monospace;">computeRerankerGate()</code> uses). It then checks two thresholds: <strong>high=0.08</strong> and <strong>low=0.02</strong>. In hard mode, reranking is skipped when vector results are already confident (<code style="font-family: 'JetBrains Mono', monospace;">σ &gt; 0.08</code>) or too tied to add reliable signal (<code style="font-family: 'JetBrains Mono', monospace;">σ &lt; 0.02</code>), and only runs in the middle band.
         </p>
     </div>
     
@@ -1699,7 +1707,7 @@
 
     function getAnchorPoints() {
         const query = { x: W() * 0.08, y: H() * 0.5 };
-        const merge = { x: W() * 0.9, y: H() * 0.65 };
+        const merge = { x: W() * 0.9, y: H() * 0.67 };
         const baseX = W() * 0.45;
         const topY = H() * 0.26;
         const rowGap = H() * 0.22;
@@ -1877,26 +1885,28 @@
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
-    
+
     function resize() {
         const rect = canvas.getBoundingClientRect();
-        const w = Math.max(rect.width || 0, canvas.clientWidth || 0, 320);
-        const h = Math.max(rect.height || 0, canvas.clientHeight || 0, 240);
+        const w = Math.max(rect.width || 0, canvas.clientWidth || 0, 340);
+        const h = Math.max(rect.height || 0, canvas.clientHeight || 0, 280);
         canvas.width = w * dpr;
         canvas.height = h * dpr;
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
     resize();
     window.addEventListener('resize', resize);
-    
+
     const W = () => canvas.offsetWidth;
     const H = () => canvas.offsetHeight;
-    
-    // Scale font size based on canvas height - ensure minimum readable size
+
     const FS = (base) => {
-        const scaled = Math.floor(base * H() / 400);
-        return Math.max(9, Math.min(scaled, base)); // Between 9px and base
+        const scaled = Math.floor((base * H()) / 420);
+        return Math.max(9, Math.min(scaled, base));
     };
+
+    const HIGH = 0.08;
+    const LOW = 0.02;
 
     const COLORS = {
         confident: '#30d158',
@@ -1904,134 +1914,157 @@
         ambiguous: '#ff453a',
         text: '#f1f5f9',
         muted: '#94a3b8',
-        line: 'rgba(148,163,184,0.35)',
-        card: 'rgba(28,31,46,0.88)'
+        card: 'rgba(28,31,46,0.92)',
+        panel: 'rgba(10,11,16,0.65)',
     };
 
     const scenarios = [
         {
-            label: 'Confident',
-            scores: [0.92, 0.81, 0.74],
-            decision: 'SKIP',
-            rule: 'σ > 0.08',
-            color: COLORS.confident,
+            label: 'Scenario A: Vector confident',
+            scores: [0.92, 0.87, 0.84, 0.82, 0.80],
+            rationale: 'Top candidate is clearly separated; keep vector order.',
         },
         {
-            label: 'Tied',
-            scores: [0.740, 0.735, 0.731],
-            decision: 'SKIP',
-            rule: 'σ < 0.02',
-            color: COLORS.tied,
+            label: 'Scenario B: Near tie',
+            scores: [0.742, 0.738, 0.735, 0.731, 0.728],
+            rationale: 'Scores are nearly flat; reranker usually adds noise here.',
         },
         {
-            label: 'Ambiguous',
-            scores: [0.82, 0.79, 0.77],
-            decision: 'RUN',
-            rule: '0.02-0.08',
-            color: COLORS.ambiguous,
-        }
+            label: 'Scenario C: Ambiguous middle band',
+            scores: [0.83, 0.80, 0.78, 0.76, 0.75],
+            rationale: 'Some separation exists, but not enough certainty — rerank can help.',
+        },
     ];
 
-    const cycleDuration = 4000;
+    const cycleMs = 4800;
 
-    function drawFrame(ts) {
+    function decisionForSigma(sigma) {
+        if (sigma > HIGH) return { action: 'SKIP RERANKER', reason: `σ > ${HIGH.toFixed(2)} (hard-gate-high)`, color: COLORS.confident };
+        if (sigma < LOW) return { action: 'SKIP RERANKER', reason: `σ < ${LOW.toFixed(2)} (hard-gate-low)`, color: COLORS.tied };
+        return { action: 'RUN RERANKER', reason: `${LOW.toFixed(2)} ≤ σ ≤ ${HIGH.toFixed(2)} (hard-gate-pass)`, color: COLORS.ambiguous };
+    }
+
+    function draw(ts) {
         const width = W();
         const height = H();
-        if (width < 40 || height < 40) {
-            requestAnimationFrame(drawFrame);
-            return;
-        }
         ctx.clearRect(0, 0, width, height);
-        
-        const cycleIndex = Math.floor(ts / cycleDuration);
-        const scenario = scenarios[cycleIndex % scenarios.length];
-        
-        const titleSize = Math.max(12, FS(13));
+
+        const i = Math.floor(ts / cycleMs) % scenarios.length;
+        const scenario = scenarios[i];
+        const sigma = Math.max(...scenario.scores) - Math.min(...scenario.scores);
+        const d = decisionForSigma(sigma);
+
+        const titleSize = Math.max(12, FS(14));
         const labelSize = Math.max(10, FS(10));
         const smallSize = Math.max(9, FS(9));
 
-        // Title
-        ctx.font = `600 ${titleSize}px sans-serif`;
-        ctx.fillStyle = COLORS.text;
-        ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-        ctx.lineWidth = 3;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.strokeText(`Dynamic Gate — ${scenario.label}`, W() * 0.5, H() * 0.12);
-        ctx.fillText(`Dynamic Gate — ${scenario.label}`, W() * 0.5, H() * 0.12);
-        ctx.textBaseline = 'alphabetic';
+        const leftX = width * 0.04;
+        const leftY = height * 0.13;
+        const leftW = width * 0.58;
+        const leftH = height * 0.78;
+        const rightX = width * 0.64;
+        const rightY = leftY;
+        const rightW = width * 0.32;
+        const rightH = leftH;
 
-        // Scores region
-        const leftX = W() * 0.08;
-        const barStartY = H() * 0.26;
-        const barHeight = H() * 0.07;
-        const barSpacing = H() * 0.11;
-        const maxBarWidth = W() * 0.50;
-
-        ctx.font = `500 ${labelSize}px monospace`;
-        ctx.fillStyle = COLORS.muted;
-        ctx.textAlign = 'left';
-        ctx.fillText('Top-k vector scores', leftX, H() * 0.19);
-
-        scenario.scores.forEach((score, i) => {
-            const y = barStartY + i * barSpacing;
-            const barWidth = Math.max(6, ((score - 0.6) / 0.35) * maxBarWidth);
-
-            ctx.fillStyle = scenario.color;
-            ctx.globalAlpha = 0.7;
-            ctx.fillRect(leftX, y, barWidth, barHeight);
-            ctx.globalAlpha = 1;
-
-            ctx.font = `500 ${smallSize}px monospace`;
-            ctx.fillStyle = COLORS.text;
-            ctx.fillText(score.toFixed(3), leftX + barWidth + 6, y + barHeight * 0.6);
-        });
-
-        // Decision box (right)
-        const boxX = W() * 0.66;
-        const boxY = H() * 0.20;
-        const boxW = W() * 0.30;
-        const boxH = H() * 0.58;
-
-        ctx.fillStyle = COLORS.card;
-        ctx.strokeStyle = scenario.color;
-        ctx.lineWidth = 2;
+        ctx.fillStyle = COLORS.panel;
+        ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+        ctx.lineWidth = 1;
         ctx.beginPath();
-        ctx.roundRect(boxX, boxY, boxW, boxH, 8);
+        ctx.roundRect(leftX, leftY, leftW, leftH, 10);
         ctx.fill();
         ctx.stroke();
 
-        ctx.font = `600 ${labelSize}px sans-serif`;
+        ctx.beginPath();
+        ctx.roundRect(rightX, rightY, rightW, rightH, 10);
+        ctx.fillStyle = COLORS.card;
+        ctx.fill();
+        ctx.strokeStyle = d.color;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
         ctx.fillStyle = COLORS.text;
-        ctx.textAlign = 'left';
-        ctx.fillText('Gate Decision', boxX + 10, boxY + 18);
-
-        ctx.font = `500 ${smallSize}px monospace`;
-        ctx.fillStyle = COLORS.muted;
-        ctx.fillText('σ > 0.08  → SKIP', boxX + 10, boxY + 40);
-        ctx.fillText('σ < 0.02  → SKIP', boxX + 10, boxY + 56);
-        ctx.fillText('otherwise → RUN', boxX + 10, boxY + 72);
-
-        ctx.font = `700 ${Math.max(12, FS(14))}px sans-serif`;
-        ctx.fillStyle = scenario.color;
+        ctx.font = `700 ${titleSize}px Inter`;
         ctx.textAlign = 'center';
-        ctx.fillText(scenario.decision, boxX + boxW / 2, boxY + boxH * 0.68);
+        ctx.fillText('Dynamic Reranker Gate (hard mode)', width * 0.5, height * 0.07);
 
-        ctx.font = `500 ${smallSize}px monospace`;
+        ctx.font = `600 ${labelSize}px Inter`;
         ctx.fillStyle = COLORS.muted;
-        ctx.fillText(`rule: ${scenario.rule}`, boxX + boxW / 2, boxY + boxH * 0.85);
+        ctx.fillText(scenario.label, width * 0.5, height * 0.105);
 
-        // σ formula at bottom
-        const sigma = Math.max(...scenario.scores) - Math.min(...scenario.scores);
-        ctx.font = `500 ${labelSize}px monospace`;
-        ctx.fillStyle = scenario.color;
         ctx.textAlign = 'left';
-        ctx.fillText(`σ = ${sigma.toFixed(3)}`, leftX, H() * 0.93);
-        
-        requestAnimationFrame(drawFrame);
+        ctx.font = `600 ${labelSize}px Inter`;
+        ctx.fillStyle = COLORS.text;
+        ctx.fillText('Top-5 vector candidates', leftX + 12, leftY + 22);
+
+        const barStartY = leftY + 42;
+        const barH = Math.max(12, height * 0.045);
+        const gap = Math.max(10, height * 0.06);
+        const barMaxW = leftW * 0.62;
+
+        scenario.scores.forEach((score, idx) => {
+            const y = barStartY + idx * gap;
+            const norm = Math.max(0, Math.min(1, (score - 0.68) / 0.26));
+            const bw = Math.max(8, norm * barMaxW);
+
+            ctx.fillStyle = d.color;
+            ctx.globalAlpha = 0.24;
+            ctx.fillRect(leftX + 12, y, bw, barH);
+            ctx.globalAlpha = 1;
+
+            ctx.fillStyle = COLORS.text;
+            ctx.font = `500 ${smallSize}px JetBrains Mono`;
+            ctx.fillText(`c${idx + 1}: ${score.toFixed(3)}`, leftX + 16, y + barH * 0.72);
+        });
+
+        const maxScore = Math.max(...scenario.scores);
+        const minScore = Math.min(...scenario.scores);
+
+        ctx.font = `600 ${labelSize}px JetBrains Mono`;
+        ctx.fillStyle = COLORS.text;
+        const sigmaY = leftY + leftH - 74;
+        ctx.fillText('σ = max(top5) - min(top5)', leftX + 12, sigmaY);
+        ctx.fillText(`  = ${maxScore.toFixed(3)} - ${minScore.toFixed(3)} = ${sigma.toFixed(3)}`, leftX + 12, sigmaY + 18);
+
+        ctx.fillStyle = COLORS.muted;
+        ctx.font = `500 ${smallSize}px Inter`;
+        ctx.fillText(scenario.rationale, leftX + 12, leftY + leftH - 28);
+
+        ctx.textAlign = 'left';
+        ctx.font = `600 ${labelSize}px Inter`;
+        ctx.fillStyle = COLORS.text;
+        ctx.fillText('Threshold checks', rightX + 12, rightY + 22);
+
+        const checks = [
+            { line: `if (σ > ${HIGH.toFixed(2)}) → SKIP`, pass: sigma > HIGH },
+            { line: `else if (σ < ${LOW.toFixed(2)}) → SKIP`, pass: !(sigma > HIGH) && sigma < LOW },
+            { line: 'else → RUN', pass: sigma >= LOW && sigma <= HIGH },
+        ];
+
+        checks.forEach((c, idx) => {
+            const y = rightY + 46 + idx * 24;
+            ctx.fillStyle = c.pass ? d.color : COLORS.muted;
+            ctx.font = `500 ${smallSize}px JetBrains Mono`;
+            ctx.fillText(`${c.pass ? '✓' : '•'} ${c.line}`, rightX + 12, y);
+        });
+
+        ctx.textAlign = 'center';
+        ctx.fillStyle = d.color;
+        ctx.font = `800 ${Math.max(12, FS(16))}px Inter`;
+        ctx.fillText(d.action, rightX + rightW / 2, rightY + rightH * 0.58);
+
+        ctx.fillStyle = COLORS.muted;
+        ctx.font = `500 ${smallSize}px JetBrains Mono`;
+        ctx.fillText(d.reason, rightX + rightW / 2, rightY + rightH * 0.68);
+
+        ctx.fillStyle = COLORS.text;
+        ctx.font = `500 ${smallSize}px Inter`;
+        ctx.fillText('Matches src/rerank/reranker.ts computeRerankerGate()', rightX + rightW / 2, rightY + rightH * 0.80);
+
+        requestAnimationFrame(draw);
     }
-    
-    requestAnimationFrame(drawFrame);
+
+    requestAnimationFrame(draw);
 })();
 
 // Reranker Deep Dive Animation
