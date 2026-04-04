@@ -1,865 +1,1013 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Memory-Spark — RAG Pipeline Architecture</title>
-<meta name="description" content="Educational deep-dive into the Memory-Spark RAG pipeline: 15-stage retrieval, dynamic gating, RRF fusion, and pool-based memory.">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-<script src="https://cdn.tailwindcss.com"></script>
-<script>
-tailwind.config = {
-  theme: {
-    extend: {
-      colors: {
-        'spark': {
-          'bg': '#0a0a0f',
-          'card': '#12121a',
-          'border': '#1e1e2e',
-          'text': '#cdd6f4',
-          'muted': '#6c7086',
-          'accent': '#89b4fa',
-          'purple': '#cba6f7',
-          'green': '#a6e3a1',
-          'amber': '#f9e2af',
-          'red': '#f38ba8',
-          'cyan': '#94e2d5',
-          'pink': '#f5c2e7',
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Memory-Spark | RAG Pipeline Architecture</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg: #09090b;
+            --bg-elevated: #18181b;
+            --bg-card: #1f1f23;
+            --fg: #fafafa;
+            --fg-muted: #71717a;
+            --border: #27272a;
+            --blue: #3b82f6;
+            --cyan: #22d3ee;
+            --green: #22c55e;
+            --orange: #fb923c;
+            --purple: #a78bfa;
+            --red: #f87171;
         }
-      },
-      fontFamily: {
-        'sans': ['Inter', 'system-ui', 'sans-serif'],
-        'mono': ['JetBrains Mono', 'monospace'],
-      }
-    }
-  }
-}
-</script>
-<style>
-html{scroll-behavior:smooth}
-body{font-family:var(--sans);background:#0a0a0f;color:#cdd6f4;line-height:1.7;overflow-x:hidden;-webkit-font-smoothing:antialiased}
-::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#0a0a0f}::-webkit-scrollbar-thumb{background:#1e1e2e;border-radius:3px}
-
-/* Scroll reveal animations */
-.rv{opacity:0;transform:translateY(40px);transition:opacity .8s cubic-bezier(.16,1,.3,1),transform .8s cubic-bezier(.16,1,.3,1)}
-.rv.v{opacity:1;transform:translateY(0)}
-.rv-l{opacity:0;transform:translateX(-50px);transition:opacity .8s cubic-bezier(.16,1,.3,1),transform .8s cubic-bezier(.16,1,.3,1)}
-.rv-l.v{opacity:1;transform:translateX(0)}
-.rv-r{opacity:0;transform:translateX(50px);transition:opacity .8s cubic-bezier(.16,1,.3,1),transform .8s cubic-bezier(.16,1,.3,1)}
-.rv-r.v{opacity:1;transform:translateX(0)}
-.d1{transition-delay:.1s}.d2{transition-delay:.2s}.d3{transition-delay:.3s}.d4{transition-delay:.4s}.d5{transition-delay:.5s}
-
-/* Gradient text */
-.gr{background:linear-gradient(135deg,#89b4fa,#cba6f7,#94e2d5);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
-
-/* Glow effects */
-.glow-blue{box-shadow:0 0 30px rgba(137,180,250,.2)}
-.glow-purple{box-shadow:0 0 30px rgba(203,166,247,.2)}
-.glow-cyan{box-shadow:0 0 30px rgba(148,226,213,.2)}
-
-/* Pulse animation */
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
-.pulse{animation:pulse 2s ease-in-out infinite}
-
-/* Hero glow */
-#hero::before{content:'';position:absolute;inset:-40%;background:radial-gradient(ellipse at 30% 20%,rgba(137,180,250,.08) 0%,transparent 50%),radial-gradient(ellipse at 70% 60%,rgba(203,166,247,.06) 0%,transparent 50%);pointer-events:none;animation:hglow 8s ease-in-out infinite alternate}
-@keyframes hglow{0%{opacity:.6;transform:scale(1)}100%{opacity:1;transform:scale(1.05)}}
-
-/* Pipeline stage animations */
-.pstage{opacity:0;transform:translateY(20px) scale(.9);transition:all .6s cubic-bezier(.34,1.56,.64,1)}
-.pstage.on{opacity:1;transform:translateY(0) scale(1)}
-.pstage.lit .sbox{border-color:#89b4fa;box-shadow:0 0 20px rgba(137,180,250,.2)}
-.parr{opacity:0;transition:opacity .4s,color .4s}
-.parr.on{opacity:1}
-.parr.lit{color:#89b4fa}
-
-/* Code block styling */
-pre{background:#12121a;border:1px solid #1e1e2e;border-radius:8px;padding:1rem;overflow-x:auto;font-size:.85rem}
-code{font-family:'JetBrains Mono',monospace}
-
-/* Section divider */
-.divider{height:1px;background:linear-gradient(90deg,transparent,#1e1e2e,transparent);margin:4rem 0}
-</style>
+        
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--fg);
+            line-height: 1.6;
+        }
+        
+        /* Nav */
+        nav {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 100;
+            padding: 1rem 2rem;
+            background: rgba(9,9,11,0.8);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .nav-logo {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--fg);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .nav-links {
+            display: flex;
+            gap: 2rem;
+            list-style: none;
+        }
+        
+        .nav-links a {
+            color: var(--fg-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: color 0.2s;
+        }
+        
+        .nav-links a:hover { color: var(--fg); }
+        
+        /* Hero */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+            text-align: center;
+            background: 
+                radial-gradient(ellipse 80% 50% at 50% -20%, rgba(59,130,246,0.15), transparent),
+                radial-gradient(ellipse 60% 40% at 80% 60%, rgba(168,85,247,0.08), transparent),
+                var(--bg);
+        }
+        
+        .hero h1 {
+            font-size: clamp(2.5rem, 7vw, 5rem);
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            background: linear-gradient(135deg, #fff 0%, #7dd3fc 50%, #a78bfa 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 1rem;
+        }
+        
+        .hero p {
+            font-size: clamp(1rem, 2vw, 1.25rem);
+            color: var(--fg-muted);
+            max-width: 700px;
+            margin-bottom: 3rem;
+        }
+        
+        .hero strong { color: var(--cyan); font-weight: 500; }
+        
+        /* Stats */
+        .stats {
+            display: flex;
+            gap: 2rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        
+        .stat {
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-size: 2.5rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--green), var(--cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--fg-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        /* Sections */
+        section {
+            padding: 5rem 2rem;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        
+        .section-title {
+            font-size: 2rem;
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 0.5rem;
+        }
+        
+        .section-subtitle {
+            color: var(--fg-muted);
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        
+        /* Pipeline Canvas - CENTERPIECE */
+        #pipeline-section {
+            width: 100%;
+            padding: 0;
+            max-width: none;
+        }
+        
+        #pipeline {
+            width: 100%;
+            height: 1000px;
+            background: var(--bg);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        /* Diagram Links */
+        .diagram-links {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1.5rem;
+            margin-top: 3rem;
+        }
+        
+        .diagram-link {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            text-decoration: none;
+            color: var(--fg);
+            transition: all 0.3s ease;
+        }
+        
+        .diagram-link:hover {
+            border-color: var(--cyan);
+            transform: translateY(-4px);
+        }
+        
+        .diagram-link h3 {
+            font-size: 1.1rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .diagram-link p {
+            color: var(--fg-muted);
+            font-size: 0.9rem;
+        }
+        
+        /* Gate Decision */
+        .gate-section {
+            background: var(--bg-elevated);
+            border-radius: 24px;
+            padding: 3rem;
+            margin: 3rem 0;
+        }
+        
+        .gate-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        
+        .gate-icon {
+            width: 48px;
+            height: 48px;
+            background: linear-gradient(135deg, var(--orange), var(--red));
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+        }
+        
+        .gate-title { font-size: 1.5rem; font-weight: 600; }
+        
+        .gate-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+        }
+        
+        @media (max-width: 900px) {
+            .gate-grid { grid-template-columns: 1fr; }
+        }
+        
+        .gate-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+        }
+        
+        .gate-card:hover {
+            transform: translateY(-4px);
+            border-color: var(--blue);
+        }
+        
+        .gate-condition {
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 1.25rem;
+            margin-bottom: 0.75rem;
+        }
+        
+        .gate-condition.confident { color: var(--green); }
+        .gate-condition.tied { color: var(--orange); }
+        .gate-condition.ambiguous { color: var(--red); }
+        
+        .gate-desc {
+            color: var(--fg-muted);
+            font-size: 0.9rem;
+            margin-bottom: 1rem;
+        }
+        
+        .gate-result {
+            display: inline-block;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+        
+        .gate-result.skip {
+            background: rgba(34,197,94,0.15);
+            color: var(--green);
+        }
+        
+        .gate-result.run {
+            background: rgba(248,113,113,0.15);
+            color: var(--red);
+        }
+        
+        /* Formula */
+        .formula-box {
+            background: linear-gradient(135deg, rgba(59,130,246,0.1), rgba(168,85,247,0.05));
+            border: 1px solid var(--blue);
+            border-radius: 24px;
+            padding: 3rem;
+            text-align: center;
+            margin: 3rem 0;
+        }
+        
+        .formula-title {
+            font-size: 1.25rem;
+            font-weight: 600;
+            margin-bottom: 1.5rem;
+        }
+        
+        .formula {
+            font-family: 'Times New Roman', serif;
+            font-size: 2.5rem;
+            color: var(--cyan);
+            margin: 1.5rem 0;
+        }
+        
+        .formula-note {
+            color: var(--fg-muted);
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        
+        /* Architecture */
+        .arch-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+        }
+        
+        @media (max-width: 900px) {
+            .arch-grid { grid-template-columns: 1fr; }
+        }
+        
+        .arch-card {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 2rem;
+            transition: all 0.3s ease;
+        }
+        
+        .arch-card:hover {
+            border-color: var(--blue);
+            transform: translateY(-4px);
+        }
+        
+        .arch-card.highlight {
+            border-color: var(--cyan);
+            background: linear-gradient(135deg, rgba(34,211,238,0.1), transparent);
+        }
+        
+        .arch-card h3 {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-size: 1.1rem;
+            margin-bottom: 1rem;
+        }
+        
+        .arch-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.1rem;
+        }
+        
+        .arch-card ul {
+            list-style: none;
+            color: var(--fg-muted);
+            font-size: 0.9rem;
+        }
+        
+        .arch-card li {
+            padding: 0.5rem 0;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .arch-card li:last-child { border-bottom: none; }
+        
+        /* Footer */
+        footer {
+            text-align: center;
+            padding: 3rem 2rem;
+            border-top: 1px solid var(--border);
+        }
+        
+        .footer-links {
+            display: flex;
+            justify-content: center;
+            gap: 2rem;
+            flex-wrap: wrap;
+        }
+        
+        .footer-link {
+            color: var(--fg-muted);
+            text-decoration: none;
+            font-size: 0.9rem;
+            transition: color 0.2s;
+        }
+        
+        .footer-link:hover { color: var(--cyan); }
+    </style>
 </head>
-<body class="bg-spark-bg text-spark-text">
+<body>
 
-<!-- Navigation -->
-<nav class="fixed top-0 left-0 right-0 z-50 bg-spark-bg/80 backdrop-blur-xl border-b border-spark-border">
-  <div class="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
-    <a href="#" class="text-xl font-bold flex items-center gap-2">
-      <span class="text-spark-amber">⚡</span>
-      <span>Memory-Spark</span>
+<nav>
+    <a href="#" class="nav-logo">
+        <span style="color: var(--orange);">⚡</span>
+        Memory-Spark
     </a>
-    <div class="flex gap-6 text-sm">
-      <a href="#pipeline" class="text-spark-muted hover:text-spark-text transition-colors">Pipeline</a>
-      <a href="#gate" class="text-spark-muted hover:text-spark-text transition-colors">Gate Logic</a>
-      <a href="#pools" class="text-spark-muted hover:text-spark-text transition-colors">Pools</a>
-      <a href="#fusion" class="text-spark-muted hover:text-spark-text transition-colors">Fusion</a>
-      <a href="#services" class="text-spark-muted hover:text-spark-text transition-colors">Services</a>
-    </div>
-  </div>
+    <ul class="nav-links">
+        <li><a href="#pipeline-section">Pipeline</a></li>
+        <li><a href="#gate">Gate Logic</a></li>
+        <li><a href="#pools">Pools</a></li>
+        <li><a href="#fusion">Fusion</a></li>
+        <li><a href="#services">Services</a></li>
+    </ul>
 </nav>
 
-<!-- Hero -->
-<section id="hero" class="min-h-screen flex items-center justify-center relative overflow-hidden pt-20">
-  <div class="container max-w-4xl text-center relative z-10">
-    <div class="rv d1 inline-flex items-center gap-2 px-4 py-2 bg-spark-card border border-spark-border rounded-full text-sm text-spark-muted mb-6">
-      <span class="w-2 h-2 bg-spark-green rounded-full pulse"></span>
-      Educational RAG Architecture
-    </div>
-    <h1 class="rv d2 text-5xl md:text-7xl font-extrabold tracking-tight mb-6">
-      <span class="gr">15-Stage</span> RAG Pipeline
-    </h1>
-    <p class="rv d3 text-xl text-spark-muted max-w-2xl mx-auto mb-8">
-      A deep-dive into how Memory-Spark retrieves, reranks, and fuses information. 
-      Built for visual learners who want to understand the architecture.
+<div class="hero">
+    <h1>Memory-Spark</h1>
+    <p>
+        A <strong>15-stage RAG pipeline</strong> with dynamic gating, RRF fusion, 
+        and pool-based memory. Educational architecture for visual learners.
     </p>
-    <div class="rv d4 flex gap-4 justify-center">
-      <a href="#pipeline" class="px-6 py-3 bg-spark-accent text-spark-bg font-semibold rounded-lg hover:bg-spark-accent/80 transition-colors">
-        Explore Pipeline
-      </a>
-      <a href="https://github.com/kleinpanic/memory-spark" class="px-6 py-3 bg-spark-card border border-spark-border rounded-lg hover:border-spark-muted transition-colors">
-        View Source
-      </a>
+    <div class="stats">
+        <div class="stat">
+            <div class="stat-value">78.9%</div>
+            <div class="stat-label">NDCG@10 (SciFact)</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">626ms</div>
+            <div class="stat-label">P50 Latency</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">78%</div>
+            <div class="stat-label">Reranker Skip</div>
+        </div>
+        <div class="stat">
+            <div class="stat-value">15</div>
+            <div class="stat-label">Pipeline Stages</div>
+        </div>
     </div>
-  </div>
-  <div class="absolute bottom-8 left-1/2 -translate-x-1/2 text-spark-muted text-sm flex flex-col items-center gap-2">
-    <span>Scroll to explore</span>
-    <span class="text-2xl animate-bounce">↓</span>
-  </div>
+</div>
+
+<!-- PIPELINE CANVAS - CENTERPIECE -->
+<section id="pipeline-section">
+    <canvas id="pipeline"></canvas>
+    
+    <div style="max-width: 1400px; margin: 0 auto; padding: 2rem;">
+        <h2 class="section-title">Interactive Diagrams</h2>
+        <p class="section-subtitle">Click to explore each component in detail</p>
+        
+        <div class="diagram-links">
+            <a href="diagrams/pipeline.html" class="diagram-link">
+                <h3>📊 Full Pipeline</h3>
+                <p>Stage-by-stage breakdown with code snippets and latency metrics</p>
+            </a>
+            <a href="diagrams/gate.html" class="diagram-link">
+                <h3>🚦 Gate Logic</h3>
+                <p>Hard/soft gate decision tree with σ spread visualization</p>
+            </a>
+            <a href="diagrams/pools.html" class="diagram-link">
+                <h3>🗄️ Pool Architecture</h3>
+                <p>6 memory pools with weights, boosts, and isolation</p>
+            </a>
+            <a href="diagrams/fusion.html" class="diagram-link">
+                <h3>🔗 Score Fusion</h3>
+                <p>RRF, MMR diversity, and temporal decay formulas</p>
+            </a>
+            <a href="diagrams/query.html" class="diagram-link">
+                <h3>🔍 Query Processing</h3>
+                <p>HyDE, multi-query expansion, and embedding</p>
+            </a>
+            <a href="diagrams/embedder.html" class="diagram-link">
+                <h3>🧠 Embedder</h3>
+                <p>How Nemotron-8B creates 4096-dim vectors</p>
+            </a>
+            <a href="diagrams/reranker.html" class="diagram-link">
+                <h3>🎯 Reranker</h3>
+                <p>Cross-encoder scoring and query normalization</p>
+            </a>
+        </div>
+    </div>
 </section>
 
-<!-- Quick Stats -->
-<section class="py-12 border-y border-spark-border bg-spark-card/50">
-  <div class="max-w-6xl mx-auto px-6">
-    <div class="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
-      <div class="rv">
-        <div class="text-4xl font-extrabold text-spark-green">78.9%</div>
-        <div class="text-sm text-spark-muted mt-1">NDCG@10 (SciFact)</div>
-      </div>
-      <div class="rv d1">
-        <div class="text-4xl font-extrabold text-spark-accent">626ms</div>
-        <div class="text-sm text-spark-muted mt-1">P50 Latency</div>
-      </div>
-      <div class="rv d2">
-        <div class="text-4xl font-extrabold text-spark-purple">78%</div>
-        <div class="text-sm text-spark-muted mt-1">Reranker Skip Rate</div>
-      </div>
-      <div class="rv d3">
-        <div class="text-4xl font-extrabold text-spark-cyan">15</div>
-        <div class="text-sm text-spark-muted mt-1">Pipeline Stages</div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<!-- User Query/Response Loop -->
-<section id="loop" class="py-20">
-  <div class="max-w-6xl mx-auto px-6">
-    <div class="text-center mb-12">
-      <div class="text-sm font-semibold text-spark-accent uppercase tracking-wider mb-2">Overview</div>
-      <h2 class="text-3xl md:text-4xl font-bold">Query → Response Loop</h2>
-      <p class="text-spark-muted mt-4 max-w-2xl mx-auto">
-        The user sends a query, the pipeline retrieves relevant context, and the LLM generates a response.
-      </p>
-    </div>
-    
-    <div class="rv bg-spark-card border border-spark-border rounded-2xl p-8 relative overflow-hidden">
-      <!-- Animated flow diagram -->
-      <div class="flex flex-col md:flex-row items-center justify-between gap-8">
-        <!-- User -->
-        <div class="flex flex-col items-center text-center">
-          <div class="w-20 h-20 bg-spark-purple/20 border-2 border-spark-purple rounded-full flex items-center justify-center text-3xl mb-3">
-            👤
-          </div>
-          <div class="font-semibold">User</div>
-          <div class="text-sm text-spark-muted">Ask question</div>
+<!-- GATE LOGIC -->
+<section id="gate">
+    <div class="gate-section">
+        <div class="gate-header">
+            <div class="gate-icon">⚡</div>
+            <div class="gate-title">Dynamic Reranker Gate</div>
         </div>
+        <p class="section-subtitle" style="margin-bottom: 2rem;">
+            The key to 50% latency reduction without accuracy loss
+        </p>
         
-        <!-- Arrow -->
-        <div class="text-spark-muted text-3xl md:rotate-0 rotate-90">→</div>
-        
-        <!-- Query Processing -->
-        <div class="flex flex-col items-center text-center">
-          <div class="w-20 h-20 bg-spark-accent/20 border-2 border-spark-accent rounded-full flex items-center justify-center text-3xl mb-3">
-            🔍
-          </div>
-          <div class="font-semibold">Query Processing</div>
-          <div class="text-sm text-spark-muted">Clean, HyDE, Expand</div>
-        </div>
-        
-        <!-- Arrow -->
-        <div class="text-spark-muted text-3xl md:rotate-0 rotate-90">→</div>
-        
-        <!-- Retrieval -->
-        <div class="flex flex-col items-center text-center">
-          <div class="w-20 h-20 bg-spark-green/20 border-2 border-spark-green rounded-full flex items-center justify-center text-3xl mb-3">
-            📚
-          </div>
-          <div class="font-semibold">Retrieval</div>
-          <div class="text-sm text-spark-muted">Vector + FTS + Rerank</div>
-        </div>
-        
-        <!-- Arrow -->
-        <div class="text-spark-muted text-3xl md:rotate-0 rotate-90">→</div>
-        
-        <!-- LLM Response -->
-        <div class="flex flex-col items-center text-center">
-          <div class="w-20 h-20 bg-spark-amber/20 border-2 border-spark-amber rounded-full flex items-center justify-center text-3xl mb-3">
-            🤖
-          </div>
-          <div class="font-semibold">LLM Response</div>
-          <div class="text-sm text-spark-muted">Context + Answer</div>
-        </div>
-      </div>
-      
-      <!-- Return arrow (curved) -->
-      <div class="hidden md:block absolute bottom-4 left-1/2 -translate-x-1/2 text-spark-muted text-sm">
-        ← Response flows back to User
-      </div>
-    </div>
-  </div>
-</section>
-
-<div class="divider"></div>
-
-<!-- 15-Stage Pipeline (Centerpiece) -->
-<section id="pipeline" class="py-20">
-  <div class="max-w-6xl mx-auto px-6">
-    <div class="text-center mb-12">
-      <div class="text-sm font-semibold text-spark-accent uppercase tracking-wider mb-2">Centerpiece</div>
-      <h2 class="text-3xl md:text-4xl font-bold">15-Stage Retrieval Pipeline</h2>
-      <p class="text-spark-muted mt-4 max-w-2xl mx-auto">
-        The full pipeline from query to response. Each stage transforms the data to improve relevance.
-      </p>
-    </div>
-    
-    <!-- Pipeline Visualization -->
-    <div class="rv bg-spark-card border border-spark-border rounded-2xl p-6 overflow-x-auto">
-      <div id="pipeline-flow" class="flex items-center justify-start gap-2 min-w-max py-8 px-4">
-        <!-- Stage 0: User Query -->
-        <div class="pstage flex flex-col items-center">
-          <div class="sbox w-20 h-20 bg-spark-purple/20 border-2 border-spark-border rounded-xl flex flex-col items-center justify-center">
-            <span class="text-2xl">👤</span>
-            <span class="text-xs text-spark-muted mt-1">User</span>
-          </div>
-          <span class="text-xs text-spark-muted mt-2 font-mono">S0</span>
-        </div>
-        <span class="parr text-spark-muted">→</span>
-        
-        <!-- Stage 1: Query Cleaning -->
-        <div class="pstage flex flex-col items-center">
-          <div class="sbox w-20 h-20 bg-spark-card border-2 border-spark-border rounded-xl flex flex-col items-center justify-center">
-            <span class="text-2xl">🧹</span>
-            <span class="text-xs text-spark-muted mt-1">Clean</span>
-          </div>
-          <span class="text-xs text-spark-muted mt-2 font-mono">S1</span>
-        </div>
-        <span class="parr text-spark-muted">→</span>
-        
-        <!-- Stage 2: HyDE -->
-        <div class="pstage flex flex-col items-center">
-          <div class="sbox w-20 h-20 bg-spark-card border-2 border-spark-border rounded-xl flex flex-col items-center justify-center">
-            <span class="text-2xl">📄</span>
-            <span class="text-xs text-spark-muted mt-1">HyDE</span>
-          </div>
-          <span class="text-xs text-spark-muted mt-2 font-mono">S2</span>
-        </div>
-        <span class="parr text-spark-muted">→</span>
-        
-        <!-- Stage 3: Multi-Query -->
-        <div class="pstage flex flex-col items-center">
-          <div class="sbox w-20 h-20 bg-spark-card border-2 border-spark-border rounded-xl flex flex-col items-center justify-center">
-            <span class="text-2xl">🔀</span>
-            <span class="text-xs text-spark-muted mt-1">Multi-Q</span>
-          </div>
-          <span class="text-xs text-spark-muted mt-2 font-mono">S3</span>
-        </div>
-        <span class="parr text-spark-muted">→</span>
-        
-        <!-- Stage 4: Embedding -->
-        <div class="pstage flex flex-col items-center">
-          <div class="sbox w-20 h-20 bg-spark-accent/20 border-2 border-spark-accent rounded-xl flex flex-col items-center justify-center">
-            <span class="text-2xl">🧠</span>
-            <span class="text-xs text-spark-muted mt-1">Embed</span>
-          </div>
-          <span class="text-xs text-spark-muted mt-2 font-mono">S4</span>
-        </div>
-        <span class="parr text-spark-muted">→</span>
-        
-        <!-- Stage 5: Pool Search -->
-        <div class="pstage flex flex-col items-center">
-          <div class="sbox w-20 h-20 bg-spark-card border-2 border-spark-border rounded-xl flex flex-col items-center justify-center">
-            <span class="text-2xl">🗄️</span>
-            <span class="text-xs text-spark-muted mt-1">Pools</span>
-          </div>
-          <span class="text-xs text-spark-muted mt-2 font-mono">S5</span>
-        </div>
-        <span class="parr text-spark-muted">→</span>
-        
-        <!-- Stage 6: Hybrid Search -->
-        <div class="pstage flex flex-col items-center">
-          <div class="sbox w-20 h-20 bg-spark-card border-2 border-spark-border rounded-xl flex flex-col items-center justify-center">
-            <span class="text-2xl">⚡</span>
-            <span class="text-xs text-spark-muted mt-1">Hybrid</span>
-          </div>
-          <span class="text-xs text-spark-muted mt-2 font-mono">S6</span>
-        </div>
-        <span class="parr text-spark-muted">→</span>
-        
-        <!-- Stage 7: RRF Fusion -->
-        <div class="pstage flex flex-col items-center">
-          <div class="sbox w-20 h-20 bg-spark-card border-2 border-spark-border rounded-xl flex flex-col items-center justify-center">
-            <span class="text-2xl">🔗</span>
-            <span class="text-xs text-spark-muted mt-1">RRF</span>
-          </div>
-          <span class="text-xs text-spark-muted mt-2 font-mono">S7</span>
-        </div>
-        <span class="parr text-spark-muted">→</span>
-        
-        <!-- Stage 8: Source Weight -->
-        <div class="pstage flex flex-col items-center">
-          <div class="sbox w-20 h-20 bg-spark-card border-2 border-spark-border rounded-xl flex flex-col items-center justify-center">
-            <span class="text-2xl">⚖️</span>
-            <span class="text-xs text-spark-muted mt-1">Weight</span>
-          </div>
-          <span class="text-xs text-spark-muted mt-2 font-mono">S8</span>
-        </div>
-        <span class="parr text-spark-muted">→</span>
-        
-        <!-- Stage 9: Temporal Decay -->
-        <div class="pstage flex flex-col items-center">
-          <div class="sbox w-20 h-20 bg-spark-card border-2 border-spark-border rounded-xl flex flex-col items-center justify-center">
-            <span class="text-2xl">⏰</span>
-            <span class="text-xs text-spark-muted mt-1">Decay</span>
-          </div>
-          <span class="text-xs text-spark-muted mt-2 font-mono">S9</span>
-        </div>
-        <span class="parr text-spark-muted">→</span>
-        
-        <!-- Stage 10: Gate -->
-        <div class="pstage flex flex-col items-center">
-          <div class="sbox w-20 h-20 bg-spark-amber/20 border-2 border-spark-amber rounded-xl flex flex-col items-center justify-center">
-            <span class="text-2xl">🚦</span>
-            <span class="text-xs text-spark-muted mt-1">Gate</span>
-          </div>
-          <span class="text-xs text-spark-muted mt-2 font-mono">S10</span>
-        </div>
-        <span class="parr text-spark-muted">→</span>
-        
-        <!-- Stage 11: Reranker -->
-        <div class="pstage flex flex-col items-center">
-          <div class="sbox w-20 h-20 bg-spark-green/20 border-2 border-spark-green rounded-xl flex flex-col items-center justify-center">
-            <span class="text-2xl">🎯</span>
-            <span class="text-xs text-spark-muted mt-1">Rerank</span>
-          </div>
-          <span class="text-xs text-spark-muted mt-2 font-mono">S11</span>
-        </div>
-        <span class="parr text-spark-muted">→</span>
-        
-        <!-- Stage 12: MMR -->
-        <div class="pstage flex flex-col items-center">
-          <div class="sbox w-20 h-20 bg-spark-card border-2 border-spark-border rounded-xl flex flex-col items-center justify-center">
-            <span class="text-2xl">🎲</span>
-            <span class="text-xs text-spark-muted mt-1">MMR</span>
-          </div>
-          <span class="text-xs text-spark-muted mt-2 font-mono">S12</span>
-        </div>
-        <span class="parr text-spark-muted">→</span>
-        
-        <!-- Stage 13: Parent Expand -->
-        <div class="pstage flex flex-col items-center">
-          <div class="sbox w-20 h-20 bg-spark-card border-2 border-spark-border rounded-xl flex flex-col items-center justify-center">
-            <span class="text-2xl">📦</span>
-            <span class="text-xs text-spark-muted mt-1">Expand</span>
-          </div>
-          <span class="text-xs text-spark-muted mt-2 font-mono">S13</span>
-        </div>
-        <span class="parr text-spark-muted">→</span>
-        
-        <!-- Stage 14: Top-K -->
-        <div class="pstage flex flex-col items-center">
-          <div class="sbox w-20 h-20 bg-spark-card border-2 border-spark-border rounded-xl flex flex-col items-center justify-center">
-            <span class="text-2xl">🔝</span>
-            <span class="text-xs text-spark-muted mt-1">Top-K</span>
-          </div>
-          <span class="text-xs text-spark-muted mt-2 font-mono">S14</span>
-        </div>
-        <span class="parr text-spark-muted">→</span>
-        
-        <!-- Stage 15: Response -->
-        <div class="pstage flex flex-col items-center">
-          <div class="sbox w-20 h-20 bg-spark-cyan/20 border-2 border-spark-cyan rounded-xl flex flex-col items-center justify-center">
-            <span class="text-2xl">💬</span>
-            <span class="text-xs text-spark-muted mt-1">Response</span>
-          </div>
-          <span class="text-xs text-spark-muted mt-2 font-mono">S15</span>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Stage Details Grid -->
-    <div class="grid md:grid-cols-3 gap-4 mt-8">
-      <a href="diagrams/pipeline.html" class="rv bg-spark-card border border-spark-border rounded-xl p-6 hover:border-spark-accent transition-colors">
-        <h3 class="font-semibold mb-2">📋 Full Pipeline Details</h3>
-        <p class="text-sm text-spark-muted">Interactive diagram with stage-by-stage breakdown and latency metrics.</p>
-      </a>
-      <a href="diagrams/query.html" class="rv d1 bg-spark-card border border-spark-border rounded-xl p-6 hover:border-spark-accent transition-colors">
-        <h3 class="font-semibold mb-2">🔍 Query Processing</h3>
-        <p class="text-sm text-spark-muted">How queries are cleaned, expanded, and transformed for retrieval.</p>
-      </a>
-      <a href="diagrams/retrieval.html" class="rv d2 bg-spark-card border border-spark-border rounded-xl p-6 hover:border-spark-accent transition-colors">
-        <h3 class="font-semibold mb-2">📚 Retrieval Logic</h3>
-        <p class="text-sm text-spark-muted">Vector search, FTS, hybrid merging, and candidate generation.</p>
-      </a>
-    </div>
-  </div>
-</section>
-
-<div class="divider"></div>
-
-<!-- Gate Logic -->
-<section id="gate" class="py-20 bg-spark-card/30">
-  <div class="max-w-6xl mx-auto px-6">
-    <div class="text-center mb-12">
-      <div class="text-sm font-semibold text-spark-amber uppercase tracking-wider mb-2">Dynamic Gating</div>
-      <h2 class="text-3xl md:text-4xl font-bold">Reranker Gate Logic</h2>
-      <p class="text-spark-muted mt-4 max-w-2xl mx-auto">
-        Skip the reranker when vector scores are already confident or tied. Save latency without losing accuracy.
-      </p>
-    </div>
-    
-    <!-- Gate Decision Tree -->
-    <div class="rv bg-spark-card border border-spark-border rounded-2xl p-8">
-      <div class="flex flex-col items-center gap-6">
-        <!-- σ Input -->
-        <div class="bg-spark-bg border-2 border-spark-amber rounded-xl px-8 py-4 text-center">
-          <div class="text-sm text-spark-muted mb-1">Confidence Spread</div>
-          <div class="text-2xl font-mono font-bold">σ = s₁ - sₖ</div>
-        </div>
-        
-        <div class="text-spark-muted text-2xl">↓</div>
-        
-        <!-- Decision -->
-        <div class="bg-spark-amber/10 border-2 border-spark-amber rounded-xl px-8 py-4 text-center">
-          <div class="text-lg font-semibold">Check σ</div>
-        </div>
-        
-        <div class="flex flex-col md:flex-row gap-8 items-center justify-center">
-          <!-- SKIP (High) -->
-          <div class="flex flex-col items-center">
-            <div class="text-spark-muted mb-2">σ &gt; 0.08</div>
-            <div class="bg-spark-green/10 border-2 border-spark-green rounded-xl px-6 py-4 text-center w-48">
-              <div class="text-spark-green font-semibold">SKIP</div>
-              <div class="text-sm text-spark-muted">Vector confident</div>
+        <div class="gate-grid">
+            <div class="gate-card">
+                <div class="gate-condition confident">σ > 0.08</div>
+                <div class="gate-desc">
+                    High confidence spread — the top result is clearly better than the rest.
+                    Vector search already found the right answer.
+                </div>
+                <div class="gate-result skip">SKIP RERANKER</div>
             </div>
-          </div>
-          
-          <!-- RUN -->
-          <div class="flex flex-col items-center">
-            <div class="text-spark-muted mb-2">0.02 ≤ σ ≤ 0.08</div>
-            <div class="bg-spark-accent/10 border-2 border-spark-accent rounded-xl px-6 py-4 text-center w-48">
-              <div class="text-spark-accent font-semibold">RUN</div>
-              <div class="text-sm text-spark-muted">Ambiguous set</div>
+            
+            <div class="gate-card">
+                <div class="gate-condition tied">σ < 0.02</div>
+                <div class="gate-desc">
+                    Tied results — scores are too close to discriminate.
+                    Reranker won't add meaningful signal here.
+                </div>
+                <div class="gate-result skip">SKIP RERANKER</div>
             </div>
-          </div>
-          
-          <!-- SKIP (Low) -->
-          <div class="flex flex-col items-center">
-            <div class="text-spark-muted mb-2">σ &lt; 0.02</div>
-            <div class="bg-spark-red/10 border-2 border-spark-red rounded-xl px-6 py-4 text-center w-48">
-              <div class="text-spark-red font-semibold">SKIP</div>
-              <div class="text-sm text-spark-muted">Tied set</div>
+            
+            <div class="gate-card">
+                <div class="gate-condition ambiguous">0.02 ≤ σ ≤ 0.08</div>
+                <div class="gate-desc">
+                    Ambiguous zone — results are neither clearly confident nor tied.
+                    Cross-encoder can help disambiguate.
+                </div>
+                <div class="gate-result run">RUN RERANKER</div>
             </div>
-          </div>
         </div>
-      </div>
     </div>
-    
-    <!-- Gate Types -->
-    <div class="grid md:grid-cols-2 gap-6 mt-8">
-      <div class="rv bg-spark-card border border-spark-border rounded-xl p-6">
-        <h3 class="font-semibold text-spark-green mb-3">Hard Gate (Default)</h3>
-        <p class="text-sm text-spark-muted mb-4">
-          Binary decision: skip or run. No middle ground. Simple and effective.
-        </p>
-        <pre class="text-xs"><code>if (σ > 0.08 || σ < 0.02) {
-  skip_reranker();
-} else {
-  run_reranker();
-}</code></pre>
-      </div>
-      <div class="rv d1 bg-spark-card border border-spark-border rounded-xl p-6">
-        <h3 class="font-semibold text-spark-accent mb-3">Soft Gate</h3>
-        <p class="text-sm text-spark-muted mb-4">
-          Dynamic weight adjustment based on σ. Higher σ = more trust in vector.
-        </p>
-        <pre class="text-xs"><code>vector_weight = min(1.0, σ / 0.08);
-reranker_weight = 1.0 - vector_weight;</code></pre>
-      </div>
-    </div>
-    
-    <div class="text-center mt-8">
-      <a href="diagrams/gate.html" class="text-spark-accent hover:underline">View interactive gate diagram →</a>
-    </div>
-  </div>
 </section>
 
-<div class="divider"></div>
-
-<!-- Pool Architecture -->
-<section id="pools" class="py-20">
-  <div class="max-w-6xl mx-auto px-6">
-    <div class="text-center mb-12">
-      <div class="text-sm font-semibold text-spark-purple uppercase tracking-wider mb-2">Memory Isolation</div>
-      <h2 class="text-3xl md:text-4xl font-bold">Pool Architecture</h2>
-      <p class="text-spark-muted mt-4 max-w-2xl mx-auto">
-        Separate memory pools with different weights and priorities. Mistakes get boosted, rules get filtered.
-      </p>
+<!-- RRF FUSION -->
+<section id="fusion">
+    <div class="formula-box">
+        <div class="formula-title">Reciprocal Rank Fusion</div>
+        <div class="formula">RRF(d) = Σ 1/(k + rank(d))</div>
+        <div class="formula-note">
+            Scale-invariant merging of vector and BM25 results. 
+            Smoothing constant <strong>k=60</strong> prevents rank #1 from dominating.
+            Documents appearing high in both lists get an "agreement bonus."
+        </div>
     </div>
     
-    <!-- Pool Grid -->
-    <div class="rv grid md:grid-cols-3 gap-4">
-      <div class="bg-spark-card border border-spark-border rounded-xl p-6">
-        <div class="flex items-center gap-3 mb-3">
-          <span class="text-2xl">🧠</span>
-          <h3 class="font-semibold">Agent Memory</h3>
-        </div>
-        <p class="text-sm text-spark-muted mb-3">General agent context and working memory.</p>
-        <div class="text-xs font-mono bg-spark-bg px-2 py-1 rounded">Weight: 1.0x</div>
-      </div>
-      
-      <div class="bg-spark-card border-2 border-spark-red/50 rounded-xl p-6">
-        <div class="flex items-center gap-3 mb-3">
-          <span class="text-2xl">⚠️</span>
-          <h3 class="font-semibold">Agent Mistakes</h3>
-        </div>
-        <p class="text-sm text-spark-muted mb-3">Past errors and corrections for this agent.</p>
-        <div class="text-xs font-mono bg-spark-red/10 text-spark-red px-2 py-1 rounded">Weight: 1.6x (boosted)</div>
-      </div>
-      
-      <div class="bg-spark-card border-2 border-spark-amber/50 rounded-xl p-6">
-        <div class="flex items-center gap-3 mb-3">
-          <span class="text-2xl">💡</span>
-          <h3 class="font-semibold">Shared Mistakes</h3>
-        </div>
-        <p class="text-sm text-spark-muted mb-3">Cross-agent learned lessons.</p>
-        <div class="text-xs font-mono bg-spark-amber/10 text-spark-amber px-2 py-1 rounded">Weight: 1.5x (boosted)</div>
-      </div>
-      
-      <div class="bg-spark-card border border-spark-border rounded-xl p-6">
-        <div class="flex items-center gap-3 mb-3">
-          <span class="text-2xl">📖</span>
-          <h3 class="font-semibold">Shared Knowledge</h3>
-        </div>
-        <p class="text-sm text-spark-muted mb-3">Reference docs and manuals.</p>
-        <div class="text-xs font-mono bg-spark-bg px-2 py-1 rounded">Weight: 0.8x</div>
-      </div>
-      
-      <div class="bg-spark-card border border-spark-border rounded-xl p-6">
-        <div class="flex items-center gap-3 mb-3">
-          <span class="text-2xl">📜</span>
-          <h3 class="font-semibold">Shared Rules</h3>
-        </div>
-        <p class="text-sm text-spark-muted mb-3">Governing policies and constraints.</p>
-        <div class="text-xs font-mono bg-spark-bg px-2 py-1 rounded">Weight: 1.0x (gated)</div>
-      </div>
-      
-      <div class="bg-spark-card border border-spark-border rounded-xl p-6 flex items-center justify-center">
-        <a href="diagrams/pools.html" class="text-spark-accent hover:underline">View detailed pool diagram →</a>
-      </div>
+    <div class="diagram-links">
+        <a href="diagrams/fusion.html#rrf" class="diagram-link">
+            <h3>🔗 RRF Deep-Dive</h3>
+            <p>Why score-based fusion fails, and how rank-based solves it</p>
+        </a>
+        <a href="diagrams/fusion.html#mmr" class="diagram-link">
+            <h3>🎲 MMR Diversity</h3>
+            <p>Balancing relevance vs. redundancy with λ parameter</p>
+        </a>
+        <a href="diagrams/fusion.html#decay" class="diagram-link">
+            <h3>⏰ Temporal Decay</h3>
+            <p>Prioritizing recent memories with exponential decay</p>
+        </a>
     </div>
-  </div>
 </section>
 
-<div class="divider"></div>
-
-<!-- Score Fusion -->
-<section id="fusion" class="py-20 bg-spark-card/30">
-  <div class="max-w-6xl mx-auto px-6">
-    <div class="text-center mb-12">
-      <div class="text-sm font-semibold text-spark-cyan uppercase tracking-wider mb-2">Scale-Invariant</div>
-      <h2 class="text-3xl md:text-4xl font-bold">Score Fusion & Diversity</h2>
-      <p class="text-spark-muted mt-4 max-w-2xl mx-auto">
-        RRF for hybrid merging, MMR for diversity, temporal decay for recency.
-      </p>
-    </div>
-    
-    <div class="grid md:grid-cols-3 gap-6">
-      <!-- RRF -->
-      <div class="rv bg-spark-card border border-spark-border rounded-xl p-6">
-        <h3 class="font-semibold text-spark-green mb-3">Reciprocal Rank Fusion</h3>
-        <p class="text-sm text-spark-muted mb-4">
-          Merge vector and FTS results by rank, not score. Scale-invariant.
-        </p>
-        <div class="bg-spark-bg rounded-lg p-4 font-mono text-sm text-center">
-          RRF(d) = Σ 1/(k + rᵢ)
-        </div>
-        <div class="text-xs text-spark-muted mt-2 text-center">k = 60 (default)</div>
-      </div>
-      
-      <!-- MMR -->
-      <div class="rv d1 bg-spark-card border border-spark-border rounded-xl p-6">
-        <h3 class="font-semibold text-spark-purple mb-3">Maximal Marginal Relevance</h3>
-        <p class="text-sm text-spark-muted mb-4">
-          Balance relevance vs. diversity. Avoid redundant results.
-        </p>
-        <div class="bg-spark-bg rounded-lg p-4 font-mono text-sm text-center">
-          MMR = λ·sim(q,d) - (1-λ)·max sim(d,d')
-        </div>
-        <div class="text-xs text-spark-muted mt-2 text-center">λ = 0.9 (default)</div>
-      </div>
-      
-      <!-- Temporal Decay -->
-      <div class="rv d2 bg-spark-card border border-spark-border rounded-xl p-6">
-        <h3 class="font-semibold text-spark-amber mb-3">Temporal Decay</h3>
-        <p class="text-sm text-spark-muted mb-4">
-          Prioritize recent memories. Gentle exponential decay.
-        </p>
-        <div class="bg-spark-bg rounded-lg p-4 font-mono text-sm text-center">
-          decay = floor + (1-floor)·e^(-rate·age)
-        </div>
-        <div class="text-xs text-spark-muted mt-2 text-center">floor=0.8, rate=0.03</div>
-      </div>
-    </div>
-    
-    <div class="text-center mt-8">
-      <a href="diagrams/fusion.html" class="text-spark-accent hover:underline">View interactive fusion diagram →</a>
-    </div>
-  </div>
-</section>
-
-<div class="divider"></div>
-
-<!-- Services -->
-<section id="services" class="py-20">
-  <div class="max-w-6xl mx-auto px-6">
-    <div class="text-center mb-12">
-      <div class="text-sm font-semibold text-spark-accent uppercase tracking-wider mb-2">Spark Backend</div>
-      <h2 class="text-3xl md:text-4xl font-bold">Service Architecture</h2>
-      <p class="text-spark-muted mt-4 max-w-2xl mx-auto">
-        Self-hosted NVIDIA DGX Spark services. Zero cloud API calls.
-      </p>
-    </div>
-    
-    <!-- Services Grid -->
-    <div class="rv grid md:grid-cols-3 gap-4">
-      <!-- Embedding -->
-      <div class="bg-spark-card border border-spark-border rounded-xl p-6">
-        <div class="flex items-center gap-3 mb-3">
-          <span class="text-2xl">🧠</span>
-          <div>
-            <h3 class="font-semibold">Embedding</h3>
-            <div class="text-xs font-mono text-spark-muted">:18091</div>
-          </div>
-        </div>
-        <p class="text-sm text-spark-muted">llama-embed-nemotron-8b</p>
-        <div class="text-xs text-spark-muted mt-2">4096 dimensions, instruction-aware</div>
-        <a href="diagrams/embedder.html" class="text-xs text-spark-accent hover:underline mt-2 block">How it works →</a>
-      </div>
-      
-      <!-- Reranker -->
-      <div class="bg-spark-card border border-spark-border rounded-xl p-6">
-        <div class="flex items-center gap-3 mb-3">
-          <span class="text-2xl">🎯</span>
-          <div>
-            <h3 class="font-semibold">Reranker</h3>
-            <div class="text-xs font-mono text-spark-muted">:18096</div>
-          </div>
-        </div>
-        <p class="text-sm text-spark-muted">llama-nemotron-rerank-1b-v2</p>
-        <div class="text-xs text-spark-muted mt-2">Cross-encoder, query normalization</div>
-        <a href="diagrams/reranker.html" class="text-xs text-spark-accent hover:underline mt-2 block">How it works →</a>
-      </div>
-      
-      <!-- LLM -->
-      <div class="bg-spark-card border border-spark-border rounded-xl p-6">
-        <div class="flex items-center gap-3 mb-3">
-          <span class="text-2xl">🤖</span>
-          <div>
-            <h3 class="font-semibold">LLM / HyDE</h3>
-            <div class="text-xs font-mono text-spark-muted">:18080</div>
-          </div>
-        </div>
-        <p class="text-sm text-spark-muted">Nemotron-Super-120B</p>
-        <div class="text-xs text-spark-muted mt-2">HyDE generation, multi-query expansion</div>
-      </div>
-      
-      <!-- GLM-OCR -->
-      <div class="bg-spark-card border border-spark-border rounded-xl p-6">
-        <div class="flex items-center gap-3 mb-3">
-          <span class="text-2xl">👁️</span>
-          <div>
-            <h3 class="font-semibold">GLM-OCR</h3>
-            <div class="text-xs font-mono text-spark-muted">:18080</div>
-          </div>
-        </div>
-        <p class="text-sm text-spark-muted">zai-org/GLM-OCR (0.9B)</p>
-        <div class="text-xs text-spark-muted mt-2">PDF parsing, scanned documents</div>
-        <a href="diagrams/ocr.html" class="text-xs text-spark-accent hover:underline mt-2 block">How it works →</a>
-      </div>
-      
-      <!-- NER -->
-      <div class="bg-spark-card border border-spark-border rounded-xl p-6">
-        <div class="flex items-center gap-3 mb-3">
-          <span class="text-2xl">🏷️</span>
-          <div>
-            <h3 class="font-semibold">NER</h3>
-            <div class="text-xs font-mono text-spark-muted">:18112</div>
-          </div>
-        </div>
-        <p class="text-sm text-spark-muted">Named Entity Recognition</p>
-        <div class="text-xs text-spark-muted mt-2">Extract entities from text</div>
-        <a href="diagrams/ner.html" class="text-xs text-spark-accent hover:underline mt-2 block">How it works →</a>
-      </div>
-      
-      <!-- Zero-Shot -->
-      <div class="bg-spark-card border border-spark-border rounded-xl p-6">
-        <div class="flex items-center gap-3 mb-3">
-          <span class="text-2xl">🎲</span>
-          <div>
-            <h3 class="font-semibold">Zero-Shot</h3>
-            <div class="text-xs font-mono text-spark-muted">:18113</div>
-          </div>
-        </div>
-        <p class="text-sm text-spark-muted">bart-large-mnli</p>
-        <div class="text-xs text-spark-muted mt-2">Zero-shot classification</div>
-        <a href="diagrams/zeroshot.html" class="text-xs text-spark-accent hover:underline mt-2 block">How it works →</a>
-      </div>
-      
-      <!-- STT -->
-      <div class="bg-spark-card border border-spark-border rounded-xl p-6">
-        <div class="flex items-center gap-3 mb-3">
-          <span class="text-2xl">🎤</span>
-          <div>
-            <h3 class="font-semibold">STT</h3>
-            <div class="text-xs font-mono text-spark-muted">:18094</div>
-          </div>
-        </div>
-        <p class="text-sm text-spark-muted">Speech-to-Text</p>
-        <div class="text-xs text-spark-muted mt-2">Transcribe audio to text</div>
-      </div>
-    </div>
-  </div>
-</section>
-
-<div class="divider"></div>
-
-<!-- Benchmarks -->
-<section class="py-20 bg-spark-card/30">
-  <div class="max-w-6xl mx-auto px-6">
-    <div class="text-center mb-12">
-      <div class="text-sm font-semibold text-spark-green uppercase tracking-wider mb-2">Performance</div>
-      <h2 class="text-3xl md:text-4xl font-bold">BEIR Benchmarks</h2>
-      <p class="text-spark-muted mt-4 max-w-2xl mx-auto">
-        Tested on SciFact, FiQA, and NFCorpus. Outperforms 2021 SOTA (Contriever) by 16-68%.
-      </p>
-    </div>
-    
-    <div class="rv overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead>
-          <tr class="border-b border-spark-border">
-            <th class="text-left py-3 px-4">Config</th>
-            <th class="text-right py-3 px-4">SciFact NDCG@10</th>
-            <th class="text-right py-3 px-4">FiQA NDCG@10</th>
-            <th class="text-right py-3 px-4">NFCorpus NDCG@10</th>
-            <th class="text-right py-3 px-4">Latency (p50)</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr class="border-b border-spark-border/50">
-            <td class="py-3 px-4 font-semibold text-spark-green">GATE-A (Prod)</td>
-            <td class="text-right py-3 px-4">0.7802</td>
-            <td class="text-right py-3 px-4">0.4218</td>
-            <td class="text-right py-3 px-4">0.3517</td>
-            <td class="text-right py-3 px-4 text-spark-cyan">626ms</td>
-          </tr>
-          <tr class="border-b border-spark-border/50">
-            <td class="py-3 px-4">Config U (Peak)</td>
-            <td class="text-right py-3 px-4 text-spark-green">0.7889</td>
-            <td class="text-right py-3 px-4">0.4356</td>
-            <td class="text-right py-3 px-4">0.3614</td>
-            <td class="text-right py-3 px-4">892ms</td>
-          </tr>
-          <tr class="border-b border-spark-border/50 text-spark-muted">
-            <td class="py-3 px-4">Contriever (2021 SOTA)</td>
-            <td class="text-right py-3 px-4">0.6760</td>
-            <td class="text-right py-3 px-4">0.2520</td>
-            <td class="text-right py-3 px-4">0.2590</td>
-            <td class="text-right py-3 px-4">—</td>
-          </tr>
-        </tbody>
-      </table>
-    </div>
-  </div>
-</section>
-
-<!-- Footer -->
-<footer class="py-12 border-t border-spark-border">
-  <div class="max-w-6xl mx-auto px-6 text-center">
-    <p class="text-spark-muted text-sm">
-      Memory-Spark v0.4.0 — Educational RAG Architecture
+<!-- POOL ARCHITECTURE -->
+<section id="pools">
+    <h2 class="section-title">Pool Architecture</h2>
+    <p class="section-subtitle">
+        Separate memory pools with different weights and priorities
     </p>
-    <p class="text-spark-muted text-xs mt-2">
-      <a href="https://github.com/kleinpanic/memory-spark" class="hover:text-spark-accent">GitHub</a>
-      · <a href="https://github.com/kleinpanic/memory-spark/wiki" class="hover:text-spark-accent">Wiki</a>
-      · <a href="https://github.com/kleinpanic/memory-spark/blob/main/paper/memory-spark.pdf" class="hover:text-spark-accent">Paper</a>
+    
+    <div class="arch-grid">
+        <div class="arch-card">
+            <h3>
+                <div class="arch-icon" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8);">🧠</div>
+                Agent Memory
+            </h3>
+            <ul>
+                <li>General working memory</li>
+                <li>Pool-isolated per agent</li>
+                <li>Weight: 1.0x</li>
+            </ul>
+        </div>
+        
+        <div class="arch-card" style="border-color: var(--red);">
+            <h3>
+                <div class="arch-icon" style="background: linear-gradient(135deg, #f87171, #dc2626);">⚠️</div>
+                Agent Mistakes
+            </h3>
+            <ul>
+                <li>Past errors and corrections</li>
+                <li>1.6x boost (highest priority)</li>
+                <li>Learn from failures</li>
+            </ul>
+        </div>
+        
+        <div class="arch-card" style="border-color: var(--orange);">
+            <h3>
+                <div class="arch-icon" style="background: linear-gradient(135deg, #fb923c, #ea580c);">💡</div>
+                Shared Mistakes
+            </h3>
+            <ul>
+                <li>Cross-agent learned lessons</li>
+                <li>1.5x boost</li>
+                <li>Organizational knowledge</li>
+            </ul>
+        </div>
+        
+        <div class="arch-card">
+            <h3>
+                <div class="arch-icon" style="background: linear-gradient(135deg, #22d3ee, #06b6d4);">📖</div>
+                Shared Knowledge
+            </h3>
+            <ul>
+                <li>Reference docs and manuals</li>
+                <li>Weight: 0.8x</li>
+                <li>Background context</li>
+            </ul>
+        </div>
+        
+        <div class="arch-card">
+            <h3>
+                <div class="arch-icon" style="background: linear-gradient(135deg, #a78bfa, #7c3aed);">📜</div>
+                Shared Rules
+            </h3>
+            <ul>
+                <li>Governing policies</li>
+                <li>Relevance-gated</li>
+                <li>Constraint injection</li>
+            </ul>
+        </div>
+        
+        <div class="arch-card">
+            <h3>
+                <div class="arch-icon" style="background: linear-gradient(135deg, #22c55e, #16a34a);">🔍</div>
+                FTS Index
+            </h3>
+            <ul>
+                <li>Tantivy BM25</li>
+                <li>Keyword matching</li>
+                <li>Hybrid with vector</li>
+            </ul>
+        </div>
+    </div>
+    
+    <div style="text-align: center; margin-top: 2rem;">
+        <a href="diagrams/pools.html" style="color: var(--cyan);">View detailed pool diagram →</a>
+    </div>
+</section>
+
+<!-- SERVICES -->
+<section id="services">
+    <h2 class="section-title">Spark Backend Services</h2>
+    <p class="section-subtitle">
+        Self-hosted on NVIDIA DGX Spark (zero cloud API calls)
     </p>
-  </div>
+    
+    <div class="arch-grid">
+        <div class="arch-card">
+            <h3>
+                <div class="arch-icon" style="background: linear-gradient(135deg, #3b82f6, #1d4ed8);">🧠</div>
+                Embedding :18091
+            </h3>
+            <ul>
+                <li>llama-embed-nemotron-8b</li>
+                <li>4096 dimensions</li>
+                <li>Instruction-aware</li>
+            </ul>
+        </div>
+        
+        <div class="arch-card highlight">
+            <h3>
+                <div class="arch-icon" style="background: linear-gradient(135deg, #22d3ee, #06b6d4);">🎯</div>
+                Reranker :18096
+            </h3>
+            <ul>
+                <li>llama-nemotron-rerank-1b-v2</li>
+                <li>Cross-encoder</li>
+                <li>Query normalization</li>
+            </ul>
+        </div>
+        
+        <div class="arch-card">
+            <h3>
+                <div class="arch-icon" style="background: linear-gradient(135deg, #a78bfa, #7c3aed);">🤖</div>
+                LLM :18080
+            </h3>
+            <ul>
+                <li>Nemotron-Super-120B</li>
+                <li>HyDE generation</li>
+                <li>Multi-query expansion</li>
+            </ul>
+        </div>
+        
+        <div class="arch-card">
+            <h3>
+                <div class="arch-icon" style="background: linear-gradient(135deg, #fb923c, #ea580c);">👁️</div>
+                GLM-OCR :18080
+            </h3>
+            <ul>
+                <li>zai-org/GLM-OCR (0.9B)</li>
+                <li>PDF parsing</li>
+                <li>vLLM served</li>
+            </ul>
+        </div>
+        
+        <div class="arch-card">
+            <h3>
+                <div class="arch-icon" style="background: linear-gradient(135deg, #22c55e, #16a34a);">🏷️</div>
+                NER :18112
+            </h3>
+            <ul>
+                <li>Named Entity Recognition</li>
+                <li>Entity extraction</li>
+                <li>Metadata enrichment</li>
+            </ul>
+        </div>
+        
+        <div class="arch-card">
+            <h3>
+                <div class="arch-icon" style="background: linear-gradient(135deg, #f87171, #dc2626);">🎲</div>
+                Zero-Shot :18113
+            </h3>
+            <ul>
+                <li>bart-large-mnli</li>
+                <li>Zero-shot classification</li>
+                <li>Category inference</li>
+            </ul>
+        </div>
+    </div>
+</section>
+
+<footer>
+    <div class="footer-links">
+        <a href="https://github.com/kleinpanic/memory-spark" class="footer-link">📦 GitHub</a>
+        <a href="https://github.com/kleinpanic/memory-spark/wiki" class="footer-link">📚 Wiki</a>
+        <a href="https://github.com/kleinpanic/memory-spark/blob/main/paper/memory-spark.pdf" class="footer-link">📄 Paper</a>
+    </div>
 </footer>
 
-<!-- Scroll Reveal Script -->
 <script>
-// Intersection Observer for scroll reveals
-const observer = new IntersectionObserver((entries) => {
-  entries.forEach(entry => {
-    if (entry.isIntersecting) {
-      entry.target.classList.add('v');
+(function() {
+    const canvas = document.getElementById('pipeline');
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    
+    function resize() {
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        ctx.scale(dpr, dpr);
     }
-  });
-}, { threshold: 0.1 });
-
-document.querySelectorAll('.rv, .rv-l, .rv-r').forEach(el => observer.observe(el));
-
-// Animate pipeline stages
-const pipelineStages = document.querySelectorAll('.pstage');
-const pipelineArrows = document.querySelectorAll('.parr');
-
-function animatePipeline() {
-  pipelineStages.forEach((stage, i) => {
-    setTimeout(() => {
-      stage.classList.add('on');
-      if (i < pipelineArrows.length) {
-        pipelineArrows[i].classList.add('on');
-      }
-    }, i * 150);
-  });
-}
-
-// Trigger animation when pipeline section is visible
-const pipelineSection = document.getElementById('pipeline');
-const pipelineObserver = new IntersectionObserver((entries) => {
-  entries.forEach(entry => {
-    if (entry.isIntersecting) {
-      animatePipeline();
-      pipelineObserver.unobserve(entry.target);
+    resize();
+    window.addEventListener('resize', resize);
+    
+    const W = () => canvas.offsetWidth;
+    const H = () => canvas.offsetHeight;
+    
+    // Stage definitions with positions - THIS IS THE CENTERPIECE
+    const stages = [
+        // Row 1: Query processing (USER INPUT)
+        { id: 'user', name: 'USER', x: 0.05, y: 0.05, w: 90, h: 45, color: '#a78bfa', desc: 'Ask question', icon: '👤' },
+        { id: 'query', name: 'Query', x: 0.15, y: 0.05, w: 80, h: 40, color: '#3b82f6', desc: 'Ingest from agent' },
+        { id: 'clean', name: 'Clean', x: 0.28, y: 0.05, w: 80, h: 40, color: '#3b82f6', desc: 'Normalize text' },
+        
+        // HyDE branch
+        { id: 'hyde', name: 'HyDE', x: 0.42, y: 0.12, w: 80, h: 40, color: '#a78bfa', branch: true, desc: 'Hypothetical doc' },
+        
+        // Multi-query branch
+        { id: 'expand', name: 'Expand', x: 0.56, y: 0.12, w: 80, h: 40, color: '#a78bfa', branch: true, desc: 'Multi-query' },
+        
+        // Embed
+        { id: 'embed', name: 'Embed', x: 0.72, y: 0.05, w: 80, h: 40, color: '#3b82f6', desc: '4096-dim vector' },
+        { id: 'embed2', name: 'Embed', x: 0.72, y: 0.18, w: 80, h: 40, color: '#a78bfa', branch: true, desc: 'HyDE/Expand embed' },
+        
+        // Pool searches (parallel)
+        { id: 'p1', name: 'Memory', x: 0.18, y: 0.28, w: 70, h: 35, color: '#22d3ee', parallel: true, desc: 'agent_memory' },
+        { id: 'p2', name: 'Mistakes', x: 0.30, y: 0.28, w: 70, h: 35, color: '#22d3ee', parallel: true, desc: '1.6x boost' },
+        { id: 'p3', name: 'Shared', x: 0.42, y: 0.28, w: 70, h: 35, color: '#22d3ee', parallel: true, desc: 'cross-agent' },
+        { id: 'p4', name: 'Rules', x: 0.54, y: 0.28, w: 70, h: 35, color: '#22d3ee', parallel: true, desc: 'policies' },
+        { id: 'p5', name: 'FTS', x: 0.66, y: 0.28, w: 70, h: 35, color: '#fb923c', parallel: true, desc: 'BM25' },
+        
+        // Merge stages
+        { id: 'rrf', name: 'RRF', x: 0.45, y: 0.40, w: 90, h: 45, color: '#fb923c', desc: 'Rank fusion k=60' },
+        { id: 'dedup', name: 'Dedup', x: 0.45, y: 0.52, w: 90, h: 45, color: '#fb923c', desc: 'Jaccard filter' },
+        
+        // Weighting stages
+        { id: 'weight', name: 'Weight', x: 0.32, y: 0.64, w: 90, h: 45, color: '#22c55e', desc: 'Source boost' },
+        { id: 'decay', name: 'Decay', x: 0.58, y: 0.64, w: 90, h: 45, color: '#22c55e', desc: 'Temporal' },
+        
+        // Gate decision
+        { id: 'gate', name: 'GATE', x: 0.45, y: 0.76, w: 100, h: 50, color: '#f87171', decision: true, desc: 'σ spread check' },
+        
+        // Reranker (optional path)
+        { id: 'rerank', name: 'Rerank', x: 0.28, y: 0.88, w: 90, h: 45, color: '#f87171', optional: true, desc: 'Cross-encoder' },
+        
+        // MMR (always runs)
+        { id: 'mmr', name: 'MMR', x: 0.62, y: 0.88, w: 90, h: 45, color: '#a78bfa', desc: 'Diversity λ=0.9' },
+        
+        // Response (USER OUTPUT)
+        { id: 'response', name: 'RESPONSE', x: 0.85, y: 0.76, w: 100, h: 50, color: '#22d3ee', desc: 'To LLM', icon: '💬' },
+        { id: 'user-out', name: 'USER', x: 0.85, y: 0.92, w: 90, h: 45, color: '#a78bfa', desc: 'Answer', icon: '👤' },
+    ];
+    
+    // Connections between stages
+    const connections = [
+        ['user', 'query'],
+        ['query', 'clean'],
+        ['clean', 'embed'],
+        ['clean', 'hyde'],
+        ['hyde', 'embed2'],
+        ['clean', 'expand'],
+        ['expand', 'embed2'],
+        ['embed', 'p1'],
+        ['embed', 'p2'],
+        ['embed', 'p3'],
+        ['embed', 'p4'],
+        ['embed2', 'p1'],
+        ['embed2', 'p2'],
+        ['embed2', 'p3'],
+        ['embed2', 'p4'],
+        ['embed', 'p5'],
+        ['p1', 'rrf'],
+        ['p2', 'rrf'],
+        ['p3', 'rrf'],
+        ['p4', 'rrf'],
+        ['p5', 'rrf'],
+        ['rrf', 'dedup'],
+        ['dedup', 'weight'],
+        ['dedup', 'decay'],
+        ['weight', 'gate'],
+        ['decay', 'gate'],
+        ['gate', 'rerank'],
+        ['gate', 'mmr'],
+        ['rerank', 'mmr'],
+        ['gate', 'response'],
+        ['mmr', 'response'],
+        ['response', 'user-out'],
+    ];
+    
+    // Particle system
+    const particles = [];
+    
+    class Particle {
+        constructor(fromId, toId) {
+            this.fromId = fromId;
+            this.toId = toId;
+            this.t = 0;
+            this.speed = 0.012 + Math.random() * 0.008;
+            this.size = 6 + Math.random() * 4;
+            this.alpha = 0.9;
+        }
+        
+        getStage(id) {
+            return stages.find(s => s.id === id);
+        }
+        
+        update() {
+            this.t += this.speed;
+            if (this.t >= 1) {
+                // Spawn next particle in chain
+                const nextConns = connections.filter(c => c[0] === this.toId);
+                if (nextConns.length > 0) {
+                    const next = nextConns[Math.floor(Math.random() * nextConns.length)];
+                    particles.push(new Particle(next[0], next[1]));
+                }
+                return false;
+            }
+            return true;
+        }
+        
+        draw(ctx) {
+            const from = this.getStage(this.fromId);
+            const to = this.getStage(this.toId);
+            if (!from || !to) return;
+            
+            const x1 = from.x * W();
+            const y1 = from.y * H();
+            const x2 = to.x * W();
+            const y2 = to.y * H();
+            
+            const x = x1 + (x2 - x1) * this.ease(this.t);
+            const y = y1 + (y2 - y1) * this.ease(this.t);
+            
+            // Glow effect
+            ctx.beginPath();
+            ctx.arc(x, y, this.size * 1.5, 0, Math.PI * 2);
+            ctx.fillStyle = from.color;
+            ctx.globalAlpha = this.alpha * 0.3 * (1 - this.t * 0.3);
+            ctx.fill();
+            
+            // Core particle
+            ctx.beginPath();
+            ctx.arc(x, y, this.size, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.globalAlpha = this.alpha * (1 - this.t * 0.3);
+            ctx.shadowColor = from.color;
+            ctx.shadowBlur = 15;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            ctx.globalAlpha = 1;
+        }
+        
+        ease(t) {
+            return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+        }
     }
-  });
-}, { threshold: 0.2 });
-
-pipelineObserver.observe(pipelineSection);
-
-// Highlight stages on hover
-pipelineStages.forEach(stage => {
-  stage.addEventListener('mouseenter', () => {
-    pipelineStages.forEach(s => s.classList.remove('lit'));
-    stage.classList.add('lit');
-  });
-});
+    
+    function drawConnections() {
+        ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+        ctx.lineWidth = 2;
+        
+        connections.forEach(([fromId, toId]) => {
+            const from = stages.find(s => s.id === fromId);
+            const to = stages.find(s => s.id === toId);
+            if (!from || !to) return;
+            
+            const x1 = from.x * W();
+            const y1 = from.y * H();
+            const x2 = to.x * W();
+            const y2 = to.y * H();
+            
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+        });
+    }
+    
+    function drawStages() {
+        stages.forEach(stage => {
+            const x = stage.x * W() - stage.w / 2;
+            const y = stage.y * H() - stage.h / 2;
+            
+            // Glow for decision nodes
+            if (stage.decision) {
+                ctx.shadowColor = stage.color;
+                ctx.shadowBlur = 30;
+            }
+            
+            // Box
+            ctx.fillStyle = stage.branch ? 'rgba(168,85,247,0.12)' : 
+                            stage.decision ? 'rgba(248,113,113,0.12)' : 
+                            stage.parallel ? 'rgba(34,211,238,0.08)' :
+                            'rgba(31,31,35,0.9)';
+            ctx.strokeStyle = stage.color;
+            ctx.lineWidth = 2;
+            
+            ctx.beginPath();
+            ctx.roundRect(x, y, stage.w, stage.h, 8);
+            ctx.fill();
+            ctx.stroke();
+            
+            ctx.shadowBlur = 0;
+            
+            // Icon if present
+            if (stage.icon) {
+                ctx.font = '20px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(stage.icon, stage.x * W(), stage.y * H() - 8);
+            }
+            
+            // Name
+            ctx.fillStyle = '#fff';
+            ctx.font = '600 11px Inter';
+            ctx.textAlign = 'center';
+            ctx.fillText(stage.name, stage.x * W(), stage.y * H() + (stage.icon ? 8 : 2));
+            
+            // Description
+            if (!stage.icon) {
+                ctx.fillStyle = '#71717a';
+                ctx.font = '400 9px Inter';
+                ctx.fillText(stage.desc.slice(0, 20), stage.x * W(), stage.y * H() + 14);
+            }
+        });
+    }
+    
+    // Labels
+    function drawLabels() {
+        ctx.fillStyle = '#52525b';
+        ctx.font = '500 10px Inter';
+        ctx.textAlign = 'left';
+        
+        ctx.fillText('USER INPUT', 20, 30);
+        ctx.fillText('QUERY PROCESSING', W() * 0.28, H() * 0.05 + 60);
+        ctx.fillText('PARALLEL POOL SEARCH', W() * 0.18, H() * 0.28 + 50);
+        ctx.fillText('FUSION & FILTERING', W() * 0.32, H() * 0.52 + 60);
+        ctx.fillText('GATING & RERANKING', W() * 0.28, H() * 0.76 + 60);
+        ctx.fillText('USER OUTPUT', W() * 0.85 - 40, H() * 0.92 + 60);
+    }
+    
+    function animate() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        drawConnections();
+        drawStages();
+        drawLabels();
+        
+        // Update and draw particles
+        for (let i = particles.length - 1; i >= 0; i--) {
+            if (!particles[i].update()) {
+                particles.splice(i, 1);
+            } else {
+                particles[i].draw(ctx);
+            }
+        }
+        
+        // Spawn new particles periodically
+        if (Math.random() < 0.03) {
+            particles.push(new Particle('user', 'query'));
+        }
+        
+        requestAnimationFrame(animate);
+    }
+    
+    animate();
+})();
 </script>
-
 </body>
 </html>
