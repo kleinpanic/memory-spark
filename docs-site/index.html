@@ -1,1073 +1,865 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Memory-Spark | 15-Stage RAG Pipeline</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        
-        :root {
-            --bg-primary: #0a0a0f;
-            --bg-secondary: #12121a;
-            --bg-tertiary: #1a1a25;
-            --text-primary: #e5e5e5;
-            --text-secondary: #a0a0a0;
-            --accent-blue: #3b82f6;
-            --accent-purple: #a855f7;
-            --accent-amber: #f59e0b;
-            --accent-green: #22c55e;
-            --accent-red: #ef4444;
-            --gradient-hero: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Memory-Spark — RAG Pipeline Architecture</title>
+<meta name="description" content="Educational deep-dive into the Memory-Spark RAG pipeline: 15-stage retrieval, dynamic gating, RRF fusion, and pool-based memory.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        'spark': {
+          'bg': '#0a0a0f',
+          'card': '#12121a',
+          'border': '#1e1e2e',
+          'text': '#cdd6f4',
+          'muted': '#6c7086',
+          'accent': '#89b4fa',
+          'purple': '#cba6f7',
+          'green': '#a6e3a1',
+          'amber': '#f9e2af',
+          'red': '#f38ba8',
+          'cyan': '#94e2d5',
+          'pink': '#f5c2e7',
         }
+      },
+      fontFamily: {
+        'sans': ['Inter', 'system-ui', 'sans-serif'],
+        'mono': ['JetBrains Mono', 'monospace'],
+      }
+    }
+  }
+}
+</script>
+<style>
+html{scroll-behavior:smooth}
+body{font-family:var(--sans);background:#0a0a0f;color:#cdd6f4;line-height:1.7;overflow-x:hidden;-webkit-font-smoothing:antialiased}
+::-webkit-scrollbar{width:6px}::-webkit-scrollbar-track{background:#0a0a0f}::-webkit-scrollbar-thumb{background:#1e1e2e;border-radius:3px}
 
-        body {
-            font-family: 'Inter', sans-serif;
-            background: var(--bg-primary);
-            color: var(--text-primary);
-            line-height: 1.7;
-        }
+/* Scroll reveal animations */
+.rv{opacity:0;transform:translateY(40px);transition:opacity .8s cubic-bezier(.16,1,.3,1),transform .8s cubic-bezier(.16,1,.3,1)}
+.rv.v{opacity:1;transform:translateY(0)}
+.rv-l{opacity:0;transform:translateX(-50px);transition:opacity .8s cubic-bezier(.16,1,.3,1),transform .8s cubic-bezier(.16,1,.3,1)}
+.rv-l.v{opacity:1;transform:translateX(0)}
+.rv-r{opacity:0;transform:translateX(50px);transition:opacity .8s cubic-bezier(.16,1,.3,1),transform .8s cubic-bezier(.16,1,.3,1)}
+.rv-r.v{opacity:1;transform:translateX(0)}
+.d1{transition-delay:.1s}.d2{transition-delay:.2s}.d3{transition-delay:.3s}.d4{transition-delay:.4s}.d5{transition-delay:.5s}
 
-        /* Section base */
-        .section {
-            min-height: 100vh;
-            padding: 100px 20px;
-            max-width: 1200px;
-            margin: 0 auto;
-            opacity: 0;
-            transform: translateY(50px);
-            transition: opacity 0.8s ease, transform 0.8s ease;
-        }
+/* Gradient text */
+.gr{background:linear-gradient(135deg,#89b4fa,#cba6f7,#94e2d5);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text}
 
-        .section.visible {
-            opacity: 1;
-            transform: translateY(0);
-        }
+/* Glow effects */
+.glow-blue{box-shadow:0 0 30px rgba(137,180,250,.2)}
+.glow-purple{box-shadow:0 0 30px rgba(203,166,247,.2)}
+.glow-cyan{box-shadow:0 0 30px rgba(148,226,213,.2)}
 
-        /* Hero */
-        .hero {
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            text-align: center;
-            background: radial-gradient(ellipse at top, #1a1a35 0%, var(--bg-primary) 70%);
-        }
+/* Pulse animation */
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.pulse{animation:pulse 2s ease-in-out infinite}
 
-        .hero h1 {
-            font-size: clamp(3rem, 8vw, 5rem);
-            font-weight: 700;
-            background: linear-gradient(135deg, #a78bfa 0%, #3b82f6 50%, #22c55e 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            margin-bottom: 24px;
-        }
+/* Hero glow */
+#hero::before{content:'';position:absolute;inset:-40%;background:radial-gradient(ellipse at 30% 20%,rgba(137,180,250,.08) 0%,transparent 50%),radial-gradient(ellipse at 70% 60%,rgba(203,166,247,.06) 0%,transparent 50%);pointer-events:none;animation:hglow 8s ease-in-out infinite alternate}
+@keyframes hglow{0%{opacity:.6;transform:scale(1)}100%{opacity:1;transform:scale(1.05)}}
 
-        .hero .tagline {
-            font-size: 1.5rem;
-            color: var(--text-secondary);
-            margin-bottom: 48px;
-        }
+/* Pipeline stage animations */
+.pstage{opacity:0;transform:translateY(20px) scale(.9);transition:all .6s cubic-bezier(.34,1.56,.64,1)}
+.pstage.on{opacity:1;transform:translateY(0) scale(1)}
+.pstage.lit .sbox{border-color:#89b4fa;box-shadow:0 0 20px rgba(137,180,250,.2)}
+.parr{opacity:0;transition:opacity .4s,color .4s}
+.parr.on{opacity:1}
+.parr.lit{color:#89b4fa}
 
-        .stats-grid {
-            display: grid;
-            grid-template-columns: repeat(4, 1fr);
-            gap: 24px;
-            max-width: 800px;
-        }
+/* Code block styling */
+pre{background:#12121a;border:1px solid #1e1e2e;border-radius:8px;padding:1rem;overflow-x:auto;font-size:.85rem}
+code{font-family:'JetBrains Mono',monospace}
 
-        .stat-card {
-            background: var(--bg-secondary);
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 12px;
-            padding: 24px;
-            text-align: center;
-        }
-
-        .stat-value {
-            font-size: 2.5rem;
-            font-weight: 700;
-            color: var(--accent-blue);
-        }
-
-        .stat-label {
-            color: var(--text-secondary);
-            font-size: 0.9rem;
-            margin-top: 8px;
-        }
-
-        /* Headers */
-        h2 {
-            font-size: 3rem;
-            margin-bottom: 16px;
-            background: linear-gradient(90deg, var(--text-primary), var(--accent-purple));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-        }
-
-        h3 {
-            font-size: 1.8rem;
-            margin: 40px 0 20px;
-            color: var(--accent-amber);
-        }
-
-        .section-subtitle {
-            color: var(--text-secondary);
-            font-size: 1.2rem;
-            margin-bottom: 48px;
-        }
-
-        /* Pipeline canvas */
-        #pipeline-canvas {
-            width: 100%;
-            height: 500px;
-            background: var(--bg-secondary);
-            border-radius: 16px;
-            border: 1px solid rgba(255,255,255,0.1);
-        }
-
-        /* Cards */
-        .card-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 24px;
-            margin-top: 32px;
-        }
-
-        .card {
-            background: var(--bg-secondary);
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 12px;
-            padding: 24px;
-            transition: transform 0.3s, border-color 0.3s;
-        }
-
-        .card:hover {
-            transform: translateY(-4px);
-            border-color: var(--accent-blue);
-        }
-
-        .card-icon {
-            font-size: 2rem;
-            margin-bottom: 12px;
-        }
-
-        .card h4 {
-            font-size: 1.2rem;
-            margin-bottom: 8px;
-        }
-
-        .card p {
-            color: var(--text-secondary);
-            font-size: 0.95rem;
-        }
-
-        /* Code blocks */
-        pre {
-            background: var(--bg-tertiary);
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 8px;
-            padding: 20px;
-            overflow-x: auto;
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.9rem;
-            line-height: 1.5;
-            margin: 24px 0;
-        }
-
-        code {
-            font-family: 'JetBrains Mono', monospace;
-            background: rgba(255,255,255,0.05);
-            padding: 2px 6px;
-            border-radius: 4px;
-        }
-
-        .keyword { color: var(--accent-purple); }
-        .function { color: var(--accent-blue); }
-        .string { color: var(--accent-green); }
-        .comment { color: var(--text-secondary); font-style: italic; }
-        .number { color: var(--accent-amber); }
-
-        /* Math blocks */
-        .math-block {
-            background: var(--bg-secondary);
-            border-left: 4px solid var(--accent-purple);
-            padding: 24px;
-            margin: 24px 0;
-            border-radius: 0 8px 8px 0;
-            font-size: 1.1rem;
-        }
-
-        .math-block .formula {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 1.3rem;
-            color: var(--accent-amber);
-            margin: 12px 0;
-        }
-
-        /* Gate diagram */
-        .gate-diagram {
-            display: flex;
-            justify-content: center;
-            gap: 32px;
-            margin: 48px 0;
-            flex-wrap: wrap;
-        }
-
-        .gate-box {
-            background: var(--bg-secondary);
-            border: 2px solid rgba(255,255,255,0.1);
-            border-radius: 16px;
-            padding: 32px;
-            min-width: 280px;
-            text-align: center;
-        }
-
-        .gate-box.skip {
-            border-color: var(--accent-red);
-            background: rgba(239, 68, 68, 0.1);
-        }
-
-        .gate-box.run {
-            border-color: var(--accent-green);
-            background: rgba(34, 197, 94, 0.1);
-        }
-
-        .gate-box h4 {
-            font-size: 1.5rem;
-            margin-bottom: 16px;
-        }
-
-        .gate-box .sigma {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 1.2rem;
-            margin: 16px 0;
-        }
-
-        /* Pool architecture */
-        .pool-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 16px;
-            margin: 32px 0;
-        }
-
-        .pool-box {
-            background: var(--bg-secondary);
-            border: 1px solid rgba(255,255,255,0.1);
-            border-radius: 8px;
-            padding: 16px;
-            text-align: center;
-        }
-
-        .pool-box.boosted {
-            border-color: var(--accent-amber);
-            background: rgba(245, 158, 11, 0.1);
-        }
-
-        .pool-box.primary {
-            border-color: var(--accent-blue);
-        }
-
-        .pool-name {
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
-
-        .pool-weight {
-            font-family: 'JetBrains Mono', monospace;
-            font-size: 0.9rem;
-            color: var(--text-secondary);
-        }
-
-        /* Spark services */
-        .services-table {
-            width: 100%;
-            border-collapse: collapse;
-            margin: 32px 0;
-        }
-
-        .services-table th,
-        .services-table td {
-            padding: 16px;
-            text-align: left;
-            border-bottom: 1px solid rgba(255,255,255,0.1);
-        }
-
-        .services-table th {
-            color: var(--accent-amber);
-            font-weight: 600;
-        }
-
-        .services-table code {
-            background: none;
-            padding: 0;
-        }
-
-        /* Footer */
-        footer {
-            text-align: center;
-            padding: 48px;
-            color: var(--text-secondary);
-            border-top: 1px solid rgba(255,255,255,0.1);
-        }
-
-        footer a {
-            color: var(--accent-blue);
-            text-decoration: none;
-        }
-
-        /* Scroll indicator */
-        .scroll-indicator {
-            position: fixed;
-            bottom: 24px;
-            right: 24px;
-            background: var(--accent-purple);
-            color: white;
-            padding: 12px 20px;
-            border-radius: 30px;
-            font-size: 0.9rem;
-            opacity: 0;
-            transition: opacity 0.3s;
-            z-index: 100;
-        }
-
-        .scroll-indicator.visible {
-            opacity: 1;
-        }
-
-        @media (max-width: 768px) {
-            .stats-grid { grid-template-columns: repeat(2, 1fr); }
-            .pool-grid { grid-template-columns: 1fr; }
-            .gate-diagram { flex-direction: column; align-items: center; }
-        }
-    </style>
+/* Section divider */
+.divider{height:1px;background:linear-gradient(90deg,transparent,#1e1e2e,transparent);margin:4rem 0}
+</style>
 </head>
-<body>
-    <!-- Section 1: Hero -->
-    <section class="section hero visible">
-        <h1>Memory-Spark</h1>
-        <p class="tagline">Production RAG Pipeline with Dynamic Reranker Gating</p>
-        <div class="stats-grid">
-            <div class="stat-card">
-                <div class="stat-value">78.9%</div>
-                <div class="stat-label">NDCG@10 (SciFact)</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">626ms</div>
-                <div class="stat-label">P50 Latency</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">78%</div>
-                <div class="stat-label">Reranker Skip Rate</div>
-            </div>
-            <div class="stat-card">
-                <div class="stat-value">15</div>
-                <div class="stat-label">Pipeline Stages</div>
-            </div>
-        </div>
-    </section>
+<body class="bg-spark-bg text-spark-text">
 
-    <!-- Section 2: Pipeline Overview -->
-    <section class="section" id="pipeline">
-        <h2>15-Stage Retrieval Pipeline</h2>
-        <p class="section-subtitle">Query → HyDE/Expand → Parallel Pools → RRF → Gate → Rerank → MMR → Inject</p>
-        <canvas id="pipeline-canvas"></canvas>
-        <div class="card-grid">
-            <div class="card">
-                <div class="card-icon">🔍</div>
-                <h4>Query Pre-processing</h4>
-                <p>HyDE generates hypothetical documents. Multi-query expansion creates reformulations for recall.</p>
-            </div>
-            <div class="card">
-                <div class="card-icon">🔀</div>
-                <h4>Parallel Pool Search</h4>
-                <p>6 pools queried simultaneously: agent_memory, agent_mistakes, shared_mistakes, shared_knowledge, shared_rules, FTS.</p>
-            </div>
-            <div class="card">
-                <div class="card-icon">🚦</div>
-                <h4>Dynamic Gate</h4>
-                <p>Skip reranker when vector is confident (σ > 0.08) or tied (σ < 0.02). Saves 78% of cross-encoder calls.</p>
-            </div>
-            <div class="card">
-                <div class="card-icon">🤝</div>
-                <h4>RRF Fusion</h4>
-                <p>Reciprocal Rank Fusion merges vector and reranker signals without score normalization.</p>
-            </div>
-        </div>
-    </section>
-
-    <!-- Section 3: Gate Deep-Dive -->
-    <section class="section" id="gate">
-        <h2>Dynamic Reranker Gate</h2>
-        <p class="section-subtitle">The key insight: reranking hurts performance on tight clusters</p>
-        
-        <div class="math-block">
-            <p>The gate computes the <strong>confidence spread</strong> of the top-5 vector results:</p>
-            <div class="formula">σ = max(scores[0:5]) - min(scores[0:5])</div>
-            <p>When σ is large, the vector model is confident — let it decide. When σ is tiny, it's a near-tie — reranker is gambling.</p>
-        </div>
-
-        <div class="gate-diagram">
-            <div class="gate-box skip">
-                <h4>⛔ SKIP Reranker</h4>
-                <div class="sigma">σ > 0.08</div>
-                <p>Vector is confident.<br>Top-1 is clearly best.</p>
-            </div>
-            <div class="gate-box run">
-                <h4>✅ RUN Reranker</h4>
-                <div class="sigma">0.02 ≤ σ ≤ 0.08</div>
-                <p>Ambiguous ranking.<br>Let cross-encoder decide.</p>
-            </div>
-            <div class="gate-box skip">
-                <h4>⛔ SKIP Reranker</h4>
-                <div class="sigma">σ < 0.02</div>
-                <p>Near-tie top-5.<br>Reranker gambling.</p>
-            </div>
-        </div>
-
-        <h3>Implementation</h3>
-<pre><code><span class="keyword">export function</span> <span class="function">computeRerankerGate</span>(
-  candidates: SearchResult[],
-  mode: <span class="string">"off" | "hard" | "soft"</span> = <span class="string">"off"</span>,
-  threshold: number = <span class="number">0.08</span>,
-  lowThreshold: number = <span class="number">0.02</span>,
-): RerankerGateResult {
-  <span class="keyword">const</span> top5 = candidates.slice(<span class="number">0</span>, <span class="number">5</span>);
-  <span class="keyword">const</span> scores = top5.map(c => c.score);
-  <span class="keyword">const</span> spread = Math.max(...scores) - Math.min(...scores);
-
-  <span class="keyword">if</span> (mode === <span class="string">"hard"</span>) {
-    <span class="keyword">if</span> (spread > threshold) <span class="keyword">return</span> { shouldRerank: <span class="keyword">false</span>, reason: <span class="string">"vector-confident"</span> };
-    <span class="keyword">if</span> (spread < lowThreshold) <span class="keyword">return</span> { shouldRerank: <span class="keyword">false</span>, reason: <span class="string">"tied-set"</span> };
-    <span class="keyword">return</span> { shouldRerank: <span class="keyword">true</span>, reason: <span class="string">"ambiguous"</span> };
-  }
-  <span class="comment">// ... soft gate logic</span>
-}</code></pre>
-    </section>
-
-    <!-- Section 4: RRF Math -->
-    <section class="section" id="rrf">
-        <h2>Reciprocal Rank Fusion</h2>
-        <p class="section-subtitle">Scale-invariant alternative to score blending</p>
-
-        <div class="math-block">
-            <p>The problem: BM25 scores (5–20) and cosine similarities (0.2–0.6) are incompatible. Sigmoid normalization helped, but hardcoded midpoints caused saturation.</p>
-            <div class="formula">RRF(d) = Σ w_i / (k + rank_i)</div>
-            <p>Where k = 60 (standard smoothing constant). Documents appearing in both lists get double credit — an "agreement bonus."</p>
-        </div>
-
-        <h3>TypeScript Implementation</h3>
-<pre><code><span class="keyword">export function</span> <span class="function">blendByRank</span>(
-  pool: SearchResult[],
-  rerankResults: Array<{ index: number; relevance_score: number }>,
-  k: number = <span class="number">60</span>,
-  vectorWeight: number = <span class="number">1.0</span>,
-  rerankerWeight: number = <span class="number">1.0</span>,
-): SearchResult[] {
-  <span class="keyword">const</span> rrfScores = <span class="keyword">new</span> Map&lt;number, number&gt;();
-
-  <span class="comment">// Vector rank contribution</span>
-  <span class="keyword">for</span> (<span class="keyword">let</span> rank = <span class="number">0</span>; rank < pool.length; rank++) {
-    rrfScores.set(rank, vectorWeight / (k + rank + <span class="number">1</span>));
-  }
-
-  <span class="comment">// Reranker rank contribution (adds when doc in both lists)</span>
-  <span class="keyword">const</span> sortedRerank = [...rerankResults].sort((a, b) => b.relevance_score - a.relevance_score);
-  <span class="keyword">for</span> (<span class="keyword">let</span> rank = <span class="number">0</span>; rank < sortedRerank.length; rank++) {
-    <span class="keyword">const</span> idx = sortedRerank[rank].index;
-    rrfScores.set(idx, (rrfScores.get(idx) ?? <span class="number">0</span>) + rerankerWeight / (k + rank + <span class="number">1</span>));
-  }
-
-  <span class="keyword">return</span> [...rrfScores.entries()]
-    .sort(([, a], [, b]) => b - a)
-    .map(([idx, score]) => ({ ...pool[idx], score }));
-}</code></pre>
-
-        <h3>Why RRF Won</h3>
-        <div class="card-grid">
-            <div class="card">
-                <div class="card-icon">📊</div>
-                <h4>Scale-Invariant</h4>
-                <p>Reranker scores 0.83–1.0 vs 0–100 makes no difference. Only positions matter.</p>
-            </div>
-            <div class="card">
-                <div class="card-icon">🤝</div>
-                <h4>Dual Evidence</h4>
-                <p>When vector AND reranker agree on rank-1, that doc gets maximum RRF score.</p>
-            </div>
-            <div class="card">
-                <div class="card-icon">🛡️</div>
-                <h4>Safe Fallback</h4>
-                <p>When reranker disagrees, it can only promote docs, not catastrophically demote.</p>
-            </div>
-        </div>
-    </section>
-
-    <!-- Section 5: Pool Architecture -->
-    <section class="section" id="pools">
-        <h2>Pool-Aware Recall</h2>
-        <p class="section-subtitle">6 isolated pools with priority weighting</p>
-
-        <div class="pool-grid">
-            <div class="pool-box primary">
-                <div class="pool-name">agent_memory</div>
-                <div class="pool-weight">Primary recall source</div>
-            </div>
-            <div class="pool-box boosted">
-                <div class="pool-name">agent_mistakes</div>
-                <div class="pool-weight">1.6× boost (learn from errors)</div>
-            </div>
-            <div class="pool-box boosted">
-                <div class="pool-name">shared_mistakes</div>
-                <div class="pool-weight">1.6× boost (cross-agent)</div>
-            </div>
-            <div class="pool-box">
-                <div class="pool-name">shared_knowledge</div>
-                <div class="pool-weight">0.8× weight (supplemental)</div>
-            </div>
-            <div class="pool-box">
-                <div class="pool-name">shared_rules</div>
-                <div class="pool-weight">Relevance-gated</div>
-            </div>
-            <div class="pool-box">
-                <div class="pool-name">reference_pools</div>
-                <div class="pool-weight">Tool-call only (never auto)</div>
-            </div>
-        </div>
-
-        <h3>Source Code: Pool Search</h3>
-<pre><code><span class="comment">// src/auto/recall.ts — Pool-Aware Recall Pipeline</span>
-<span class="keyword">const</span> poolSearch = <span class="keyword">async</span> (
-  pools: <span class="string">string[]</span>,
-  filterAgentId?: <span class="string">string</span>,
-  limit = fetchN,
-  minScore = cfg.minScore,
-): Promise&lt;SearchResult[]&gt; => {
-  <span class="comment">// Multi-vector search: search each query vector and union by chunk ID</span>
-  <span class="keyword">let</span> vectorResults: SearchResult[];
-  <span class="keyword">if</span> (allQueryVectors.length > <span class="number">1</span>) {
-    <span class="keyword">const</span> allVecResults = <span class="keyword">await</span> Promise.all(
-      allQueryVectors.map(vec => <span class="function">searchOne</span>(vec))
-    );
-    <span class="comment">// Union: dedupe by chunk ID, keep highest score</span>
-    <span class="keyword">const</span> best = <span class="keyword">new</span> Map&lt;<span class="string">string</span>, SearchResult&gt;();
-    <span class="keyword">for</span> (<span class="keyword">const</span> resultSet <span class="keyword">of</span> allVecResults) {
-      <span class="keyword">for</span> (<span class="keyword">const</span> r <span class="keyword">of</span> resultSet) {
-        <span class="keyword">const</span> existing = best.get(r.chunk.id);
-        <span class="keyword">if</span> (!existing || r.score > existing.score) {
-          best.set(r.chunk.id, r);
-        }
-      }
-    }
-    vectorResults = [...best.values()].sort((a, b) => b.score - a.score);
-  }
-  <span class="comment">// ... RRF merge with FTS results</span>
-};</code></pre>
-    </section>
-
-    <!-- Section 6: Temporal Decay -->
-    <section class="section" id="decay">
-        <h2>Temporal Decay</h2>
-        <p class="section-subtitle">Recent memories score higher</p>
-
-        <div class="math-block">
-            <p>Exponential decay with a configurable floor:</p>
-            <div class="formula">decay(t) = floor + (1 - floor) × e^(-rate × ageDays)</div>
-            <p>Default: floor = 0.8, rate = 0.03. A 30-day-old memory scores 0.89× instead of 1.0×.</p>
-        </div>
-
-<pre><code><span class="keyword">export function</span> <span class="function">applyTemporalDecay</span>(
-  results: SearchResult[],
-  opts?: { floor?: number; rate?: number }
-): <span class="keyword">void</span> {
-  <span class="keyword">const</span> floor = opts?.floor ?? <span class="number">0.8</span>;
-  <span class="keyword">const</span> rate = opts?.rate ?? <span class="number">0.03</span>;
-  <span class="keyword">const</span> now = Date.now();
-  
-  <span class="keyword">for</span> (<span class="keyword">const</span> r <span class="keyword">of</span> results) {
-    <span class="keyword">const</span> rawTime = r.chunk.updated_at ? <span class="keyword">new</span> Date(r.chunk.updated_at).getTime() : <span class="keyword">NaN</span>;
-    <span class="keyword">if</span> (Number.isNaN(rawTime)) <span class="keyword">continue</span>; <span class="comment">// Guard against invalid timestamps</span>
-    
-    <span class="keyword">const</span> ageDays = Math.max(<span class="number">0</span>, (now - rawTime) / (<span class="number">86400</span> * <span class="number">1000</span>));
-    <span class="keyword">const</span> decay = floor + (<span class="number">1</span> - floor) * Math.exp(-rate * ageDays);
-    r.score *= decay;
-  }
-}</code></pre>
-
-        <div class="card-grid">
-            <div class="card">
-                <div class="card-icon">📅</div>
-                <h4>Age Impact</h4>
-                <p>0 days = 1.0×, 7 days = 0.96×, 30 days = 0.89×, 90 days = 0.81×</p>
-            </div>
-            <div class="card">
-                <div class="card-icon">🛡️</div>
-                <h4>Floor Protection</h4>
-                <p>Old memories never score below 80% — they're still relevant context.</p>
-            </div>
-        </div>
-    </section>
-
-    <!-- Section 7: MMR Diversity -->
-    <section class="section" id="mmr">
-        <h2>Maximal Marginal Relevance</h2>
-        <p class="section-subtitle">Diversity filter prevents redundant results</p>
-
-        <div class="math-block">
-            <p>MMR iteratively selects docs that are relevant but dissimilar to already-selected:</p>
-            <div class="formula">MMR = λ × Sim(q, d) - (1-λ) × max[Sim(d, d_j) for d_j in selected]</div>
-            <p>Default λ = 0.9 (relevance-biased). Uses cosine similarity on 4096-dim vectors.</p>
-        </div>
-
-<pre><code><span class="keyword">export function</span> <span class="function">mmrRerank</span>(
-  results: SearchResult[],
-  lambda: number = <span class="number">0.9</span>,
-  topK?: number
-): SearchResult[] {
-  <span class="keyword">if</span> (results.length <= <span class="number">1</span>) <span class="keyword">return</span> results;
-  
-  <span class="keyword">const</span> selected: SearchResult[] = [];
-  <span class="keyword">const</span> remaining = [...results];
-  
-  <span class="keyword">while</span> (remaining.length > <span class="number">0</span> && (!topK || selected.length < topK)) {
-    <span class="keyword">let</span> bestIdx = <span class="number">0</span>;
-    <span class="keyword">let</span> bestScore = <span class="number">-Infinity</span>;
-    
-    <span class="keyword">for</span> (<span class="keyword">let</span> i = <span class="number">0</span>; i < remaining.length; i++) {
-      <span class="keyword">const</span> relevance = remaining[i].score;
-      <span class="keyword">let</span> maxSim = <span class="number">0</span>;
-      
-      <span class="keyword">for</span> (<span class="keyword">const</span> s <span class="keyword">of</span> selected) {
-        <span class="keyword">const</span> sim = <span class="function">cosineSimilarity</span>(remaining[i].vector!, s.vector!);
-        maxSim = Math.max(maxSim, sim);
-      }
-      
-      <span class="keyword">const</span> mmrScore = lambda * relevance - (<span class="number">1</span> - lambda) * maxSim;
-      <span class="keyword">if</span> (mmrScore > bestScore) {
-        bestScore = mmrScore;
-        bestIdx = i;
-      }
-    }
-    
-    selected.push(remaining.splice(bestIdx, <span class="number">1</span>)[<span class="number">0</span>]);
-  }
-  
-  <span class="keyword">return</span> selected;
-}</code></pre>
-    </section>
-
-    <!-- Section 8: Spark Backend -->
-    <section class="section" id="spark">
-        <h2>Spark Backend</h2>
-        <p class="section-subtitle">Self-hosted inference on NVIDIA DGX</p>
-
-        <table class="services-table">
-            <thead>
-                <tr>
-                    <th>Service</th>
-                    <th>Model</th>
-                    <th>Port</th>
-                    <th>Role</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td><code>Embedding</code></td>
-                    <td>llama-embed-nemotron-8b</td>
-                    <td><code>:18091</code></td>
-                    <td>Asymmetric embeddings (query vs doc)</td>
-                </tr>
-                <tr>
-                    <td><code>Reranker</code></td>
-                    <td>llama-nemotron-rerank-1b-v2</td>
-                    <td><code>:18096</code></td>
-                    <td>Cross-encoder scoring</td>
-                </tr>
-                <tr>
-                    <td><code>LLM</code></td>
-                    <td>Nemotron-Super-120B</td>
-                    <td><code>:18080</code></td>
-                    <td>HyDE generation, query expansion</td>
-                </tr>
-                <tr>
-                    <td><code>GLM-OCR</code></td>
-                    <td>zai-org/GLM-OCR</td>
-                    <td><code>:18080</code></td>
-                    <td>PDF parsing (vLLM vision)</td>
-                </tr>
-                <tr>
-                    <td><code>NER</code></td>
-                    <td>bart-large-mnli</td>
-                    <td><code>:18112</code></td>
-                    <td>Entity extraction</td>
-                </tr>
-                <tr>
-                    <td><code>Zero-shot</code></td>
-                    <td>bart-large-mnli</td>
-                    <td><code>:18113</code></td>
-                    <td>Classification</td>
-                </tr>
-                <tr>
-                    <td><code>Summarizer</code></td>
-                    <td>bart-large-cnn</td>
-                    <td><code>:18110</code></td>
-                    <td>Chunk summarization</td>
-                </tr>
-                <tr>
-                    <td><code>STT</code></td>
-                    <td>nvidia/parakeet-ctc-1.1b</td>
-                    <td><code>:18094</code></td>
-                    <td>Speech-to-text</td>
-                </tr>
-                <tr>
-                    <td><code>Legacy OCR</code></td>
-                    <td>EasyOCR</td>
-                    <td><code>:18097</code></td>
-                    <td>Fallback PDF parsing</td>
-                </tr>
-            </tbody>
-        </table>
-
-        <h3>Key Architecture Decisions</h3>
-        <div class="card-grid">
-            <div class="card">
-                <div class="card-icon">🔒</div>
-                <h4>Zero Cloud APIs</h4>
-                <p>No OpenAI, no Anthropic, no rate limits. Full control over inference.</p>
-            </div>
-            <div class="card">
-                <div class="card-icon">⚡</div>
-                <h4>Sub-second Latency</h4>
-                <p>Local GPU inference at 119ms p95 for reranking, 150ms for embedding.</p>
-            </div>
-            <div class="card">
-                <div class="card-icon">🎯</div>
-                <h4>Instruction-Aware</h4>
-                <p>Nemotron-8B uses asymmetric encoding: "Instruct: ... Query: ..." prefix.</p>
-            </div>
-        </div>
-    </section>
-
-    <!-- Section 9: Benchmarks -->
-    <section class="section" id="benchmarks">
-        <h2>BEIR Benchmarks</h2>
-        <p class="section-subtitle">Comparing against 2026 SOTA</p>
-
-        <table class="services-table">
-            <thead>
-                <tr>
-                    <th>Config</th>
-                    <th>SciFact NDCG@10</th>
-                    <th>FiQA NDCG@10</th>
-                    <th>NFCorpus NDCG@10</th>
-                </tr>
-            </thead>
-            <tbody>
-                <tr>
-                    <td><code>GATE-A</code> (Hard Gate)</td>
-                    <td>0.7802</td>
-                    <td>0.4123</td>
-                    <td>0.3421</td>
-                </tr>
-                <tr>
-                    <td><code>Config U</code> (Logit α=0.4)</td>
-                    <td><strong>0.7889</strong></td>
-                    <td>0.4198</td>
-                    <td>0.3456</td>
-                </tr>
-                <tr>
-                    <td><code>Config V</code> (High Recall)</td>
-                    <td>0.7712</td>
-                    <td>0.4089</td>
-                    <td>0.3512</td>
-                </tr>
-                <tr>
-                    <td>Vector-Only Baseline</td>
-                    <td>0.7709</td>
-                    <td>0.4056</td>
-                    <td><strong>0.4443</strong></td>
-                </tr>
-                <tr style="border-top: 2px solid var(--accent-amber);">
-                    <td><strong>BM25 (Baseline)</strong></td>
-                    <td>0.6650</td>
-                    <td>0.2360</td>
-                    <td>0.3250</td>
-                </tr>
-                <tr>
-                    <td><strong>Voyage-Large-2 (2026 SOTA)</strong></td>
-                    <td>0.6789</td>
-                    <td>0.3512</td>
-                    <td>0.3210</td>
-                </tr>
-            </tbody>
-        </table>
-
-        <h3>Key Findings</h3>
-        <div class="card-grid">
-            <div class="card">
-                <div class="card-icon">📈</div>
-                <h4>+16.5% over SOTA</h4>
-                <p>SciFact improvement vs Voyage-Large-2 BEIR 2.0 leader.</p>
-            </div>
-            <div class="card">
-                <div class="card-icon">⚠️</div>
-                <h4>NFCorpus Anomaly</h4>
-                <p>Vector-only wins on NFCorpus — reranker hurts on domain gap.</p>
-            </div>
-            <div class="card">
-                <div class="card-icon">🚦</div>
-                <h4>Gate Effectiveness</h4>
-                <p>78% of queries skip reranker, saving latency without losing accuracy.</p>
-            </div>
-        </div>
-    </section>
-
-    <!-- Footer -->
-    <footer>
-        <p>
-            <a href="https://github.com/kleinpanic/memory-spark">GitHub</a> • 
-            <a href="https://github.com/kleinpanic/memory-spark/wiki">Documentation</a> • 
-            <a href="https://docs.openclaw.ai">OpenClaw Docs</a>
-        </p>
-        <p style="margin-top: 16px; color: var(--text-secondary);">
-            Memory-Spark v0.4.0 • 15-Stage RAG Pipeline • Self-Hosted on NVIDIA DGX Spark
-        </p>
-    </footer>
-
-    <div class="scroll-indicator" id="scroll-indicator">
-        ↓ Scroll to explore
+<!-- Navigation -->
+<nav class="fixed top-0 left-0 right-0 z-50 bg-spark-bg/80 backdrop-blur-xl border-b border-spark-border">
+  <div class="max-w-6xl mx-auto px-6 py-4 flex justify-between items-center">
+    <a href="#" class="text-xl font-bold flex items-center gap-2">
+      <span class="text-spark-amber">⚡</span>
+      <span>Memory-Spark</span>
+    </a>
+    <div class="flex gap-6 text-sm">
+      <a href="#pipeline" class="text-spark-muted hover:text-spark-text transition-colors">Pipeline</a>
+      <a href="#gate" class="text-spark-muted hover:text-spark-text transition-colors">Gate Logic</a>
+      <a href="#pools" class="text-spark-muted hover:text-spark-text transition-colors">Pools</a>
+      <a href="#fusion" class="text-spark-muted hover:text-spark-text transition-colors">Fusion</a>
+      <a href="#services" class="text-spark-muted hover:text-spark-text transition-colors">Services</a>
     </div>
+  </div>
+</nav>
 
-    <script>
-        // Intersection Observer for section animations
-        const sections = document.querySelectorAll('.section');
-        const observer = new IntersectionObserver((entries) => {
-            entries.forEach(entry => {
-                if (entry.isIntersecting) {
-                    entry.target.classList.add('visible');
-                }
-            });
-        }, { threshold: 0.2 });
+<!-- Hero -->
+<section id="hero" class="min-h-screen flex items-center justify-center relative overflow-hidden pt-20">
+  <div class="container max-w-4xl text-center relative z-10">
+    <div class="rv d1 inline-flex items-center gap-2 px-4 py-2 bg-spark-card border border-spark-border rounded-full text-sm text-spark-muted mb-6">
+      <span class="w-2 h-2 bg-spark-green rounded-full pulse"></span>
+      Educational RAG Architecture
+    </div>
+    <h1 class="rv d2 text-5xl md:text-7xl font-extrabold tracking-tight mb-6">
+      <span class="gr">15-Stage</span> RAG Pipeline
+    </h1>
+    <p class="rv d3 text-xl text-spark-muted max-w-2xl mx-auto mb-8">
+      A deep-dive into how Memory-Spark retrieves, reranks, and fuses information. 
+      Built for visual learners who want to understand the architecture.
+    </p>
+    <div class="rv d4 flex gap-4 justify-center">
+      <a href="#pipeline" class="px-6 py-3 bg-spark-accent text-spark-bg font-semibold rounded-lg hover:bg-spark-accent/80 transition-colors">
+        Explore Pipeline
+      </a>
+      <a href="https://github.com/kleinpanic/memory-spark" class="px-6 py-3 bg-spark-card border border-spark-border rounded-lg hover:border-spark-muted transition-colors">
+        View Source
+      </a>
+    </div>
+  </div>
+  <div class="absolute bottom-8 left-1/2 -translate-x-1/2 text-spark-muted text-sm flex flex-col items-center gap-2">
+    <span>Scroll to explore</span>
+    <span class="text-2xl animate-bounce">↓</span>
+  </div>
+</section>
 
-        sections.forEach(section => observer.observe(section));
+<!-- Quick Stats -->
+<section class="py-12 border-y border-spark-border bg-spark-card/50">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
+      <div class="rv">
+        <div class="text-4xl font-extrabold text-spark-green">78.9%</div>
+        <div class="text-sm text-spark-muted mt-1">NDCG@10 (SciFact)</div>
+      </div>
+      <div class="rv d1">
+        <div class="text-4xl font-extrabold text-spark-accent">626ms</div>
+        <div class="text-sm text-spark-muted mt-1">P50 Latency</div>
+      </div>
+      <div class="rv d2">
+        <div class="text-4xl font-extrabold text-spark-purple">78%</div>
+        <div class="text-sm text-spark-muted mt-1">Reranker Skip Rate</div>
+      </div>
+      <div class="rv d3">
+        <div class="text-4xl font-extrabold text-spark-cyan">15</div>
+        <div class="text-sm text-spark-muted mt-1">Pipeline Stages</div>
+      </div>
+    </div>
+  </div>
+</section>
 
-        // Scroll indicator
-        const scrollIndicator = document.getElementById('scroll-indicator');
-        window.addEventListener('scroll', () => {
-            if (window.scrollY > 100) {
-                scrollIndicator.classList.remove('visible');
-            } else {
-                scrollIndicator.classList.add('visible');
-            }
-        });
-        scrollIndicator.classList.add('visible');
+<!-- User Query/Response Loop -->
+<section id="loop" class="py-20">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="text-center mb-12">
+      <div class="text-sm font-semibold text-spark-accent uppercase tracking-wider mb-2">Overview</div>
+      <h2 class="text-3xl md:text-4xl font-bold">Query → Response Loop</h2>
+      <p class="text-spark-muted mt-4 max-w-2xl mx-auto">
+        The user sends a query, the pipeline retrieves relevant context, and the LLM generates a response.
+      </p>
+    </div>
+    
+    <div class="rv bg-spark-card border border-spark-border rounded-2xl p-8 relative overflow-hidden">
+      <!-- Animated flow diagram -->
+      <div class="flex flex-col md:flex-row items-center justify-between gap-8">
+        <!-- User -->
+        <div class="flex flex-col items-center text-center">
+          <div class="w-20 h-20 bg-spark-purple/20 border-2 border-spark-purple rounded-full flex items-center justify-center text-3xl mb-3">
+            👤
+          </div>
+          <div class="font-semibold">User</div>
+          <div class="text-sm text-spark-muted">Ask question</div>
+        </div>
+        
+        <!-- Arrow -->
+        <div class="text-spark-muted text-3xl md:rotate-0 rotate-90">→</div>
+        
+        <!-- Query Processing -->
+        <div class="flex flex-col items-center text-center">
+          <div class="w-20 h-20 bg-spark-accent/20 border-2 border-spark-accent rounded-full flex items-center justify-center text-3xl mb-3">
+            🔍
+          </div>
+          <div class="font-semibold">Query Processing</div>
+          <div class="text-sm text-spark-muted">Clean, HyDE, Expand</div>
+        </div>
+        
+        <!-- Arrow -->
+        <div class="text-spark-muted text-3xl md:rotate-0 rotate-90">→</div>
+        
+        <!-- Retrieval -->
+        <div class="flex flex-col items-center text-center">
+          <div class="w-20 h-20 bg-spark-green/20 border-2 border-spark-green rounded-full flex items-center justify-center text-3xl mb-3">
+            📚
+          </div>
+          <div class="font-semibold">Retrieval</div>
+          <div class="text-sm text-spark-muted">Vector + FTS + Rerank</div>
+        </div>
+        
+        <!-- Arrow -->
+        <div class="text-spark-muted text-3xl md:rotate-0 rotate-90">→</div>
+        
+        <!-- LLM Response -->
+        <div class="flex flex-col items-center text-center">
+          <div class="w-20 h-20 bg-spark-amber/20 border-2 border-spark-amber rounded-full flex items-center justify-center text-3xl mb-3">
+            🤖
+          </div>
+          <div class="font-semibold">LLM Response</div>
+          <div class="text-sm text-spark-muted">Context + Answer</div>
+        </div>
+      </div>
+      
+      <!-- Return arrow (curved) -->
+      <div class="hidden md:block absolute bottom-4 left-1/2 -translate-x-1/2 text-spark-muted text-sm">
+        ← Response flows back to User
+      </div>
+    </div>
+  </div>
+</section>
 
-        // Pipeline canvas animation
-        const canvas = document.getElementById('pipeline-canvas');
-        if (canvas) {
-            const ctx = canvas.getContext('2d');
-            const dpr = window.devicePixelRatio || 1;
-            
-            function resize() {
-                const rect = canvas.getBoundingClientRect();
-                canvas.width = rect.width * dpr;
-                canvas.height = rect.height * dpr;
-                ctx.scale(dpr, dpr);
-            }
-            resize();
-            window.addEventListener('resize', resize);
+<div class="divider"></div>
 
-            // Stage definitions
-            const stages = [
-                { name: 'Query', x: 0.05, y: 0.5, color: '#a78bfa' },
-                { name: 'Clean', x: 0.12, y: 0.5, color: '#a78bfa' },
-                { name: 'HyDE', x: 0.20, y: 0.3, color: '#f59e0b', branch: true },
-                { name: 'Expand', x: 0.20, y: 0.7, color: '#22c55e', branch: true },
-                { name: 'Embed', x: 0.28, y: 0.5, color: '#3b82f6' },
-                { name: 'Memory', x: 0.38, y: 0.25, color: '#ef4444', parallel: true },
-                { name: 'Mistakes', x: 0.38, y: 0.4, color: '#f59e0b', parallel: true },
-                { name: 'Shared', x: 0.38, y: 0.55, color: '#22c55e', parallel: true },
-                { name: 'Rules', x: 0.38, y: 0.7, color: '#3b82f6', parallel: true },
-                { name: 'FTS', x: 0.38, y: 0.85, color: '#a855f7', parallel: true },
-                { name: 'RRF', x: 0.50, y: 0.5, color: '#a78bfa' },
-                { name: 'Dedup', x: 0.58, y: 0.5, color: '#3b82f6' },
-                { name: 'Weight', x: 0.65, y: 0.5, color: '#f59e0b' },
-                { name: 'Decay', x: 0.72, y: 0.5, color: '#22c55e' },
-                { name: 'Gate', x: 0.80, y: 0.5, color: '#ef4444', decision: true },
-                { name: 'Rerank', x: 0.88, y: 0.3, color: '#a855f7', optional: true },
-                { name: 'MMR', x: 0.92, y: 0.5, color: '#3b82f6' },
-                { name: 'Inject', x: 0.98, y: 0.5, color: '#22c55e' }
-            ];
+<!-- 15-Stage Pipeline (Centerpiece) -->
+<section id="pipeline" class="py-20">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="text-center mb-12">
+      <div class="text-sm font-semibold text-spark-accent uppercase tracking-wider mb-2">Centerpiece</div>
+      <h2 class="text-3xl md:text-4xl font-bold">15-Stage Retrieval Pipeline</h2>
+      <p class="text-spark-muted mt-4 max-w-2xl mx-auto">
+        The full pipeline from query to response. Each stage transforms the data to improve relevance.
+      </p>
+    </div>
+    
+    <!-- Pipeline Visualization -->
+    <div class="rv bg-spark-card border border-spark-border rounded-2xl p-6 overflow-x-auto">
+      <div id="pipeline-flow" class="flex items-center justify-start gap-2 min-w-max py-8 px-4">
+        <!-- Stage 0: User Query -->
+        <div class="pstage flex flex-col items-center">
+          <div class="sbox w-20 h-20 bg-spark-purple/20 border-2 border-spark-border rounded-xl flex flex-col items-center justify-center">
+            <span class="text-2xl">👤</span>
+            <span class="text-xs text-spark-muted mt-1">User</span>
+          </div>
+          <span class="text-xs text-spark-muted mt-2 font-mono">S0</span>
+        </div>
+        <span class="parr text-spark-muted">→</span>
+        
+        <!-- Stage 1: Query Cleaning -->
+        <div class="pstage flex flex-col items-center">
+          <div class="sbox w-20 h-20 bg-spark-card border-2 border-spark-border rounded-xl flex flex-col items-center justify-center">
+            <span class="text-2xl">🧹</span>
+            <span class="text-xs text-spark-muted mt-1">Clean</span>
+          </div>
+          <span class="text-xs text-spark-muted mt-2 font-mono">S1</span>
+        </div>
+        <span class="parr text-spark-muted">→</span>
+        
+        <!-- Stage 2: HyDE -->
+        <div class="pstage flex flex-col items-center">
+          <div class="sbox w-20 h-20 bg-spark-card border-2 border-spark-border rounded-xl flex flex-col items-center justify-center">
+            <span class="text-2xl">📄</span>
+            <span class="text-xs text-spark-muted mt-1">HyDE</span>
+          </div>
+          <span class="text-xs text-spark-muted mt-2 font-mono">S2</span>
+        </div>
+        <span class="parr text-spark-muted">→</span>
+        
+        <!-- Stage 3: Multi-Query -->
+        <div class="pstage flex flex-col items-center">
+          <div class="sbox w-20 h-20 bg-spark-card border-2 border-spark-border rounded-xl flex flex-col items-center justify-center">
+            <span class="text-2xl">🔀</span>
+            <span class="text-xs text-spark-muted mt-1">Multi-Q</span>
+          </div>
+          <span class="text-xs text-spark-muted mt-2 font-mono">S3</span>
+        </div>
+        <span class="parr text-spark-muted">→</span>
+        
+        <!-- Stage 4: Embedding -->
+        <div class="pstage flex flex-col items-center">
+          <div class="sbox w-20 h-20 bg-spark-accent/20 border-2 border-spark-accent rounded-xl flex flex-col items-center justify-center">
+            <span class="text-2xl">🧠</span>
+            <span class="text-xs text-spark-muted mt-1">Embed</span>
+          </div>
+          <span class="text-xs text-spark-muted mt-2 font-mono">S4</span>
+        </div>
+        <span class="parr text-spark-muted">→</span>
+        
+        <!-- Stage 5: Pool Search -->
+        <div class="pstage flex flex-col items-center">
+          <div class="sbox w-20 h-20 bg-spark-card border-2 border-spark-border rounded-xl flex flex-col items-center justify-center">
+            <span class="text-2xl">🗄️</span>
+            <span class="text-xs text-spark-muted mt-1">Pools</span>
+          </div>
+          <span class="text-xs text-spark-muted mt-2 font-mono">S5</span>
+        </div>
+        <span class="parr text-spark-muted">→</span>
+        
+        <!-- Stage 6: Hybrid Search -->
+        <div class="pstage flex flex-col items-center">
+          <div class="sbox w-20 h-20 bg-spark-card border-2 border-spark-border rounded-xl flex flex-col items-center justify-center">
+            <span class="text-2xl">⚡</span>
+            <span class="text-xs text-spark-muted mt-1">Hybrid</span>
+          </div>
+          <span class="text-xs text-spark-muted mt-2 font-mono">S6</span>
+        </div>
+        <span class="parr text-spark-muted">→</span>
+        
+        <!-- Stage 7: RRF Fusion -->
+        <div class="pstage flex flex-col items-center">
+          <div class="sbox w-20 h-20 bg-spark-card border-2 border-spark-border rounded-xl flex flex-col items-center justify-center">
+            <span class="text-2xl">🔗</span>
+            <span class="text-xs text-spark-muted mt-1">RRF</span>
+          </div>
+          <span class="text-xs text-spark-muted mt-2 font-mono">S7</span>
+        </div>
+        <span class="parr text-spark-muted">→</span>
+        
+        <!-- Stage 8: Source Weight -->
+        <div class="pstage flex flex-col items-center">
+          <div class="sbox w-20 h-20 bg-spark-card border-2 border-spark-border rounded-xl flex flex-col items-center justify-center">
+            <span class="text-2xl">⚖️</span>
+            <span class="text-xs text-spark-muted mt-1">Weight</span>
+          </div>
+          <span class="text-xs text-spark-muted mt-2 font-mono">S8</span>
+        </div>
+        <span class="parr text-spark-muted">→</span>
+        
+        <!-- Stage 9: Temporal Decay -->
+        <div class="pstage flex flex-col items-center">
+          <div class="sbox w-20 h-20 bg-spark-card border-2 border-spark-border rounded-xl flex flex-col items-center justify-center">
+            <span class="text-2xl">⏰</span>
+            <span class="text-xs text-spark-muted mt-1">Decay</span>
+          </div>
+          <span class="text-xs text-spark-muted mt-2 font-mono">S9</span>
+        </div>
+        <span class="parr text-spark-muted">→</span>
+        
+        <!-- Stage 10: Gate -->
+        <div class="pstage flex flex-col items-center">
+          <div class="sbox w-20 h-20 bg-spark-amber/20 border-2 border-spark-amber rounded-xl flex flex-col items-center justify-center">
+            <span class="text-2xl">🚦</span>
+            <span class="text-xs text-spark-muted mt-1">Gate</span>
+          </div>
+          <span class="text-xs text-spark-muted mt-2 font-mono">S10</span>
+        </div>
+        <span class="parr text-spark-muted">→</span>
+        
+        <!-- Stage 11: Reranker -->
+        <div class="pstage flex flex-col items-center">
+          <div class="sbox w-20 h-20 bg-spark-green/20 border-2 border-spark-green rounded-xl flex flex-col items-center justify-center">
+            <span class="text-2xl">🎯</span>
+            <span class="text-xs text-spark-muted mt-1">Rerank</span>
+          </div>
+          <span class="text-xs text-spark-muted mt-2 font-mono">S11</span>
+        </div>
+        <span class="parr text-spark-muted">→</span>
+        
+        <!-- Stage 12: MMR -->
+        <div class="pstage flex flex-col items-center">
+          <div class="sbox w-20 h-20 bg-spark-card border-2 border-spark-border rounded-xl flex flex-col items-center justify-center">
+            <span class="text-2xl">🎲</span>
+            <span class="text-xs text-spark-muted mt-1">MMR</span>
+          </div>
+          <span class="text-xs text-spark-muted mt-2 font-mono">S12</span>
+        </div>
+        <span class="parr text-spark-muted">→</span>
+        
+        <!-- Stage 13: Parent Expand -->
+        <div class="pstage flex flex-col items-center">
+          <div class="sbox w-20 h-20 bg-spark-card border-2 border-spark-border rounded-xl flex flex-col items-center justify-center">
+            <span class="text-2xl">📦</span>
+            <span class="text-xs text-spark-muted mt-1">Expand</span>
+          </div>
+          <span class="text-xs text-spark-muted mt-2 font-mono">S13</span>
+        </div>
+        <span class="parr text-spark-muted">→</span>
+        
+        <!-- Stage 14: Top-K -->
+        <div class="pstage flex flex-col items-center">
+          <div class="sbox w-20 h-20 bg-spark-card border-2 border-spark-border rounded-xl flex flex-col items-center justify-center">
+            <span class="text-2xl">🔝</span>
+            <span class="text-xs text-spark-muted mt-1">Top-K</span>
+          </div>
+          <span class="text-xs text-spark-muted mt-2 font-mono">S14</span>
+        </div>
+        <span class="parr text-spark-muted">→</span>
+        
+        <!-- Stage 15: Response -->
+        <div class="pstage flex flex-col items-center">
+          <div class="sbox w-20 h-20 bg-spark-cyan/20 border-2 border-spark-cyan rounded-xl flex flex-col items-center justify-center">
+            <span class="text-2xl">💬</span>
+            <span class="text-xs text-spark-muted mt-1">Response</span>
+          </div>
+          <span class="text-xs text-spark-muted mt-2 font-mono">S15</span>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Stage Details Grid -->
+    <div class="grid md:grid-cols-3 gap-4 mt-8">
+      <a href="diagrams/pipeline.html" class="rv bg-spark-card border border-spark-border rounded-xl p-6 hover:border-spark-accent transition-colors">
+        <h3 class="font-semibold mb-2">📋 Full Pipeline Details</h3>
+        <p class="text-sm text-spark-muted">Interactive diagram with stage-by-stage breakdown and latency metrics.</p>
+      </a>
+      <a href="diagrams/query.html" class="rv d1 bg-spark-card border border-spark-border rounded-xl p-6 hover:border-spark-accent transition-colors">
+        <h3 class="font-semibold mb-2">🔍 Query Processing</h3>
+        <p class="text-sm text-spark-muted">How queries are cleaned, expanded, and transformed for retrieval.</p>
+      </a>
+      <a href="diagrams/retrieval.html" class="rv d2 bg-spark-card border border-spark-border rounded-xl p-6 hover:border-spark-accent transition-colors">
+        <h3 class="font-semibold mb-2">📚 Retrieval Logic</h3>
+        <p class="text-sm text-spark-muted">Vector search, FTS, hybrid merging, and candidate generation.</p>
+      </a>
+    </div>
+  </div>
+</section>
 
-            // Particles
-            const particles = [];
-            for (let i = 0; i < 12; i++) {
-                particles.push({
-                    stage: 0,
-                    progress: Math.random(),
-                    speed: 0.003 + Math.random() * 0.002,
-                    color: ['#a78bfa', '#3b82f6', '#22c55e', '#f59e0b'][Math.floor(Math.random() * 4)]
-                });
-            }
+<div class="divider"></div>
 
-            function getStagePos(stage, w, h) {
-                return {
-                    x: stage.x * w,
-                    y: stage.y * h
-                };
-            }
+<!-- Gate Logic -->
+<section id="gate" class="py-20 bg-spark-card/30">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="text-center mb-12">
+      <div class="text-sm font-semibold text-spark-amber uppercase tracking-wider mb-2">Dynamic Gating</div>
+      <h2 class="text-3xl md:text-4xl font-bold">Reranker Gate Logic</h2>
+      <p class="text-spark-muted mt-4 max-w-2xl mx-auto">
+        Skip the reranker when vector scores are already confident or tied. Save latency without losing accuracy.
+      </p>
+    </div>
+    
+    <!-- Gate Decision Tree -->
+    <div class="rv bg-spark-card border border-spark-border rounded-2xl p-8">
+      <div class="flex flex-col items-center gap-6">
+        <!-- σ Input -->
+        <div class="bg-spark-bg border-2 border-spark-amber rounded-xl px-8 py-4 text-center">
+          <div class="text-sm text-spark-muted mb-1">Confidence Spread</div>
+          <div class="text-2xl font-mono font-bold">σ = s₁ - sₖ</div>
+        </div>
+        
+        <div class="text-spark-muted text-2xl">↓</div>
+        
+        <!-- Decision -->
+        <div class="bg-spark-amber/10 border-2 border-spark-amber rounded-xl px-8 py-4 text-center">
+          <div class="text-lg font-semibold">Check σ</div>
+        </div>
+        
+        <div class="flex flex-col md:flex-row gap-8 items-center justify-center">
+          <!-- SKIP (High) -->
+          <div class="flex flex-col items-center">
+            <div class="text-spark-muted mb-2">σ &gt; 0.08</div>
+            <div class="bg-spark-green/10 border-2 border-spark-green rounded-xl px-6 py-4 text-center w-48">
+              <div class="text-spark-green font-semibold">SKIP</div>
+              <div class="text-sm text-spark-muted">Vector confident</div>
+            </div>
+          </div>
+          
+          <!-- RUN -->
+          <div class="flex flex-col items-center">
+            <div class="text-spark-muted mb-2">0.02 ≤ σ ≤ 0.08</div>
+            <div class="bg-spark-accent/10 border-2 border-spark-accent rounded-xl px-6 py-4 text-center w-48">
+              <div class="text-spark-accent font-semibold">RUN</div>
+              <div class="text-sm text-spark-muted">Ambiguous set</div>
+            </div>
+          </div>
+          
+          <!-- SKIP (Low) -->
+          <div class="flex flex-col items-center">
+            <div class="text-spark-muted mb-2">σ &lt; 0.02</div>
+            <div class="bg-spark-red/10 border-2 border-spark-red rounded-xl px-6 py-4 text-center w-48">
+              <div class="text-spark-red font-semibold">SKIP</div>
+              <div class="text-sm text-spark-muted">Tied set</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Gate Types -->
+    <div class="grid md:grid-cols-2 gap-6 mt-8">
+      <div class="rv bg-spark-card border border-spark-border rounded-xl p-6">
+        <h3 class="font-semibold text-spark-green mb-3">Hard Gate (Default)</h3>
+        <p class="text-sm text-spark-muted mb-4">
+          Binary decision: skip or run. No middle ground. Simple and effective.
+        </p>
+        <pre class="text-xs"><code>if (σ > 0.08 || σ < 0.02) {
+  skip_reranker();
+} else {
+  run_reranker();
+}</code></pre>
+      </div>
+      <div class="rv d1 bg-spark-card border border-spark-border rounded-xl p-6">
+        <h3 class="font-semibold text-spark-accent mb-3">Soft Gate</h3>
+        <p class="text-sm text-spark-muted mb-4">
+          Dynamic weight adjustment based on σ. Higher σ = more trust in vector.
+        </p>
+        <pre class="text-xs"><code>vector_weight = min(1.0, σ / 0.08);
+reranker_weight = 1.0 - vector_weight;</code></pre>
+      </div>
+    </div>
+    
+    <div class="text-center mt-8">
+      <a href="diagrams/gate.html" class="text-spark-accent hover:underline">View interactive gate diagram →</a>
+    </div>
+  </div>
+</section>
 
-            function draw() {
-                const w = canvas.width / dpr;
-                const h = canvas.height / dpr;
-                
-                ctx.fillStyle = '#12121a';
-                ctx.fillRect(0, 0, w, h);
+<div class="divider"></div>
 
-                // Draw connections
-                ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-                ctx.lineWidth = 2;
-                
-                // Main flow
-                const mainPath = [0, 1, 4, 10, 11, 12, 13, 14, 16, 17];
-                ctx.beginPath();
-                for (let i = 0; i < mainPath.length; i++) {
-                    const pos = getStagePos(stages[mainPath[i]], w, h);
-                    if (i === 0) ctx.moveTo(pos.x, pos.y);
-                    else ctx.lineTo(pos.x, pos.y);
-                }
-                ctx.stroke();
+<!-- Pool Architecture -->
+<section id="pools" class="py-20">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="text-center mb-12">
+      <div class="text-sm font-semibold text-spark-purple uppercase tracking-wider mb-2">Memory Isolation</div>
+      <h2 class="text-3xl md:text-4xl font-bold">Pool Architecture</h2>
+      <p class="text-spark-muted mt-4 max-w-2xl mx-auto">
+        Separate memory pools with different weights and priorities. Mistakes get boosted, rules get filtered.
+      </p>
+    </div>
+    
+    <!-- Pool Grid -->
+    <div class="rv grid md:grid-cols-3 gap-4">
+      <div class="bg-spark-card border border-spark-border rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="text-2xl">🧠</span>
+          <h3 class="font-semibold">Agent Memory</h3>
+        </div>
+        <p class="text-sm text-spark-muted mb-3">General agent context and working memory.</p>
+        <div class="text-xs font-mono bg-spark-bg px-2 py-1 rounded">Weight: 1.0x</div>
+      </div>
+      
+      <div class="bg-spark-card border-2 border-spark-red/50 rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="text-2xl">⚠️</span>
+          <h3 class="font-semibold">Agent Mistakes</h3>
+        </div>
+        <p class="text-sm text-spark-muted mb-3">Past errors and corrections for this agent.</p>
+        <div class="text-xs font-mono bg-spark-red/10 text-spark-red px-2 py-1 rounded">Weight: 1.6x (boosted)</div>
+      </div>
+      
+      <div class="bg-spark-card border-2 border-spark-amber/50 rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="text-2xl">💡</span>
+          <h3 class="font-semibold">Shared Mistakes</h3>
+        </div>
+        <p class="text-sm text-spark-muted mb-3">Cross-agent learned lessons.</p>
+        <div class="text-xs font-mono bg-spark-amber/10 text-spark-amber px-2 py-1 rounded">Weight: 1.5x (boosted)</div>
+      </div>
+      
+      <div class="bg-spark-card border border-spark-border rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="text-2xl">📖</span>
+          <h3 class="font-semibold">Shared Knowledge</h3>
+        </div>
+        <p class="text-sm text-spark-muted mb-3">Reference docs and manuals.</p>
+        <div class="text-xs font-mono bg-spark-bg px-2 py-1 rounded">Weight: 0.8x</div>
+      </div>
+      
+      <div class="bg-spark-card border border-spark-border rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="text-2xl">📜</span>
+          <h3 class="font-semibold">Shared Rules</h3>
+        </div>
+        <p class="text-sm text-spark-muted mb-3">Governing policies and constraints.</p>
+        <div class="text-xs font-mono bg-spark-bg px-2 py-1 rounded">Weight: 1.0x (gated)</div>
+      </div>
+      
+      <div class="bg-spark-card border border-spark-border rounded-xl p-6 flex items-center justify-center">
+        <a href="diagrams/pools.html" class="text-spark-accent hover:underline">View detailed pool diagram →</a>
+      </div>
+    </div>
+  </div>
+</section>
 
-                // Branch paths
-                ctx.beginPath();
-                const pos1 = getStagePos(stages[1], w, h);
-                const posHyde = getStagePos(stages[2], w, h);
-                const posExpand = getStagePos(stages[3], w, h);
-                const posEmbed = getStagePos(stages[4], w, h);
-                ctx.moveTo(pos1.x, pos1.y);
-                ctx.lineTo(posHyde.x, posHyde.y);
-                ctx.lineTo(posEmbed.x, posEmbed.y);
-                ctx.moveTo(pos1.x, pos1.y);
-                ctx.lineTo(posExpand.x, posExpand.y);
-                ctx.lineTo(posEmbed.x, posEmbed.y);
-                ctx.stroke();
+<div class="divider"></div>
 
-                // Parallel pools
-                ctx.beginPath();
-                const posEmbed2 = getStagePos(stages[4], w, h);
-                const pools = [5, 6, 7, 8, 9];
-                const posRRF = getStagePos(stages[10], w, h);
-                for (const p of pools) {
-                    const pos = getStagePos(stages[p], w, h);
-                    ctx.moveTo(posEmbed2.x, posEmbed2.y);
-                    ctx.lineTo(pos.x, pos.y);
-                    ctx.lineTo(posRRF.x, posRRF.y);
-                }
-                ctx.stroke();
+<!-- Score Fusion -->
+<section id="fusion" class="py-20 bg-spark-card/30">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="text-center mb-12">
+      <div class="text-sm font-semibold text-spark-cyan uppercase tracking-wider mb-2">Scale-Invariant</div>
+      <h2 class="text-3xl md:text-4xl font-bold">Score Fusion & Diversity</h2>
+      <p class="text-spark-muted mt-4 max-w-2xl mx-auto">
+        RRF for hybrid merging, MMR for diversity, temporal decay for recency.
+      </p>
+    </div>
+    
+    <div class="grid md:grid-cols-3 gap-6">
+      <!-- RRF -->
+      <div class="rv bg-spark-card border border-spark-border rounded-xl p-6">
+        <h3 class="font-semibold text-spark-green mb-3">Reciprocal Rank Fusion</h3>
+        <p class="text-sm text-spark-muted mb-4">
+          Merge vector and FTS results by rank, not score. Scale-invariant.
+        </p>
+        <div class="bg-spark-bg rounded-lg p-4 font-mono text-sm text-center">
+          RRF(d) = Σ 1/(k + rᵢ)
+        </div>
+        <div class="text-xs text-spark-muted mt-2 text-center">k = 60 (default)</div>
+      </div>
+      
+      <!-- MMR -->
+      <div class="rv d1 bg-spark-card border border-spark-border rounded-xl p-6">
+        <h3 class="font-semibold text-spark-purple mb-3">Maximal Marginal Relevance</h3>
+        <p class="text-sm text-spark-muted mb-4">
+          Balance relevance vs. diversity. Avoid redundant results.
+        </p>
+        <div class="bg-spark-bg rounded-lg p-4 font-mono text-sm text-center">
+          MMR = λ·sim(q,d) - (1-λ)·max sim(d,d')
+        </div>
+        <div class="text-xs text-spark-muted mt-2 text-center">λ = 0.9 (default)</div>
+      </div>
+      
+      <!-- Temporal Decay -->
+      <div class="rv d2 bg-spark-card border border-spark-border rounded-xl p-6">
+        <h3 class="font-semibold text-spark-amber mb-3">Temporal Decay</h3>
+        <p class="text-sm text-spark-muted mb-4">
+          Prioritize recent memories. Gentle exponential decay.
+        </p>
+        <div class="bg-spark-bg rounded-lg p-4 font-mono text-sm text-center">
+          decay = floor + (1-floor)·e^(-rate·age)
+        </div>
+        <div class="text-xs text-spark-muted mt-2 text-center">floor=0.8, rate=0.03</div>
+      </div>
+    </div>
+    
+    <div class="text-center mt-8">
+      <a href="diagrams/fusion.html" class="text-spark-accent hover:underline">View interactive fusion diagram →</a>
+    </div>
+  </div>
+</section>
 
-                // Gate to Rerank branch
-                ctx.beginPath();
-                const posGate = getStagePos(stages[14], w, h);
-                const posRerank = getStagePos(stages[15], w, h);
-                const posMMR = getStagePos(stages[16], w, h);
-                ctx.moveTo(posGate.x, posGate.y);
-                ctx.lineTo(posRerank.x, posRerank.y);
-                ctx.lineTo(posMMR.x, posMMR.y);
-                ctx.stroke();
+<div class="divider"></div>
 
-                // Draw stage boxes
-                for (const stage of stages) {
-                    const pos = getStagePos(stage, w, h);
-                    
-                    ctx.fillStyle = stage.color + '33';
-                    ctx.strokeStyle = stage.color;
-                    ctx.lineWidth = 2;
-                    
-                    const boxW = 60;
-                    const boxH = 30;
-                    
-                    ctx.beginPath();
-                    ctx.roundRect(pos.x - boxW/2, pos.y - boxH/2, boxW, boxH, 6);
-                    ctx.fill();
-                    ctx.stroke();
-                    
-                    ctx.fillStyle = '#fff';
-                    ctx.font = '11px Inter';
-                    ctx.textAlign = 'center';
-                    ctx.textBaseline = 'middle';
-                    ctx.fillText(stage.name, pos.x, pos.y);
-                }
+<!-- Services -->
+<section id="services" class="py-20">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="text-center mb-12">
+      <div class="text-sm font-semibold text-spark-accent uppercase tracking-wider mb-2">Spark Backend</div>
+      <h2 class="text-3xl md:text-4xl font-bold">Service Architecture</h2>
+      <p class="text-spark-muted mt-4 max-w-2xl mx-auto">
+        Self-hosted NVIDIA DGX Spark services. Zero cloud API calls.
+      </p>
+    </div>
+    
+    <!-- Services Grid -->
+    <div class="rv grid md:grid-cols-3 gap-4">
+      <!-- Embedding -->
+      <div class="bg-spark-card border border-spark-border rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="text-2xl">🧠</span>
+          <div>
+            <h3 class="font-semibold">Embedding</h3>
+            <div class="text-xs font-mono text-spark-muted">:18091</div>
+          </div>
+        </div>
+        <p class="text-sm text-spark-muted">llama-embed-nemotron-8b</p>
+        <div class="text-xs text-spark-muted mt-2">4096 dimensions, instruction-aware</div>
+        <a href="diagrams/embedder.html" class="text-xs text-spark-accent hover:underline mt-2 block">How it works →</a>
+      </div>
+      
+      <!-- Reranker -->
+      <div class="bg-spark-card border border-spark-border rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="text-2xl">🎯</span>
+          <div>
+            <h3 class="font-semibold">Reranker</h3>
+            <div class="text-xs font-mono text-spark-muted">:18096</div>
+          </div>
+        </div>
+        <p class="text-sm text-spark-muted">llama-nemotron-rerank-1b-v2</p>
+        <div class="text-xs text-spark-muted mt-2">Cross-encoder, query normalization</div>
+        <a href="diagrams/reranker.html" class="text-xs text-spark-accent hover:underline mt-2 block">How it works →</a>
+      </div>
+      
+      <!-- LLM -->
+      <div class="bg-spark-card border border-spark-border rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="text-2xl">🤖</span>
+          <div>
+            <h3 class="font-semibold">LLM / HyDE</h3>
+            <div class="text-xs font-mono text-spark-muted">:18080</div>
+          </div>
+        </div>
+        <p class="text-sm text-spark-muted">Nemotron-Super-120B</p>
+        <div class="text-xs text-spark-muted mt-2">HyDE generation, multi-query expansion</div>
+      </div>
+      
+      <!-- GLM-OCR -->
+      <div class="bg-spark-card border border-spark-border rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="text-2xl">👁️</span>
+          <div>
+            <h3 class="font-semibold">GLM-OCR</h3>
+            <div class="text-xs font-mono text-spark-muted">:18080</div>
+          </div>
+        </div>
+        <p class="text-sm text-spark-muted">zai-org/GLM-OCR (0.9B)</p>
+        <div class="text-xs text-spark-muted mt-2">PDF parsing, scanned documents</div>
+        <a href="diagrams/ocr.html" class="text-xs text-spark-accent hover:underline mt-2 block">How it works →</a>
+      </div>
+      
+      <!-- NER -->
+      <div class="bg-spark-card border border-spark-border rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="text-2xl">🏷️</span>
+          <div>
+            <h3 class="font-semibold">NER</h3>
+            <div class="text-xs font-mono text-spark-muted">:18112</div>
+          </div>
+        </div>
+        <p class="text-sm text-spark-muted">Named Entity Recognition</p>
+        <div class="text-xs text-spark-muted mt-2">Extract entities from text</div>
+        <a href="diagrams/ner.html" class="text-xs text-spark-accent hover:underline mt-2 block">How it works →</a>
+      </div>
+      
+      <!-- Zero-Shot -->
+      <div class="bg-spark-card border border-spark-border rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="text-2xl">🎲</span>
+          <div>
+            <h3 class="font-semibold">Zero-Shot</h3>
+            <div class="text-xs font-mono text-spark-muted">:18113</div>
+          </div>
+        </div>
+        <p class="text-sm text-spark-muted">bart-large-mnli</p>
+        <div class="text-xs text-spark-muted mt-2">Zero-shot classification</div>
+        <a href="diagrams/zeroshot.html" class="text-xs text-spark-accent hover:underline mt-2 block">How it works →</a>
+      </div>
+      
+      <!-- STT -->
+      <div class="bg-spark-card border border-spark-border rounded-xl p-6">
+        <div class="flex items-center gap-3 mb-3">
+          <span class="text-2xl">🎤</span>
+          <div>
+            <h3 class="font-semibold">STT</h3>
+            <div class="text-xs font-mono text-spark-muted">:18094</div>
+          </div>
+        </div>
+        <p class="text-sm text-spark-muted">Speech-to-Text</p>
+        <div class="text-xs text-spark-muted mt-2">Transcribe audio to text</div>
+      </div>
+    </div>
+  </div>
+</section>
 
-                // Draw particles
-                for (const p of particles) {
-                    const stage = stages[p.stage];
-                    let nextStage = stages[p.stage + 1];
-                    
-                    // Handle branching
-                    if (p.stage === 1) {
-                        // After Clean, branch to HyDE or Expand
-                        nextStage = stages[Math.random() > 0.5 ? 2 : 3];
-                    }
-                    if (p.stage === 2 || p.stage === 3) {
-                        nextStage = stages[4]; // Both converge at Embed
-                    }
-                    if (p.stage >= 5 && p.stage <= 9) {
-                        nextStage = stages[10]; // All pools converge at RRF
-                    }
-                    if (p.stage === 14) {
-                        // Gate decision
-                        nextStage = Math.random() > 0.22 ? stages[16] : stages[15];
-                    }
-                    if (p.stage === 15) {
-                        nextStage = stages[16];
-                    }
-                    
-                    if (!nextStage) {
-                        p.stage = 0;
-                        p.progress = 0;
-                        continue;
-                    }
+<div class="divider"></div>
 
-                    const pos = getStagePos(stage, w, h);
-                    const nextPos = getStagePos(nextStage, w, h);
-                    
-                    const x = pos.x + (nextPos.x - pos.x) * p.progress;
-                    const y = pos.y + (nextPos.y - pos.y) * p.progress;
+<!-- Benchmarks -->
+<section class="py-20 bg-spark-card/30">
+  <div class="max-w-6xl mx-auto px-6">
+    <div class="text-center mb-12">
+      <div class="text-sm font-semibold text-spark-green uppercase tracking-wider mb-2">Performance</div>
+      <h2 class="text-3xl md:text-4xl font-bold">BEIR Benchmarks</h2>
+      <p class="text-spark-muted mt-4 max-w-2xl mx-auto">
+        Tested on SciFact, FiQA, and NFCorpus. Outperforms 2021 SOTA (Contriever) by 16-68%.
+      </p>
+    </div>
+    
+    <div class="rv overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b border-spark-border">
+            <th class="text-left py-3 px-4">Config</th>
+            <th class="text-right py-3 px-4">SciFact NDCG@10</th>
+            <th class="text-right py-3 px-4">FiQA NDCG@10</th>
+            <th class="text-right py-3 px-4">NFCorpus NDCG@10</th>
+            <th class="text-right py-3 px-4">Latency (p50)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="border-b border-spark-border/50">
+            <td class="py-3 px-4 font-semibold text-spark-green">GATE-A (Prod)</td>
+            <td class="text-right py-3 px-4">0.7802</td>
+            <td class="text-right py-3 px-4">0.4218</td>
+            <td class="text-right py-3 px-4">0.3517</td>
+            <td class="text-right py-3 px-4 text-spark-cyan">626ms</td>
+          </tr>
+          <tr class="border-b border-spark-border/50">
+            <td class="py-3 px-4">Config U (Peak)</td>
+            <td class="text-right py-3 px-4 text-spark-green">0.7889</td>
+            <td class="text-right py-3 px-4">0.4356</td>
+            <td class="text-right py-3 px-4">0.3614</td>
+            <td class="text-right py-3 px-4">892ms</td>
+          </tr>
+          <tr class="border-b border-spark-border/50 text-spark-muted">
+            <td class="py-3 px-4">Contriever (2021 SOTA)</td>
+            <td class="text-right py-3 px-4">0.6760</td>
+            <td class="text-right py-3 px-4">0.2520</td>
+            <td class="text-right py-3 px-4">0.2590</td>
+            <td class="text-right py-3 px-4">—</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</section>
 
-                    ctx.beginPath();
-                    ctx.arc(x, y, 4, 0, Math.PI * 2);
-                    ctx.fillStyle = p.color;
-                    ctx.fill();
+<!-- Footer -->
+<footer class="py-12 border-t border-spark-border">
+  <div class="max-w-6xl mx-auto px-6 text-center">
+    <p class="text-spark-muted text-sm">
+      Memory-Spark v0.4.0 — Educational RAG Architecture
+    </p>
+    <p class="text-spark-muted text-xs mt-2">
+      <a href="https://github.com/kleinpanic/memory-spark" class="hover:text-spark-accent">GitHub</a>
+      · <a href="https://github.com/kleinpanic/memory-spark/wiki" class="hover:text-spark-accent">Wiki</a>
+      · <a href="https://github.com/kleinpanic/memory-spark/blob/main/paper/memory-spark.pdf" class="hover:text-spark-accent">Paper</a>
+    </p>
+  </div>
+</footer>
 
-                    // Glow effect
-                    ctx.beginPath();
-                    ctx.arc(x, y, 8, 0, Math.PI * 2);
-                    ctx.fillStyle = p.color + '44';
-                    ctx.fill();
+<!-- Scroll Reveal Script -->
+<script>
+// Intersection Observer for scroll reveals
+const observer = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      entry.target.classList.add('v');
+    }
+  });
+}, { threshold: 0.1 });
 
-                    p.progress += p.speed;
-                    if (p.progress >= 1) {
-                        p.stage++;
-                        if (p.stage >= stages.length) {
-                            p.stage = 0;
-                            p.progress = 0;
-                        } else {
-                            p.progress = 0;
-                        }
-                    }
-                }
+document.querySelectorAll('.rv, .rv-l, .rv-r').forEach(el => observer.observe(el));
 
-                requestAnimationFrame(draw);
-            }
+// Animate pipeline stages
+const pipelineStages = document.querySelectorAll('.pstage');
+const pipelineArrows = document.querySelectorAll('.parr');
 
-            draw();
-        }
-    </script>
+function animatePipeline() {
+  pipelineStages.forEach((stage, i) => {
+    setTimeout(() => {
+      stage.classList.add('on');
+      if (i < pipelineArrows.length) {
+        pipelineArrows[i].classList.add('on');
+      }
+    }, i * 150);
+  });
+}
+
+// Trigger animation when pipeline section is visible
+const pipelineSection = document.getElementById('pipeline');
+const pipelineObserver = new IntersectionObserver((entries) => {
+  entries.forEach(entry => {
+    if (entry.isIntersecting) {
+      animatePipeline();
+      pipelineObserver.unobserve(entry.target);
+    }
+  });
+}, { threshold: 0.2 });
+
+pipelineObserver.observe(pipelineSection);
+
+// Highlight stages on hover
+pipelineStages.forEach(stage => {
+  stage.addEventListener('mouseenter', () => {
+    pipelineStages.forEach(s => s.classList.remove('lit'));
+    stage.classList.add('lit');
+  });
+});
+</script>
+
 </body>
 </html>
