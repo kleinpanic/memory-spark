@@ -1,0 +1,134 @@
+name: Deploy Docs
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Docs Site
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install TeX Live
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y texlive-latex-base texlive-latex-extra texlive-science
+
+      - name: Compile LaTeX paper
+        run: |
+          cd paper
+          pdflatex -interaction=nonstopmode memory-spark.tex || true
+          pdflatex -interaction=nonstopmode memory-spark.tex
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v4
+
+      - name: Build site directory
+        run: |
+          mkdir -p _site
+          
+          # Copy paper PDF
+          cp paper/memory-spark.pdf _site/paper.pdf
+          
+          # Copy benchmarks
+          cp docs/BENCHMARKS.md _site/benchmarks.md 2>/dev/null || echo "# Benchmarks\nSee paper.pdf for results." > _site/benchmarks.md
+          
+          # Create index.html from README
+          cat > _site/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Memory-Spark | RAG Pipeline for OpenClaw</title>
+            <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+            <style>
+              :root {
+                --bg: #0d1117;
+                --fg: #c9d1d9;
+                --accent: #58a6ff;
+                --border: #30363d;
+                --card: #161b22;
+              }
+              body {
+                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif;
+                background: var(--bg);
+                color: var(--fg);
+                max-width: 900px;
+                margin: 0 auto;
+                padding: 2rem;
+              }
+              h1, h2, h3 { border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
+              a { color: var(--accent); }
+              code { background: var(--card); padding: 0.2em 0.4em; border-radius: 6px; }
+              pre { background: var(--card); padding: 1rem; border-radius: 6px; overflow-x: auto; }
+              table { border-collapse: collapse; width: 100%; }
+              th, td { border: 1px solid var(--border); padding: 0.5rem; }
+              img { max-width: 100%; }
+            </style>
+          </head>
+          <body>
+            <div id="content"></div>
+            <script>
+              fetch('https://raw.githubusercontent.com/kleinpanic/memory-spark/main/README.md')
+                .then(r => r.text())
+                .then(text => {
+                  document.getElementById('content').innerHTML = marked.parse(text);
+                });
+            </script>
+          </body>
+          </html>
+          EOF
+          
+          # Create nav page
+          cat > _site/paper.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Memory-Spark Paper</title>
+            <style>
+              body { margin: 0; }
+              iframe { width: 100vw; height: 100vh; border: none; }
+            </style>
+          </head>
+          <body>
+            <iframe src="paper.pdf"></iframe>
+          </body>
+          </html>
+          EOF
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    name: Deploy to GitHub Pages
+    runs-on: ubuntu-latest
+    needs: build
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
