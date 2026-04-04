@@ -1,8 +1,39 @@
-# memory-spark: Current State (2026-04-01)
+# memory-spark: Current State (2026-04-04)
 
 ## Overview
 
 `memory-spark` is a semantic memory system for OpenClaw agents. It provides automatic context recall via vector search (LanceDB), full-text search (BM25), cross-encoder reranking, and diversity filtering (MMR). The system is being benchmarked against the BEIR (Benchmarking Entity Retrieval) standard, specifically the SciFact dataset.
+
+## 2026-04-04 Addendum (Latest Session Handoff)
+
+### Retrieval / reranker gate state (code-aligned)
+- Gate logic in `src/rerank/reranker.ts` (`computeRerankerGate`) uses **top-5 vector scores** and computes spread as:
+  - `σ = max(top5) - min(top5)`
+- Hard-gate thresholds:
+  - `σ > 0.08` → skip reranker (`hard-gate-high`, vector confident)
+  - `σ < 0.02` → skip reranker (`hard-gate-low`, tied set)
+  - `0.02 ≤ σ ≤ 0.08` → pass reranker (`hard-gate-pass`)
+- RRF default constant remains `k=60`; MMR remains relevance-heavy (λ near 0.9 in tuned configs).
+
+### Docs-site educational state (current)
+- `docs-site/index.html` now includes:
+  - long-form educational structure (What/Why/How + 15-stage centerpiece + deep dives)
+  - code-aligned Dynamic Reranker Gate explainer/animation
+  - pool architecture visualization with merge-node spacing adjustments
+  - mobile responsiveness improvements (nav + canvas sizing guards)
+- Recent docs-site stabilization commits include:
+  - `bde5118`, `4d8c565`, `4e59bc7`
+
+### Known in-repo working state notes
+- `paper/memory-spark.pdf` has local modifications during docs/report iteration.
+- Agent-only helper files should not be tracked as project deliverables.
+- `.gitignore` now explicitly ignores agent-context doc patterns (AGENTS/SOUL/USER/etc) and `.git-rewrite/`.
+
+### Next session priority checklist
+1. Verify Gate deep-dive visuals against live GH Pages after build propagation.
+2. Run one final layout pass for Gate/Pool text spacing on smallest mobile viewport.
+3. Decide whether to keep `docs-site/colors.css` + `docs-site/intro-sections.html` as product assets or remove if agent-temp.
+4. Reconcile/commit or discard `paper/memory-spark.pdf` local delta intentionally.
 
 ## Architecture
 
