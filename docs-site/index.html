@@ -3,21 +3,30 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Memory-Spark | RAG Pipeline Architecture</title>
+    <title>Memory-Spark | 15-Stage RAG Pipeline for AI Agents</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         
         :root {
-            /* Base colors */
-            --bg-dark: #050508;
-            --bg-card: #0d0d12;
-            --fg: #e4e4e7;
-            --fg-muted: #71717a;
-            --border: #1a1a1f;
+            /* Memory-Spark Color Palette */
+            --bg-deep: #0a0b10;
+            --bg-elevated: #12141d;
+            --bg-card: #1c1f2e;
             
-            /* Neon accent colors */
+            /* Semantic Colors */
+            --color-memory: #0f766e;
+            --color-spark: #06b6d4;
+            --color-intelligence: #a855f7;
+            --color-success: #10b981;
+            
+            /* Text */
+            --text-primary: #f1f5f9;
+            --text-secondary: #94a3b8;
+            --text-muted: #64748b;
+            
+            /* Accents */
             --neon-blue: #00d4ff;
             --neon-purple: #bf5af2;
             --neon-green: #30d158;
@@ -25,27 +34,34 @@
             --neon-red: #ff453a;
             --neon-cyan: #64d2ff;
             --neon-yellow: #ffd60a;
+            
+            /* Gradients */
+            --grad-flow: linear-gradient(135deg, var(--color-memory) 0%, var(--color-spark) 100%);
+            --grad-neural: radial-gradient(circle at center, var(--color-intelligence) 0%, var(--bg-deep) 100%);
+            --grad-spark-glow: linear-gradient(90deg, #3b82f6 0%, #2dd4bf 100%);
         }
         
+        html { scroll-behavior: smooth; }
+        
         body {
-            font-family: 'Inter', system-ui, sans-serif;
-            background: var(--bg-dark);
-            color: var(--fg);
-            line-height: 1.6;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background: var(--bg-deep);
+            color: var(--text-primary);
+            line-height: 1.7;
             overflow-x: hidden;
         }
         
-        /* Nav */
+        /* NAVIGATION */
         nav {
             position: fixed;
             top: 0;
             left: 0;
             right: 0;
-            z-index: 100;
+            z-index: 1000;
             padding: 1rem 2rem;
-            background: rgba(5,5,8,0.9);
+            background: rgba(10,11,16,0.85);
             backdrop-filter: blur(20px);
-            border-bottom: 1px solid var(--border);
+            border-bottom: 1px solid rgba(255,255,255,0.05);
             display: flex;
             justify-content: space-between;
             align-items: center;
@@ -54,14 +70,14 @@
         .nav-logo {
             font-size: 1.1rem;
             font-weight: 700;
-            color: var(--fg);
+            color: var(--text-primary);
             text-decoration: none;
             display: flex;
             align-items: center;
             gap: 0.5rem;
         }
         
-        .nav-logo span { color: var(--neon-orange); }
+        .nav-logo span { color: var(--color-spark); }
         
         .nav-links {
             display: flex;
@@ -70,120 +86,297 @@
         }
         
         .nav-links a {
-            color: var(--fg-muted);
+            color: var(--text-secondary);
             text-decoration: none;
             font-size: 0.85rem;
             transition: color 0.2s;
         }
         
-        .nav-links a:hover { color: var(--neon-blue); }
+        .nav-links a:hover { color: var(--neon-cyan); }
         
-        /* Hero */
+        /* HERO SECTION */
         .hero {
-            min-height: 60vh;
+            min-height: 100vh;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            padding: 6rem 2rem 2rem;
+            padding: 8rem 2rem 4rem;
             text-align: center;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .hero::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
             background: 
-                radial-gradient(ellipse 100% 80% at 50% 0%, rgba(0,212,255,0.08), transparent 50%),
-                var(--bg-dark);
+                radial-gradient(ellipse 80% 60% at 50% 0%, rgba(6,182,212,0.12), transparent 50%),
+                radial-gradient(ellipse 60% 40% at 70% 20%, rgba(168,85,247,0.08), transparent 40%),
+                radial-gradient(ellipse 50% 30% at 30% 80%, rgba(15,118,110,0.1), transparent 40%);
+            pointer-events: none;
+        }
+        
+        .hero-content { position: relative; z-index: 1; }
+        
+        .hero-badge {
+            display: inline-block;
+            padding: 0.5rem 1.25rem;
+            background: rgba(6,182,212,0.1);
+            border: 1px solid rgba(6,182,212,0.3);
+            border-radius: 50px;
+            font-size: 0.8rem;
+            color: var(--color-spark);
+            margin-bottom: 1.5rem;
+            font-weight: 500;
         }
         
         .hero h1 {
-            font-size: clamp(2rem, 6vw, 4rem);
-            font-weight: 700;
+            font-size: clamp(2.5rem, 7vw, 5rem);
+            font-weight: 800;
             letter-spacing: -0.03em;
-            background: linear-gradient(135deg, #fff 0%, var(--neon-blue) 50%, var(--neon-purple) 100%);
+            line-height: 1.1;
+            margin-bottom: 1rem;
+        }
+        
+        .hero h1 .gradient {
+            background: linear-gradient(135deg, var(--color-spark) 0%, var(--color-intelligence) 50%, var(--color-success) 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
-            margin-bottom: 0.75rem;
         }
         
-        .hero p {
-            font-size: 1.1rem;
-            color: var(--fg-muted);
+        .hero-subtitle {
+            font-size: 1.25rem;
+            color: var(--text-secondary);
             max-width: 600px;
+            margin: 0 auto 2.5rem;
         }
         
-        /* Stats */
+        /* Stats Grid */
         .stats {
             display: flex;
             gap: 3rem;
             flex-wrap: wrap;
             justify-content: center;
-            margin-top: 2rem;
+            margin-top: 3rem;
         }
         
-        .stat { text-align: center; }
+        .stat {
+            text-align: center;
+            padding: 1.5rem;
+            background: rgba(28,31,46,0.5);
+            border: 1px solid rgba(255,255,255,0.05);
+            border-radius: 16px;
+            min-width: 140px;
+        }
         
         .stat-value {
-            font-size: 2rem;
-            font-weight: 700;
-            background: linear-gradient(135deg, var(--neon-green), var(--neon-cyan));
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: var(--grad-flow);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
         
         .stat-label {
             font-size: 0.75rem;
-            color: var(--fg-muted);
+            color: var(--text-muted);
             text-transform: uppercase;
-            letter-spacing: 0.08em;
+            letter-spacing: 0.1em;
+            margin-top: 0.25rem;
         }
         
-        /* Pipeline Canvas Section */
-        #pipeline-section {
+        /* Scroll Indicator */
+        .scroll-indicator {
+            position: absolute;
+            bottom: 2rem;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 0.5rem;
+            color: var(--text-muted);
+            font-size: 0.75rem;
+        }
+        
+        .scroll-indicator::after {
+            content: '';
+            width: 1px;
+            height: 40px;
+            background: linear-gradient(to bottom, var(--color-spark), transparent);
+            animation: scrollPulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes scrollPulse {
+            0%, 100% { opacity: 0.3; transform: scaleY(0.8); }
+            50% { opacity: 1; transform: scaleY(1); }
+        }
+        
+        /* CONTENT SECTIONS */
+        .content-section {
+            padding: 6rem 2rem;
+            max-width: 900px;
+            margin: 0 auto;
             position: relative;
-            background: var(--bg-dark);
+        }
+        
+        .content-section h2 {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.2em;
+            color: var(--color-spark);
+            margin-bottom: 1.5rem;
+        }
+        
+        .content-section p {
+            font-size: 1.15rem;
+            color: var(--text-secondary);
+            margin-bottom: 1.5rem;
+        }
+        
+        .content-section p strong {
+            color: var(--text-primary);
+        }
+        
+        .section-divider {
+            height: 1px;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+            margin: 0 auto;
+            max-width: 600px;
+        }
+        
+        /* PIPELINE SECTION */
+        #pipeline-section {
+            padding: 4rem 0;
+            background: var(--bg-deep);
+            position: relative;
+        }
+        
+        #pipeline-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(ellipse 60% 40% at 50% 30%, rgba(6,182,212,0.05), transparent 50%);
+            pointer-events: none;
+        }
+        
+        .pipeline-header {
+            text-align: center;
+            padding: 2rem;
+            position: relative;
+            z-index: 1;
+        }
+        
+        .pipeline-header h2 {
+            font-size: 2rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+        }
+        
+        .pipeline-header p {
+            color: var(--text-secondary);
         }
         
         #pipeline {
             width: 100%;
             height: 900px;
             display: block;
+            position: relative;
+            z-index: 1;
         }
         
-        /* Section Labels */
-        .section-label {
-            position: absolute;
-            left: 2rem;
-            font-size: 0.7rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.15em;
-            color: var(--fg-muted);
-            opacity: 0.6;
+        /* DEEP DIVE SECTIONS */
+        .deep-dive {
+            padding: 6rem 2rem;
+            position: relative;
         }
         
-        /* Diagram Links */
-        /* Section styles for single-page */
-        .content-section {
-            padding: 4rem 2rem;
-            max-width: 1200px;
+        .deep-dive:nth-child(even) {
+            background: var(--bg-elevated);
+        }
+        
+        .deep-dive-header {
+            text-align: center;
+            margin-bottom: 3rem;
+        }
+        
+        .deep-dive-header h2 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+        
+        .deep-dive-header p {
+            color: var(--text-secondary);
+        }
+        
+        .deep-dive-canvas {
+            width: 100%;
+            height: 400px;
+            display: block;
+            margin: 2rem auto;
+            max-width: 800px;
+            border-radius: 16px;
+            background: rgba(10,11,16,0.5);
+            border: 1px solid rgba(255,255,255,0.05);
+        }
+        
+        .deep-dive-content {
+            max-width: 800px;
             margin: 0 auto;
         }
         
-        .content-section h2 {
-            font-size: 1.75rem;
+        .deep-dive-content p {
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+        }
+        
+        /* Formula Boxes */
+        .formula-box {
+            background: linear-gradient(135deg, rgba(6,182,212,0.05), rgba(168,85,247,0.03));
+            border: 1px solid rgba(255,255,255,0.08);
+            border-radius: 16px;
+            padding: 2rem;
+            text-align: center;
+            margin: 2rem 0;
+        }
+        
+        .formula-box h3 {
+            font-size: 1rem;
+            margin-bottom: 1rem;
             font-weight: 600;
-            margin-bottom: 0.5rem;
-            text-align: center;
         }
         
-        .content-section .subtitle {
-            color: var(--fg-muted);
-            text-align: center;
-            margin-bottom: 2rem;
+        .formula {
+            font-family: 'Times New Roman', serif;
+            font-size: 1.5rem;
+            color: var(--neon-cyan);
+            margin: 1rem 0;
         }
         
-        /* Gate cards */
+        .formula-note {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+        
+        /* Gate Cards */
         .gate-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 1.5rem;
+            max-width: 1000px;
+            margin: 2rem auto;
         }
         
         @media (max-width: 800px) {
@@ -192,7 +385,7 @@
         
         .gate-card {
             background: var(--bg-card);
-            border: 1px solid var(--border);
+            border: 1px solid rgba(255,255,255,0.08);
             border-radius: 16px;
             padding: 1.5rem;
             text-align: center;
@@ -200,7 +393,7 @@
         
         .gate-condition {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 1.25rem;
+            font-size: 1.1rem;
             font-weight: 600;
             margin-bottom: 0.75rem;
         }
@@ -210,7 +403,7 @@
         .gate-condition.ambiguous { color: var(--neon-red); }
         
         .gate-desc {
-            color: var(--fg-muted);
+            color: var(--text-secondary);
             font-size: 0.9rem;
             margin-bottom: 1rem;
         }
@@ -220,7 +413,7 @@
             padding: 0.5rem 1rem;
             border-radius: 8px;
             font-weight: 600;
-            font-size: 0.85rem;
+            font-size: 0.8rem;
         }
         
         .gate-result.skip {
@@ -233,11 +426,13 @@
             color: var(--neon-red);
         }
         
-        /* Pool grid */
+        /* Pool Cards */
         .pool-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 1rem;
+            max-width: 1000px;
+            margin: 2rem auto;
         }
         
         @media (max-width: 800px) {
@@ -246,7 +441,7 @@
         
         .pool-card {
             background: var(--bg-card);
-            border: 1px solid var(--border);
+            border: 1px solid rgba(255,255,255,0.08);
             border-radius: 12px;
             padding: 1.25rem;
         }
@@ -261,67 +456,100 @@
         
         .pool-card .weight {
             font-family: 'JetBrains Mono', monospace;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             opacity: 0.8;
+            margin-bottom: 0.5rem;
         }
         
         .pool-card ul {
             list-style: none;
-            color: var(--fg-muted);
+            color: var(--text-muted);
             font-size: 0.85rem;
         }
         
         .pool-card li {
             padding: 0.4rem 0;
-            border-bottom: 1px solid var(--border);
+            border-bottom: 1px solid rgba(255,255,255,0.05);
         }
         
         .pool-card li:last-child { border-bottom: none; }
         
-        /* Formula box */
-        .formula-box {
-            background: linear-gradient(135deg, rgba(0,212,255,0.05), rgba(191,90,242,0.03));
-            border: 1px solid var(--border);
+        /* BENCHMARKS */
+        .benchmarks-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            max-width: 1000px;
+            margin: 2rem auto;
+        }
+        
+        @media (max-width: 800px) {
+            .benchmarks-grid { grid-template-columns: 1fr; }
+        }
+        
+        .benchmark-card {
+            background: var(--bg-card);
+            border: 1px solid rgba(255,255,255,0.08);
             border-radius: 16px;
-            padding: 2rem;
+            padding: 1.5rem;
             text-align: center;
-            margin: 1.5rem 0;
         }
         
-        .formula {
-            font-family: 'Times New Roman', serif;
-            font-size: 1.75rem;
-            color: var(--neon-cyan);
-            margin: 1rem 0;
+        .benchmark-dataset {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin-bottom: 0.5rem;
         }
         
-        .formula-note {
-            color: var(--fg-muted);
-            font-size: 0.9rem;
+        .benchmark-value {
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: var(--grad-flow);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
         
-        /* Footer */
+        .benchmark-metric {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+        
+        .benchmark-lift {
+            margin-top: 0.75rem;
+            font-size: 0.8rem;
+            color: var(--neon-green);
+        }
+        
+        /* FOOTER */
         footer {
             text-align: center;
-            padding: 2rem;
-            border-top: 1px solid var(--border);
-            background: var(--bg-card);
+            padding: 3rem 2rem;
+            border-top: 1px solid rgba(255,255,255,0.05);
+            background: var(--bg-elevated);
         }
         
         .footer-links {
             display: flex;
             justify-content: center;
             gap: 2rem;
+            margin-bottom: 1rem;
         }
         
         .footer-links a {
-            color: var(--fg-muted);
+            color: var(--text-secondary);
             text-decoration: none;
-            font-size: 0.85rem;
+            font-size: 0.9rem;
             transition: color 0.2s;
         }
         
-        .footer-links a:hover { color: var(--neon-blue); }
+        .footer-links a:hover { color: var(--neon-cyan); }
+        
+        .footer-copy {
+            color: var(--text-muted);
+            font-size: 0.8rem;
+        }
     </style>
 </head>
 <body>
@@ -331,41 +559,115 @@
         <span>⚡</span> Memory-Spark
     </a>
     <ul class="nav-links">
+        <li><a href="#what">What</a></li>
+        <li><a href="#why">Why</a></li>
         <li><a href="#pipeline-section">Pipeline</a></li>
-        <li><a href="diagrams/gate.html">Gate</a></li>
-        <li><a href="diagrams/pools.html">Pools</a></li>
-        <li><a href="diagrams/fusion.html">Fusion</a></li>
+        <li><a href="#gate-deep-dive">Gate</a></li>
+        <li><a href="#fusion-deep-dive">Fusion</a></li>
+        <li><a href="#benchmarks">Benchmarks</a></li>
     </ul>
 </nav>
 
-<div class="hero">
-    <h1>15-Stage RAG Pipeline</h1>
-    <p>Educational architecture for visual learners. Trace the query from USER through retrieval, fusion, gating, and back to USER.</p>
-    <div class="stats">
-        <div class="stat">
-            <div class="stat-value">78.9%</div>
-            <div class="stat-label">NDCG@10</div>
-        </div>
-        <div class="stat">
-            <div class="stat-value">626ms</div>
-            <div class="stat-label">P50 Latency</div>
-        </div>
-        <div class="stat">
-            <div class="stat-value">78%</div>
-            <div class="stat-label">Gate Skip Rate</div>
+<!-- HERO SECTION -->
+<section class="hero">
+    <div class="hero-content">
+        <div class="hero-badge">v0.4.0 Production Ready</div>
+        <h1>
+            <span class="gradient">Memory-Spark</span>
+        </h1>
+        <p class="hero-subtitle">
+            A 15-stage RAG pipeline that transforms chaotic data into precision retrieval for autonomous AI agents.
+        </p>
+        
+        <div class="stats">
+            <div class="stat">
+                <div class="stat-value">78.9%</div>
+                <div class="stat-label">NDCG@10</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">626ms</div>
+                <div class="stat-label">P50 Latency</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">78%</div>
+                <div class="stat-label">Gate Skip Rate</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value">+33%</div>
+                <div class="stat-label">vs 2021 SOTA</div>
+            </div>
         </div>
     </div>
-</div>
+    
+    <div class="scroll-indicator">
+        Scroll to explore
+    </div>
+</section>
 
-<!-- PIPELINE CANVAS -->
+<div class="section-divider"></div>
+
+<!-- WHAT IS IT? -->
+<section class="content-section" id="what">
+    <h2>What Is It?</h2>
+    <p>
+        Memory-Spark is a high-performance, multi-stage retrieval engine designed specifically for the next generation of autonomous AI agents. While traditional search systems focus on simple keyword matching, Memory-Spark acts as a "long-term cognitive memory" layer, allowing agents to navigate massive, unstructured datasets with the precision and speed of a human researcher.
+    </p>
+    <p>
+        The system solves the "context saturation" problem, where AI models are overwhelmed by irrelevant data or lose critical details in long-form conversations. For developers building agentic workflows, Memory-Spark provides a robust infrastructure for managing state, history, and external knowledge.
+    </p>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- WHY DOES IT EXIST? -->
+<section class="content-section" id="why">
+    <h2>Why Does It Exist?</h2>
+    <p>
+        Traditional Retrieval-Augmented Generation (RAG) often suffers from "semantic noise"—retrieving documents that are mathematically similar but contextually irrelevant. Most existing solutions rely on a single-shot vector search that fails to account for the nuance of human intent or the complex relationships within specialized domains.
+    </p>
+    <p>
+        Memory-Spark exists because "good enough" retrieval isn't sufficient for production-grade AI agents. The system treats memory as a multi-stage pipeline, applying rigorous filtering, reranking, and validation at every step. This ensures that the agent receives only the most high-signal information, significantly reducing hallucination rates and improving overall coherence.
+    </p>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- HOW DOES IT WORK? -->
+<section class="content-section" id="how">
+    <h2>How Does It Work?</h2>
+    <p>
+        At the heart of Memory-Spark is a sophisticated 15-stage retrieval pipeline that transforms a simple query into a refined set of actionable insights. The process begins with query expansion and intent classification, followed by parallel retrieval across isolated memory pools. Multiple layers of semantic filtering, cross-encoder reranking, and recursive refinement ensure every piece of data is evaluated against strict relevance gates.
+    </p>
+    <p>
+        Key innovations include <strong>Dynamic Gating</strong> (adjusts retrieval depth based on query complexity), <strong>Reciprocal Rank Fusion (RRF)</strong> (blends vector, keyword, and graph-based searches), and <strong>Pool Isolation</strong> (prevents cross-contamination between knowledge bases).
+    </p>
+</section>
+
+<div class="section-divider"></div>
+
+<!-- 15-STAGE PIPELINE (CENTERPIECE) -->
 <section id="pipeline-section">
+    <div class="pipeline-header">
+        <h2>The 15-Stage Retrieval Pipeline</h2>
+        <p>Click on any stage to learn more about its role in the retrieval process</p>
+    </div>
     <canvas id="pipeline"></canvas>
 </section>
 
-<!-- GATE LOGIC SECTION -->
-<section class="content-section" id="gate-section">
-    <h2>Dynamic Reranker Gate</h2>
-    <p class="subtitle">The key to 50% latency reduction without accuracy loss</p>
+<!-- GATE LOGIC DEEP DIVE -->
+<section class="deep-dive" id="gate-deep-dive">
+    <div class="deep-dive-header">
+        <h2>🚦 Dynamic Reranker Gate</h2>
+        <p>The key to 50% latency reduction without accuracy loss</p>
+    </div>
+    
+    <canvas class="deep-dive-canvas" id="gate-canvas"></canvas>
+    
+    <div class="deep-dive-content">
+        <p>
+            The Dynamic Gate analyzes the <strong>confidence spread</strong> (σ) of the initial vector search results to determine whether the cross-encoder reranker should be invoked. This prevents unnecessary computation when the initial retrieval is already high-confidence.
+        </p>
+    </div>
     
     <div class="gate-grid">
         <div class="gate-card">
@@ -375,7 +677,7 @@
         </div>
         <div class="gate-card">
             <div class="gate-condition tied">σ < 0.02</div>
-            <div class="gate-desc">Tied results — scores are too close. Reranker won't add meaningful signal here.</div>
+            <div class="gate-desc">Tied results — scores are too close. Reranker won't add meaningful signal.</div>
             <div class="gate-result skip">SKIP RERANKER</div>
         </div>
         <div class="gate-card">
@@ -386,10 +688,14 @@
     </div>
 </section>
 
-<!-- POOL ARCHITECTURE SECTION -->
-<section class="content-section" id="pools-section" style="background: var(--bg-card);">
-    <h2>Pool Architecture</h2>
-    <p class="subtitle">6 isolated memory pools with different weights and priorities</p>
+<!-- POOL ARCHITECTURE DEEP DIVE -->
+<section class="deep-dive" id="pools-deep-dive">
+    <div class="deep-dive-header">
+        <h2>🗄️ Pool Architecture</h2>
+        <p>6 isolated memory pools with different weights and priorities</p>
+    </div>
+    
+    <canvas class="deep-dive-canvas" id="pools-canvas"></canvas>
     
     <div class="pool-grid">
         <div class="pool-card" style="border-color: var(--neon-cyan);">
@@ -449,13 +755,17 @@
     </div>
 </section>
 
-<!-- SCORE FUSION SECTION -->
-<section class="content-section" id="fusion-section">
-    <h2>Score Fusion</h2>
-    <p class="subtitle">RRF, MMR diversity, and temporal decay formulas</p>
+<!-- FUSION DEEP DIVE -->
+<section class="deep-dive" id="fusion-deep-dive">
+    <div class="deep-dive-header">
+        <h2>🔗 Score Fusion</h2>
+        <p>RRF, MMR diversity, and temporal decay formulas</p>
+    </div>
+    
+    <canvas class="deep-dive-canvas" id="fusion-canvas"></canvas>
     
     <div class="formula-box">
-        <h3 style="color: var(--neon-orange); font-size: 1rem; margin-bottom: 0.5rem;">Reciprocal Rank Fusion (RRF)</h3>
+        <h3 style="color: var(--neon-orange);">Reciprocal Rank Fusion (RRF)</h3>
         <div class="formula">RRF(d) = Σ 1/(k + rank(d))</div>
         <div class="formula-note">
             Scale-invariant merging of vector and BM25 results. Smoothing constant <strong>k=60</strong>.<br>
@@ -464,7 +774,7 @@
     </div>
     
     <div class="formula-box">
-        <h3 style="color: var(--neon-purple); font-size: 1rem; margin-bottom: 0.5rem;">MMR Diversity (λ=0.9)</h3>
+        <h3 style="color: var(--neon-purple);">MMR Diversity (λ=0.9)</h3>
         <div class="formula">MMR = λ·sim(q,d) - (1-λ)·max sim(d,dᵢ)</div>
         <div class="formula-note">
             Balances relevance vs. redundancy. High λ (0.9) favors relevance.<br>
@@ -473,7 +783,7 @@
     </div>
     
     <div class="formula-box">
-        <h3 style="color: var(--neon-green); font-size: 1rem; margin-bottom: 0.5rem;">Temporal Decay</h3>
+        <h3 style="color: var(--neon-green);">Temporal Decay</h3>
         <div class="formula">score · (0.8 + 0.2·e^(-0.03·age))</div>
         <div class="formula-note">
             Exponential decay with 0.8 floor. Recent memories get boosted.<br>
@@ -482,10 +792,48 @@
     </div>
 </section>
 
-<!-- SERVICES SECTION -->
-<section class="content-section" id="services-section" style="background: var(--bg-card);">
-    <h2>Spark Backend Services</h2>
-    <p class="subtitle">Self-hosted on NVIDIA DGX Spark (zero cloud API calls)</p>
+<!-- BENCHMARKS -->
+<section class="deep-dive" id="benchmarks">
+    <div class="deep-dive-header">
+        <h2>📊 Benchmark Results</h2>
+        <p>Performance on the BEIR benchmark suite</p>
+    </div>
+    
+    <div class="benchmarks-grid">
+        <div class="benchmark-card">
+            <div class="benchmark-dataset">SciFact</div>
+            <div class="benchmark-value">78.9%</div>
+            <div class="benchmark-metric">NDCG@10</div>
+            <div class="benchmark-lift">+16.5% vs Contriever</div>
+        </div>
+        <div class="benchmark-card">
+            <div class="benchmark-dataset">FiQA</div>
+            <div class="benchmark-value">52.8%</div>
+            <div class="benchmark-metric">NDCG@10</div>
+            <div class="benchmark-lift">+68.0% vs Contriever</div>
+        </div>
+        <div class="benchmark-card">
+            <div class="benchmark-dataset">NFCorpus</div>
+            <div class="benchmark-value">44.4%</div>
+            <div class="benchmark-metric">NDCG@10</div>
+            <div class="benchmark-lift">+35.5% vs Contriever</div>
+        </div>
+    </div>
+    
+    <div class="deep-dive-content" style="text-align: center; margin-top: 2rem;">
+        <p style="color: var(--text-muted); font-size: 0.9rem;">
+            Benchmarks run on isolated Docker harness with Nemotron-8B embedding model.<br>
+            Full 36-configuration results available in the <a href="https://github.com/exampleuser/memory-spark/tree/main/evaluation/results" style="color: var(--neon-cyan);">evaluation results</a>.
+        </p>
+    </div>
+</section>
+
+<!-- SERVICES -->
+<section class="deep-dive" id="services">
+    <div class="deep-dive-header">
+        <h2>🔧 Spark Backend Services</h2>
+        <p>Self-hosted on NVIDIA DGX Spark (zero cloud API calls)</p>
+    </div>
     
     <div class="pool-grid">
         <div class="pool-card">
@@ -545,6 +893,9 @@
         <a href="https://github.com/exampleuser/memory-spark/wiki">Wiki</a>
         <a href="https://github.com/exampleuser/memory-spark/blob/main/paper/memory-spark.pdf">Paper</a>
     </div>
+    <div class="footer-copy">
+        Memory-Spark v0.4.0 • Built with Nemotron on NVIDIA DGX Spark
+    </div>
 </footer>
 
 <script>
@@ -555,16 +906,15 @@
     
     // Neon color palette
     const COLORS = {
-        user: '#bf5af2',      // Purple - USER node
-        query: '#00d4ff',     // Cyan - Query processing
-        embed: '#64d2ff',     // Light cyan - Embedding
-        pools: '#30d158',     // Green - Pool search
-        fusion: '#ff9f0a',    // Orange - Fusion stages
-        gate: '#ff453a',      // Red - Gate decision
-        rerank: '#ff453a',    // Red - Reranker
-        mmr: '#bf5af2',       // Purple - MMR
-        response: '#00d4ff',  // Cyan - Response
-        particle: '#ffffff',  // White particles
+        user: '#bf5af2',
+        query: '#00d4ff',
+        embed: '#64d2ff',
+        pools: '#30d158',
+        fusion: '#ff9f0a',
+        gate: '#ff453a',
+        rerank: '#ff453a',
+        mmr: '#bf5af2',
+        response: '#00d4ff',
     };
     
     function resize() {
@@ -579,80 +929,42 @@
     const W = () => canvas.offsetWidth;
     const H = () => canvas.offsetHeight;
     
-    // Background section colors (subtle gradients)
-    const sections = [
-        { y: 0.00, h: 0.18, color: 'rgba(0,212,255,0.02)', label: 'QUERY PROCESSING' },
-        { y: 0.18, h: 0.18, color: 'rgba(48,209,88,0.02)', label: 'POOL SEARCH' },
-        { y: 0.36, h: 0.22, color: 'rgba(255,159,10,0.02)', label: 'FUSION & FILTERING' },
-        { y: 0.58, h: 0.22, color: 'rgba(255,69,58,0.02)', label: 'GATING & RERANKING' },
-        { y: 0.80, h: 0.20, color: 'rgba(191,90,242,0.02)', label: 'DIVERSITY & OUTPUT' },
-    ];
-    
-    // 15 stages with SINGLE USER node
+    // 15 stages
     const stages = [
-        // USER - center left, loops back
-        { id: 'user', name: 'USER', x: 0.08, y: 0.50, w: 100, h: 50, color: COLORS.user, desc: 'Query In', icon: '👤' },
-        
-        // QUERY PROCESSING (row 1)
-        { id: 'query', name: 'Query', x: 0.22, y: 0.08, w: 90, h: 40, color: COLORS.query, desc: 'Ingest' },
-        { id: 'clean', name: 'Clean', x: 0.38, y: 0.08, w: 90, h: 40, color: COLORS.query, desc: 'Normalize' },
-        
-        // Branches
-        { id: 'hyde', name: 'HyDE', x: 0.35, y: 0.16, w: 85, h: 38, color: COLORS.embed, desc: 'Hypothetical', branch: true },
-        { id: 'expand', name: 'Expand', x: 0.52, y: 0.16, w: 85, h: 38, color: COLORS.embed, desc: 'Multi-Query', branch: true },
-        
-        // EMBED
-        { id: 'embed', name: 'Embed', x: 0.68, y: 0.08, w: 90, h: 40, color: COLORS.embed, desc: '4096-dim' },
-        
-        // POOL SEARCH (parallel)
-        { id: 'p1', name: 'Memory', x: 0.18, y: 0.26, w: 80, h: 36, color: COLORS.pools, desc: '1.0x', parallel: true },
-        { id: 'p2', name: 'Mistakes', x: 0.32, y: 0.26, w: 80, h: 36, color: COLORS.pools, desc: '1.6x', parallel: true },
-        { id: 'p3', name: 'Shared', x: 0.46, y: 0.26, w: 80, h: 36, color: COLORS.pools, desc: '1.5x', parallel: true },
-        { id: 'p4', name: 'Rules', x: 0.60, y: 0.26, w: 80, h: 36, color: COLORS.pools, desc: 'gated', parallel: true },
-        { id: 'p5', name: 'FTS', x: 0.74, y: 0.26, w: 80, h: 36, color: COLORS.fusion, desc: 'BM25', parallel: true },
-        
-        // FUSION
-        { id: 'rrf', name: 'RRF', x: 0.50, y: 0.38, w: 100, h: 45, color: COLORS.fusion, desc: 'k=60' },
-        { id: 'dedup', name: 'Dedup', x: 0.50, y: 0.48, w: 100, h: 45, color: COLORS.fusion, desc: 'Jaccard' },
-        
-        // WEIGHTING
-        { id: 'weight', name: 'Weight', x: 0.36, y: 0.58, w: 95, h: 42, color: COLORS.fusion, desc: 'Source boost' },
-        { id: 'decay', name: 'Decay', x: 0.64, y: 0.58, w: 95, h: 42, color: COLORS.fusion, desc: 'Temporal' },
-        
-        // GATE
-        { id: 'gate', name: 'GATE', x: 0.50, y: 0.70, w: 110, h: 50, color: COLORS.gate, desc: 'σ spread', decision: true },
-        
-        // RERANKER (optional)
-        { id: 'rerank', name: 'Rerank', x: 0.30, y: 0.82, w: 95, h: 42, color: COLORS.rerank, desc: 'Cross-enc', optional: true },
-        
-        // MMR
-        { id: 'mmr', name: 'MMR', x: 0.70, y: 0.82, w: 95, h: 42, color: COLORS.mmr, desc: 'λ=0.9' },
-        
-        // RESPONSE (loops back to USER)
-        { id: 'response', name: 'Response', x: 0.88, y: 0.50, w: 90, h: 45, color: COLORS.response, desc: 'To LLM' },
+        { id: 'user', name: 'USER', x: 0.08, y: 0.50, w: 100, h: 50, color: COLORS.user, icon: '👤' },
+        { id: 'query', name: 'Query', x: 0.22, y: 0.08, w: 90, h: 40, color: COLORS.query },
+        { id: 'clean', name: 'Clean', x: 0.38, y: 0.08, w: 90, h: 40, color: COLORS.query },
+        { id: 'hyde', name: 'HyDE', x: 0.35, y: 0.16, w: 85, h: 38, color: COLORS.embed, branch: true },
+        { id: 'expand', name: 'Expand', x: 0.52, y: 0.16, w: 85, h: 38, color: COLORS.embed, branch: true },
+        { id: 'embed', name: 'Embed', x: 0.68, y: 0.08, w: 90, h: 40, color: COLORS.embed },
+        { id: 'p1', name: 'Memory', x: 0.18, y: 0.26, w: 80, h: 36, color: COLORS.pools, parallel: true },
+        { id: 'p2', name: 'Mistakes', x: 0.32, y: 0.26, w: 80, h: 36, color: COLORS.pools, parallel: true },
+        { id: 'p3', name: 'Shared', x: 0.46, y: 0.26, w: 80, h: 36, color: COLORS.pools, parallel: true },
+        { id: 'p4', name: 'Rules', x: 0.60, y: 0.26, w: 80, h: 36, color: COLORS.pools, parallel: true },
+        { id: 'p5', name: 'FTS', x: 0.74, y: 0.26, w: 80, h: 36, color: COLORS.fusion, parallel: true },
+        { id: 'rrf', name: 'RRF', x: 0.50, y: 0.38, w: 100, h: 45, color: COLORS.fusion },
+        { id: 'dedup', name: 'Dedup', x: 0.50, y: 0.48, w: 100, h: 45, color: COLORS.fusion },
+        { id: 'weight', name: 'Weight', x: 0.36, y: 0.58, w: 95, h: 42, color: COLORS.fusion },
+        { id: 'decay', name: 'Decay', x: 0.64, y: 0.58, w: 95, h: 42, color: COLORS.fusion },
+        { id: 'gate', name: 'GATE', x: 0.50, y: 0.70, w: 110, h: 50, color: COLORS.gate, decision: true },
+        { id: 'rerank', name: 'Rerank', x: 0.30, y: 0.82, w: 95, h: 42, color: COLORS.rerank, optional: true },
+        { id: 'mmr', name: 'MMR', x: 0.70, y: 0.82, w: 95, h: 42, color: COLORS.mmr },
+        { id: 'response', name: 'Response', x: 0.88, y: 0.50, w: 90, h: 45, color: COLORS.response },
     ];
     
-    // Connections
     const connections = [
-        // USER to Query
         ['user', 'query'],
-        
-        // Query processing
         ['query', 'clean'],
         ['clean', 'embed'],
         ['clean', 'hyde'],
         ['hyde', 'embed'],
         ['clean', 'expand'],
         ['expand', 'embed'],
-        
-        // To pools
         ['embed', 'p1'],
         ['embed', 'p2'],
         ['embed', 'p3'],
         ['embed', 'p4'],
         ['embed', 'p5'],
-        
-        // Fusion
         ['p1', 'rrf'],
         ['p2', 'rrf'],
         ['p3', 'rrf'],
@@ -661,26 +973,15 @@
         ['rrf', 'dedup'],
         ['dedup', 'weight'],
         ['dedup', 'decay'],
-        
-        // Gate
         ['weight', 'gate'],
         ['decay', 'gate'],
-        
-        // Reranker path
         ['gate', 'rerank'],
-        
-        // MMR path
         ['gate', 'mmr'],
         ['rerank', 'mmr'],
-        
-        // To Response
         ['mmr', 'response'],
-        
-        // LOOP BACK to USER
         ['response', 'user'],
     ];
     
-    // Particle system
     const particles = [];
     
     class Particle {
@@ -719,8 +1020,9 @@
             const x2 = to.x * W();
             const y2 = to.y * H();
             
-            const x = x1 + (x2 - x1) * this.ease(this.t);
-            const y = y1 + (y2 - y1) * this.ease(this.t);
+            const pos = this.getPathPoint(this.fromId, this.toId, x1, y1, x2, y2, this.ease(this.t));
+            const x = pos.x;
+            const y = pos.y;
             
             // Glow
             ctx.beginPath();
@@ -741,41 +1043,56 @@
             ctx.globalAlpha = 1;
         }
         
+        getPathPoint(fromId, toId, x1, y1, x2, y2, t) {
+            let cp1x, cp1y, cp2x, cp2y;
+            let useBezier = true;
+            
+            if (fromId === 'user' && toId === 'query') {
+                cp1x = x1 + 60; cp1y = y1 - 80; cp2x = x2 - 60; cp2y = y2 - 80;
+            } else if (fromId === 'response' && toId === 'user') {
+                cp1x = x1 + 60; cp1y = y1 + 80; cp2x = x2 + 60; cp2y = y2 + 80;
+            } else if (this.getStage(fromId).parallel && toId === 'rrf') {
+                const midY = (y1 + y2) / 2 + 30;
+                cp1x = x1; cp1y = midY; cp2x = x2; cp2y = midY;
+            } else if (fromId === 'embed' && this.getStage(toId).parallel) {
+                const offset = (this.getStage(toId).x - 0.5) * 40;
+                cp1x = x1; cp1y = y1 + 40 + offset; cp2x = x2; cp2y = y2 - 40 - offset;
+            } else if (fromId === 'gate' && toId === 'mmr') {
+                cp1x = x1 + 80; cp1y = y1; cp2x = x2 - 80; cp2y = y2;
+            } else if (fromId === 'gate' && toId === 'rerank') {
+                cp1x = x1 - 80; cp1y = y1; cp2x = x2 + 80; cp2y = y2;
+            } else if (fromId === 'rerank' && toId === 'mmr') {
+                cp1x = x1; cp1y = y1 + 50; cp2x = x2; cp2y = y2 + 50;
+            } else if (fromId === 'dedup' && toId === 'weight') {
+                cp1x = x1 - 40; cp1y = y1 + 30; cp2x = x2 + 40; cp2y = y2 - 30;
+            } else if (fromId === 'dedup' && toId === 'decay') {
+                cp1x = x1 + 40; cp1y = y1 + 30; cp2x = x2 - 40; cp2y = y2 - 30;
+            } else if (fromId === 'mmr' && toId === 'response') {
+                cp1x = x1 + 60; cp1y = y1 - 20; cp2x = x2 - 60; cp2y = y2 + 20;
+            } else if (Math.abs(y2 - y1) > 50) {
+                const midY = (y1 + y2) / 2;
+                cp1x = x1; cp1y = midY; cp2x = x2; cp2y = midY;
+            } else {
+                useBezier = false;
+            }
+            
+            if (useBezier) {
+                const mt = 1 - t;
+                const x = mt*mt*mt*x1 + 3*mt*mt*t*cp1x + 3*mt*t*t*cp2x + t*t*t*x2;
+                const y = mt*mt*mt*y1 + 3*mt*mt*t*cp1y + 3*mt*t*t*cp2y + t*t*t*y2;
+                return { x, y };
+            }
+            return { x: x1 + (x2 - x1) * t, y: y1 + (y2 - y1) * t };
+        }
+        
         ease(t) {
             return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
         }
     }
     
     function drawBackground() {
-        // Clear
-        ctx.fillStyle = '#050508';
+        ctx.fillStyle = '#0a0b10';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        // Section backgrounds
-        sections.forEach(section => {
-            const y = section.y * H();
-            const h = section.h * H();
-            
-            ctx.fillStyle = section.color;
-            ctx.fillRect(0, y, W(), h);
-            
-            // Section label
-            ctx.fillStyle = 'rgba(255,255,255,0.15)';
-            ctx.font = '500 9px Inter';
-            ctx.textAlign = 'left';
-            ctx.fillText(section.label, 16, y + 16);
-        });
-        
-        // Vertical section dividers
-        ctx.strokeStyle = 'rgba(255,255,255,0.03)';
-        ctx.lineWidth = 1;
-        sections.forEach(section => {
-            const y = section.y * H();
-            ctx.beginPath();
-            ctx.moveTo(0, y);
-            ctx.lineTo(W(), y);
-            ctx.stroke();
-        });
     }
     
     function drawConnections() {
@@ -792,50 +1109,38 @@
             ctx.beginPath();
             ctx.moveTo(x1, y1);
             
-            // Route around blocks using bezier curves
+            let cp1x, cp1y, cp2x, cp2y;
+            
             if (fromId === 'user' && toId === 'query') {
-                // USER to Query - curve up and over
                 ctx.bezierCurveTo(x1 + 60, y1 - 80, x2 - 60, y2 - 80, x2, y2);
             } else if (fromId === 'response' && toId === 'user') {
-                // Response back to USER - curve down and under
                 ctx.bezierCurveTo(x1 + 60, y1 + 80, x2 + 60, y2 + 80, x2, y2);
             } else if (from.parallel && to.id === 'rrf') {
-                // Pool to RRF - curve to avoid other pools
                 const midY = (y1 + y2) / 2 + 30;
                 ctx.bezierCurveTo(x1, midY, x2, midY, x2, y2);
-            } else if (from.id === 'embed' && to.parallel) {
-                // Embed to pools - spread out vertically
+            } else if (fromId === 'embed' && to.parallel) {
                 const offset = (to.x - 0.5) * 40;
                 ctx.bezierCurveTo(x1, y1 + 40 + offset, x2, y2 - 40 - offset, x2, y2);
-            } else if (from.id === 'gate' && to.id === 'mmr') {
-                // Gate to MMR - curve right
+            } else if (fromId === 'gate' && toId === 'mmr') {
                 ctx.bezierCurveTo(x1 + 80, y1, x2 - 80, y2, x2, y2);
-            } else if (from.id === 'gate' && to.id === 'rerank') {
-                // Gate to Rerank - curve left
+            } else if (fromId === 'gate' && toId === 'rerank') {
                 ctx.bezierCurveTo(x1 - 80, y1, x2 + 80, y2, x2, y2);
-            } else if (from.id === 'rerank' && to.id === 'mmr') {
-                // Rerank to MMR - curve under
+            } else if (fromId === 'rerank' && toId === 'mmr') {
                 ctx.bezierCurveTo(x1, y1 + 50, x2, y2 + 50, x2, y2);
-            } else if (from.id === 'dedup' && to.id === 'weight') {
-                // Dedup to Weight - curve left
+            } else if (fromId === 'dedup' && toId === 'weight') {
                 ctx.bezierCurveTo(x1 - 40, y1 + 30, x2 + 40, y2 - 30, x2, y2);
-            } else if (from.id === 'dedup' && to.id === 'decay') {
-                // Dedup to Decay - curve right
+            } else if (fromId === 'dedup' && toId === 'decay') {
                 ctx.bezierCurveTo(x1 + 40, y1 + 30, x2 - 40, y2 - 30, x2, y2);
-            } else if (from.id === 'mmr' && to.id === 'response') {
-                // MMR to Response
+            } else if (fromId === 'mmr' && toId === 'response') {
                 ctx.bezierCurveTo(x1 + 60, y1 - 20, x2 - 60, y2 + 20, x2, y2);
             } else if (Math.abs(y2 - y1) > 50) {
-                // Vertical movement - use S-curve
                 const midY = (y1 + y2) / 2;
                 ctx.bezierCurveTo(x1, midY, x2, midY, x2, y2);
             } else {
-                // Simple diagonal or horizontal
                 ctx.lineTo(x2, y2);
             }
             
-            // Draw with glow effect
-            ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+            ctx.strokeStyle = 'rgba(255,255,255,0.06)';
             ctx.lineWidth = 3;
             ctx.stroke();
             
@@ -852,18 +1157,16 @@
             const x = stage.x * W() - stage.w / 2;
             const y = stage.y * H() - stage.h / 2;
             
-            // Glow for decision nodes
             if (stage.decision) {
                 ctx.shadowColor = stage.color;
                 ctx.shadowBlur = 25;
             }
             
-            // Box background
             ctx.fillStyle = stage.branch ? 'rgba(100,210,255,0.08)' :
                             stage.parallel ? 'rgba(48,209,88,0.08)' :
                             stage.decision ? 'rgba(255,69,58,0.1)' :
                             stage.optional ? 'rgba(255,69,58,0.06)' :
-                            'rgba(13,13,18,0.95)';
+                            'rgba(28,31,46,0.95)';
             
             ctx.strokeStyle = stage.color;
             ctx.lineWidth = stage.decision ? 2.5 : 1.5;
@@ -875,25 +1178,16 @@
             
             ctx.shadowBlur = 0;
             
-            // Icon
             if (stage.icon) {
                 ctx.font = '22px sans-serif';
                 ctx.textAlign = 'center';
                 ctx.fillText(stage.icon, stage.x * W(), stage.y * H() - 6);
             }
             
-            // Name
             ctx.fillStyle = '#fff';
             ctx.font = '600 11px Inter';
             ctx.textAlign = 'center';
             ctx.fillText(stage.name, stage.x * W(), stage.y * H() + (stage.icon ? 12 : 2));
-            
-            // Description
-            if (!stage.icon) {
-                ctx.fillStyle = 'rgba(255,255,255,0.4)';
-                ctx.font = '400 9px Inter';
-                ctx.fillText(stage.desc, stage.x * W(), stage.y * H() + 14);
-            }
         });
     }
     
@@ -904,7 +1198,6 @@
         drawConnections();
         drawStages();
         
-        // Particles
         for (let i = particles.length - 1; i >= 0; i--) {
             if (!particles[i].update()) {
                 particles.splice(i, 1);
@@ -913,9 +1206,202 @@
             }
         }
         
-        // Spawn from USER
         if (Math.random() < 0.025) {
             particles.push(new Particle('user', 'query'));
+        }
+        
+        requestAnimationFrame(animate);
+    }
+    
+    animate();
+})();
+
+// Gate Deep Dive Animation
+(function() {
+    const canvas = document.getElementById('gate-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    
+    function resize() {
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        ctx.scale(dpr, dpr);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+    
+    const W = () => canvas.offsetWidth;
+    const H = () => canvas.offsetHeight;
+    
+    // Gate visualization - showing σ spread
+    const particles = [];
+    
+    class GateParticle {
+        constructor() {
+            this.x = W() * 0.2;
+            this.y = H() * 0.5;
+            this.scores = [];
+            for (let i = 0; i < 5; i++) {
+                this.scores.push(0.5 + Math.random() * 0.5);
+            }
+            this.spread = Math.max(...this.scores) - Math.min(...this.scores);
+            this.t = 0;
+            this.speed = 0.01 + Math.random() * 0.005;
+        }
+        
+        update() {
+            this.t += this.speed;
+            return this.t < 1;
+        }
+        
+        draw(ctx) {
+            const x = this.x + (W() * 0.6) * this.t;
+            const y = this.y;
+            
+            // Draw scores as dots
+            const spreadY = this.spread * 50;
+            
+            // Glow
+            ctx.beginPath();
+            ctx.arc(x, y, 20, 0, Math.PI * 2);
+            ctx.fillStyle = this.spread > 0.08 ? 'rgba(48,209,88,0.2)' : 
+                            this.spread < 0.02 ? 'rgba(255,159,10,0.2)' : 'rgba(255,69,58,0.2)';
+            ctx.fill();
+            
+            // Core
+            ctx.beginPath();
+            ctx.arc(x, y, 8, 0, Math.PI * 2);
+            ctx.fillStyle = '#fff';
+            ctx.globalAlpha = 0.9;
+            ctx.fill();
+            ctx.globalAlpha = 1;
+        }
+    }
+    
+    function animate() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw gate box
+        ctx.strokeStyle = 'rgba(255,69,58,0.5)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.roundRect(W() * 0.35, H() * 0.2, W() * 0.3, H() * 0.6, 12);
+        ctx.stroke();
+        
+        // Labels
+        ctx.fillStyle = '#fff';
+        ctx.font = '600 12px Inter';
+        ctx.textAlign = 'center';
+        ctx.fillText('σ', W() * 0.5, H() * 0.5);
+        
+        if (Math.random() < 0.03) {
+            particles.push(new GateParticle());
+        }
+        
+        for (let i = particles.length - 1; i >= 0; i--) {
+            if (!particles[i].update()) {
+                particles.splice(i, 1);
+            } else {
+                particles[i].draw(ctx);
+            }
+        }
+        
+        requestAnimationFrame(animate);
+    }
+    
+    animate();
+})();
+
+// Fusion Deep Dive Animation
+(function() {
+    const canvas = document.getElementById('fusion-canvas');
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    
+    function resize() {
+        const rect = canvas.getBoundingClientRect();
+        canvas.width = rect.width * dpr;
+        canvas.height = rect.height * dpr;
+        ctx.scale(dpr, dpr);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+    
+    const W = () => canvas.offsetWidth;
+    const H = () => canvas.offsetHeight;
+    
+    const particles = [];
+    
+    class FusionParticle {
+        constructor(type) {
+            this.type = type; // 'vector' or 'bm25'
+            this.x = type === 'vector' ? W() * 0.2 : W() * 0.2;
+            this.y = type === 'vector' ? H() * 0.3 : H() * 0.7;
+            this.t = 0;
+            this.speed = 0.008 + Math.random() * 0.004;
+            this.color = type === 'vector' ? '#00d4ff' : '#ff9f0a';
+        }
+        
+        update() {
+            this.t += this.speed;
+            if (this.t >= 1) return false;
+            return true;
+        }
+        
+        draw(ctx) {
+            const midX = W() * 0.5;
+            const endX = W() * 0.8;
+            const midY = H() * 0.5;
+            
+            // Path: start → merge → end
+            let x, y;
+            if (this.t < 0.5) {
+                x = this.x + (midX - this.x) * (this.t * 2);
+                y = this.y + (midY - this.y) * (this.t * 2);
+            } else {
+                x = midX + (endX - midX) * ((this.t - 0.5) * 2);
+                y = midY;
+            }
+            
+            ctx.beginPath();
+            ctx.arc(x, y, 6, 0, Math.PI * 2);
+            ctx.fillStyle = this.color;
+            ctx.globalAlpha = 0.8;
+            ctx.shadowColor = this.color;
+            ctx.shadowBlur = 10;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            ctx.globalAlpha = 1;
+        }
+    }
+    
+    function animate() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        // Draw merge point
+        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(W() * 0.5, H() * 0.3);
+        ctx.lineTo(W() * 0.5, H() * 0.7);
+        ctx.stroke();
+        
+        if (Math.random() < 0.05) {
+            particles.push(new FusionParticle('vector'));
+        }
+        if (Math.random() < 0.05) {
+            particles.push(new FusionParticle('bm25'));
+        }
+        
+        for (let i = particles.length - 1; i >= 0; i--) {
+            if (!particles[i].update()) {
+                particles.splice(i, 1);
+            } else {
+                particles[i].draw(ctx);
+            }
         }
         
         requestAnimationFrame(animate);
