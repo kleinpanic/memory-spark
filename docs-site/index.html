@@ -2390,7 +2390,7 @@
     animate();
 })();
 
-// Fusion Deep Dive Animation
+// Fusion Deep Dive Animation - Educational RRF Demo
 (function() {
     const canvas = document.getElementById('fusion-canvas');
     if (!canvas) return;
@@ -2409,106 +2409,176 @@
     const W = () => canvas.offsetWidth;
     const H = () => canvas.offsetHeight;
     
+    // Sample documents showing how RRF works
+    const docs = [
+        { id: 'Doc A', vecRank: 1, bm25Rank: 3, vecScore: 0.92, bm25Score: 0.65 },
+        { id: 'Doc B', vecRank: 2, bm25Rank: 1, vecScore: 0.88, bm25Score: 0.85 },
+        { id: 'Doc C', vecRank: 3, bm25Rank: 2, vecScore: 0.75, bm25Score: 0.70 },
+        { id: 'Doc D', vecRank: 4, bm25Rank: 5, vecScore: 0.65, bm25Score: 0.45 },
+        { id: 'Doc E', vecRank: 5, bm25Rank: 4, vecScore: 0.55, bm25Score: 0.50 },
+    ];
+    
+    // Calculate RRF scores (k=60)
+    const k = 60;
+    docs.forEach(doc => {
+        doc.rrfScore = (1 / (k + doc.vecRank)) + (1 / (k + doc.bm25Rank));
+    });
+    
+    // Sort by RRF score
+    const ranked = [...docs].sort((a, b) => b.rrfScore - a.rrfScore);
+    
     let time = 0;
     
     function drawRRFVisualization() {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        time += 0.02;
+        time += 0.016;
         
-        // Title
-        ctx.fillStyle = '#f1f5f9';
-        ctx.font = 'bold 14px Inter';
-        ctx.textAlign = 'center';
-        ctx.fillText('RRF Score Combination (k=60)', W() / 2, 25);
-        
-        // Draw three columns: Vector, RRF, BM25
         const colWidth = W() / 3;
+        const rowHeight = 32;
+        const startY = 45;
         
-        // Vector scores column
-        ctx.fillStyle = 'rgba(0,212,255,0.1)';
-        ctx.fillRect(20, 50, colWidth - 40, H() - 100);
-        ctx.strokeStyle = 'rgba(0,212,255,0.3)';
-        ctx.strokeRect(20, 50, colWidth - 40, H() - 100);
-        
-        ctx.fillStyle = '#00d4ff';
+        // Headers
         ctx.font = 'bold 11px Inter';
-        ctx.fillText('Vector Scores', colWidth / 2, 70);
+        ctx.textAlign = 'center';
         
-        // BM25 scores column
-        ctx.fillStyle = 'rgba(255,159,10,0.1)';
-        ctx.fillRect(W() - colWidth + 20, 50, colWidth - 40, H() - 100);
-        ctx.strokeStyle = 'rgba(255,159,10,0.3)';
-        ctx.strokeRect(W() - colWidth + 20, 50, colWidth - 40, H() - 100);
+        // Vector column header
+        ctx.fillStyle = 'rgba(0,212,255,0.2)';
+        ctx.fillRect(10, 10, colWidth - 20, 25);
+        ctx.fillStyle = '#00d4ff';
+        ctx.fillText('Vector Ranking', colWidth / 2, 27);
         
-        ctx.fillStyle = '#ff9f0a';
-        ctx.fillText('BM25 Scores', W() - colWidth / 2, 70);
-        
-        // RRF merged column
-        ctx.fillStyle = 'rgba(48,209,88,0.1)';
-        ctx.fillRect(colWidth + 10, 50, colWidth - 20, H() - 100);
-        ctx.strokeStyle = 'rgba(48,209,88,0.3)';
-        ctx.strokeRect(colWidth + 10, 50, colWidth - 20, H() - 100);
-        
+        // RRF column header
+        ctx.fillStyle = 'rgba(48,209,88,0.2)';
+        ctx.fillRect(colWidth + 10, 10, colWidth - 20, 25);
         ctx.fillStyle = '#30d158';
-        ctx.fillText('RRF Merged', W() / 2, 70);
+        ctx.fillText('RRF Score (k=60)', colWidth + colWidth / 2, 27);
         
-        // Draw sample documents with animated scores
-        const docs = [
-            { id: 'Doc A', vec: 0.89, bm25: 0.75, vecRank: 1, bm25Rank: 2 },
-            { id: 'Doc B', vec: 0.72, bm25: 0.88, vecRank: 2, bm25Rank: 1 },
-            { id: 'Doc C', vec: 0.65, bm25: 0.55, vecRank: 3, bm25Rank: 3 },
-            { id: 'Doc D', vec: 0.45, bm25: 0.42, vecRank: 4, bm25Rank: 4 },
-        ];
+        // BM25 column header
+        ctx.fillStyle = 'rgba(255,159,10,0.2)';
+        ctx.fillRect(W() - colWidth + 10, 10, colWidth - 20, 25);
+        ctx.fillStyle = '#ff9f0a';
+        ctx.fillText('BM25 Ranking', W() - colWidth / 2, 27);
         
+        // Draw formula at top
+        ctx.fillStyle = 'rgba(255,255,255,0.7)';
+        ctx.font = '10px JetBrains Mono';
+        ctx.fillText('RRF(d) = 1/(60+rank_vec) + 1/(60+rank_bm25)', W() / 2, H() - 8);
+        
+        // Draw vector ranking
+        ctx.textAlign = 'left';
         docs.forEach((doc, i) => {
-            const y = 100 + i * 50;
-            const pulse = Math.sin(time + i) * 0.05;
+            const y = startY + i * rowHeight;
+            const pulse = Math.sin(time * 2 + i) * 0.1;
             
-            // Vector score bar
-            const vecWidth = (doc.vec + pulse) * (colWidth - 80);
-            ctx.fillStyle = 'rgba(0,212,255,0.6)';
-            ctx.fillRect(30, y, vecWidth, 30);
-            ctx.fillStyle = '#94a3b8';
+            // Rank position
+            ctx.fillStyle = 'rgba(255,255,255,0.3)';
             ctx.font = '10px Inter';
-            ctx.textAlign = 'left';
-            ctx.fillText(`${doc.id}`, 35, y + 20);
-            ctx.fillText(`${doc.vec.toFixed(2)}`, vecWidth + 35, y + 20);
+            ctx.fillText(`#${doc.vecRank}`, 15, y + 14);
             
-            // BM25 score bar
-            const bm25Width = (doc.bm25 + pulse) * (colWidth - 80);
-            ctx.fillStyle = 'rgba(255,159,10,0.6)';
-            ctx.fillRect(W() - colWidth + 30, y, bm25Width, 30);
-            ctx.fillStyle = '#94a3b8';
-            ctx.textAlign = 'left';
-            ctx.fillText(`${doc.bm25.toFixed(2)}`, W() - colWidth + bm25Width + 35, y + 20);
+            // Document ID
+            ctx.fillStyle = '#00d4ff';
+            ctx.font = 'bold 11px Inter';
+            ctx.fillText(doc.id, 40, y + 14);
             
-            // RRF calculation
-            const vecRRF = 1 / (60 + doc.vecRank);
-            const bm25RRF = 1 / (60 + doc.bm25Rank);
-            const totalRRF = vecRRF + bm25RRF;
-            const rrfNorm = totalRRF / 0.033; // Normalize to 0-1
-            
-            const rrfWidth = rrfNorm * (colWidth - 40);
-            ctx.fillStyle = 'rgba(48,209,88,0.6)';
-            ctx.fillRect(colWidth + 20, y, rrfWidth, 30);
-            ctx.fillStyle = '#94a3b8';
-            ctx.textAlign = 'center';
-            ctx.fillText(`RRF=${totalRRF.toFixed(4)}`, colWidth + colWidth / 2, y + 20);
+            // Score bar
+            const barWidth = (doc.vecScore + pulse) * 100;
+            ctx.fillStyle = `rgba(0,212,255,${0.3 + pulse * 0.5})`;
+            ctx.fillRect(40, y + 18, barWidth, 4);
         });
         
-        // Draw formula at bottom
-        ctx.fillStyle = 'rgba(255,255,255,0.7)';
-        ctx.font = '12px JetBrains Mono';
-        ctx.textAlign = 'center';
-        ctx.fillText('RRF(d) = 1/(60+rank_vec) + 1/(60+rank_bm25)', W() / 2, H() - 20);
+        // Draw BM25 ranking
+        const sortedByBM25 = [...docs].sort((a, b) => a.bm25Rank - b.bm25Rank);
+        sortedByBM25.forEach((doc, i) => {
+            const y = startY + i * rowHeight;
+            const pulse = Math.sin(time * 2 + i + 1) * 0.1;
+            
+            // Rank position
+            ctx.fillStyle = 'rgba(255,255,255,0.3)';
+            ctx.font = '10px Inter';
+            ctx.textAlign = 'left';
+            ctx.fillText(`#${doc.bm25Rank}`, W() - colWidth + 15, y + 14);
+            
+            // Document ID
+            ctx.fillStyle = '#ff9f0a';
+            ctx.font = 'bold 11px Inter';
+            ctx.fillText(doc.id, W() - colWidth + 40, y + 14);
+            
+            // Score bar
+            const barWidth = (doc.bm25Score + pulse) * 100;
+            ctx.fillStyle = `rgba(255,159,10,${0.3 + pulse * 0.5})`;
+            ctx.fillRect(W() - colWidth + 40, y + 18, barWidth, 4);
+        });
+        
+        // Draw RRF merged ranking (center)
+        ranked.forEach((doc, i) => {
+            const y = startY + i * rowHeight;
+            const pulse = Math.sin(time * 2 + i + 2) * 0.1;
+            
+            // Rank position
+            ctx.fillStyle = 'rgba(255,255,255,0.3)';
+            ctx.font = '10px Inter';
+            ctx.textAlign = 'left';
+            ctx.fillText(`#${i + 1}`, colWidth + 15, y + 14);
+            
+            // Document ID
+            ctx.fillStyle = '#30d158';
+            ctx.font = 'bold 11px Inter';
+            ctx.fillText(doc.id, colWidth + 40, y + 14);
+            
+            // RRF calculation
+            const vecContrib = 1 / (k + doc.vecRank);
+            const bm25Contrib = 1 / (k + doc.bm25Rank);
+            ctx.fillStyle = '#00d4ff';
+            ctx.font = '9px JetBrains Mono';
+            ctx.fillText(`${vecContrib.toFixed(4)}`, colWidth + 40, y + 24);
+            ctx.fillStyle = '#ff9f0a';
+            ctx.fillText(`+ ${bm25Contrib.toFixed(4)}`, colWidth + 90, y + 24);
+            ctx.fillStyle = '#30d158';
+            ctx.fillText(`= ${doc.rrfScore.toFixed(4)}`, colWidth + 150, y + 24);
+            
+            // Visual bar (normalized)
+            const maxRRF = ranked[0].rrfScore;
+            const barWidth = (doc.rrfScore / maxRRF + pulse * 0.1) * 120;
+            ctx.fillStyle = `rgba(48,209,88,${0.4 + pulse})`;
+            ctx.fillRect(colWidth + 40, y + 28, barWidth, 3);
+        });
+        
+        // Draw connecting lines showing rank correlation
+        ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+        ctx.lineWidth = 1;
+        
+        // Connect vector to RRF
+        docs.forEach(doc => {
+            const vecIdx = docs.findIndex(d => d.id === doc.id);
+            const rrfIdx = ranked.findIndex(d => d.id === doc.id);
+            
+            const vecY = startY + vecIdx * rowHeight + 15;
+            const rrfY = startY + rrfIdx * rowHeight + 15;
+            
+            ctx.beginPath();
+            ctx.moveTo(100, vecY);
+            ctx.lineTo(colWidth + 10, rrfY);
+            ctx.stroke();
+        });
+        
+        // Connect BM25 to RRF
+        sortedByBM25.forEach(doc => {
+            const bm25Idx = sortedByBM25.findIndex(d => d.id === doc.id);
+            const rrfIdx = ranked.findIndex(d => d.id === doc.id);
+            
+            const bm25Y = startY + bm25Idx * rowHeight + 15;
+            const rrfY = startY + rrfIdx * rowHeight + 15;
+            
+            ctx.beginPath();
+            ctx.moveTo(W() - colWidth + 100, bm25Y);
+            ctx.lineTo(W() - colWidth - 10, rrfY);
+            ctx.stroke();
+        });
+        
+        requestAnimationFrame(drawRRFVisualization);
     }
     
-    function animate() {
-        drawRRFVisualization();
-        requestAnimationFrame(animate);
-    }
-    
-    animate();
+    drawRRFVisualization();
 })();
 
 // Mobile hamburger menu toggle
