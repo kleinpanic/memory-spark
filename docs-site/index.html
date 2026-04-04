@@ -1627,10 +1627,23 @@
     animate();
 })();
 
-// Pool Architecture Deep Dive Animation - Simple working version
+// Pool Architecture Deep Dive Animation
 (function() {
-    const canvas = document.getElementById('pools-canvas');
+    let canvas = document.getElementById('pools-canvas');
+    const section = document.getElementById('pools-deep-dive');
+    if (!canvas && section) {
+        const grid = section.querySelector('.pool-grid');
+        canvas = document.createElement('canvas');
+        canvas.className = 'deep-dive-canvas';
+        canvas.id = 'pools-canvas';
+        if (grid) {
+            section.insertBefore(canvas, grid);
+        } else {
+            section.appendChild(canvas);
+        }
+    }
     if (!canvas) return;
+
     const ctx = canvas.getContext('2d');
     const dpr = window.devicePixelRatio || 1;
 
@@ -1642,16 +1655,20 @@
         boosted: '#30d158',
         reduced: '#ff9f0a',
         bm25: '#ffd60a',
+        line: 'rgba(255,255,255,0.14)',
     };
 
     const pools = [
-        { name: 'Agent Memory', w: '1.0x', color: COLORS.normal },
-        { name: 'Mistakes', w: '1.6x', color: COLORS.boosted },
-        { name: 'Shared', w: '1.6x', color: COLORS.boosted },
-        { name: 'Knowledge', w: '0.8x', color: COLORS.reduced },
-        { name: 'Rules', w: '1.0x', color: COLORS.normal },
-        { name: 'FTS', w: 'BM25', color: COLORS.bm25 },
+        { name: 'Agent Memory', weight: '1.0x', weightValue: 1.0, color: COLORS.normal },
+        { name: 'Agent Mistakes', weight: '1.6x', weightValue: 1.6, color: COLORS.boosted },
+        { name: 'Shared Mistakes', weight: '1.6x', weightValue: 1.6, color: COLORS.boosted },
+        { name: 'Shared Knowledge', weight: '0.8x', weightValue: 0.8, color: COLORS.reduced },
+        { name: 'Shared Rules', weight: '1.0x', weightValue: 1.0, color: COLORS.normal },
+        { name: 'FTS/Tantivy', weight: 'BM25', weightValue: 1.0, color: COLORS.bm25, bm25: true },
     ];
+
+    const particles = [];
+    let cycleCounter = 0;
 
     function resize() {
         const rect = canvas.getBoundingClientRect();
@@ -1664,63 +1681,185 @@
 
     const W = () => canvas.offsetWidth;
     const H = () => canvas.offsetHeight;
+    
+    // Scale font size based on canvas height
+    const FS = (base) => Math.max(8, Math.floor(base * H() / 300));
 
-    function draw() {
+    function getAnchorPoints() {
+        const query = { x: W() * 0.08, y: H() * 0.5 };
+        const merge = { x: W() * 0.9, y: H() * 0.5 };
+        const baseX = W() * 0.45;
+        const topY = H() * 0.26;
+        const rowGap = H() * 0.22;
+        const colGap = W() * 0.2;
+
+        pools.forEach((pool, i) => {
+            const row = Math.floor(i / 3);
+            const col = i % 3;
+            pool.x = baseX + col * colGap;
+            pool.y = topY + row * rowGap;
+        });
+
+        return { query, merge };
+    }
+
+    function pointOnPath(a, b, t) {
+        const cp1x = a.x + (b.x - a.x) * 0.35;
+        const cp1y = a.y;
+        const cp2x = a.x + (b.x - a.x) * 0.65;
+        const cp2y = b.y;
+        const mt = 1 - t;
+        return {
+            x: mt * mt * mt * a.x + 3 * mt * mt * t * cp1x + 3 * mt * t * t * cp2x + t * t * t * b.x,
+            y: mt * mt * mt * a.y + 3 * mt * mt * t * cp1y + 3 * mt * t * t * cp2y + t * t * t * b.y,
+        };
+    }
+
+    function drawPath(a, b, color, alpha) {
+        ctx.beginPath();
+        ctx.moveTo(a.x, a.y);
+        const cp1x = a.x + (b.x - a.x) * 0.35;
+        const cp1y = a.y;
+        const cp2x = a.x + (b.x - a.x) * 0.65;
+        const cp2y = b.y;
+        ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, b.x, b.y);
+        ctx.strokeStyle = color;
+        ctx.globalAlpha = alpha;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+    }
+
+    class PoolParticle {
+        constructor(pool, direction, cycleId) {
+            this.pool = pool;
+            this.direction = direction;
+            this.cycleId = cycleId;
+            this.t = 0;
+            this.speed = direction === 'out' ? 0.02 : 0.018;
+            this.radius = direction === 'back' ? 4 + pool.weightValue * 1.6 : 3.5;
+        }
+
+        update(query, merge) {
+            this.t += this.speed;
+            if (this.t >= 1) {
+                if (this.direction === 'out') {
+                    particles.push(new PoolParticle(this.pool, 'back', this.cycleId));
+                }
+                return false;
+            }
+            const from = this.direction === 'out' ? query : this.pool;
+            const to = this.direction === 'out' ? this.pool : merge;
+            this.pos = pointOnPath(from, to, this.ease(this.t));
+            return true;
+        }
+
+        ease(t) {
+            return t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2;
+        }
+
+        draw() {
+            const color = this.pool.color;
+            ctx.beginPath();
+            ctx.arc(this.pos.x, this.pos.y, this.radius * 1.8, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.globalAlpha = 0.18;
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(this.pos.x, this.pos.y, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = color;
+            ctx.globalAlpha = 0.95;
+            ctx.shadowColor = color;
+            ctx.shadowBlur = 10;
+            ctx.fill();
+            ctx.shadowBlur = 0;
+            ctx.globalAlpha = 1;
+
+            if (this.direction === 'back' && this.t > 0.25 && this.t < 0.75) {
+                ctx.font = `600 ${FS(10)}px JetBrains Mono`;
+                ctx.fillStyle = this.pool.color;
+                ctx.textAlign = 'left';
+                const label = this.pool.bm25 ? 'BM25' : `x${this.pool.weightValue.toFixed(1)}`;
+                ctx.fillText(label, this.pos.x + 8, this.pos.y - 8);
+            }
+        }
+    }
+
+    function drawNode(x, y, w, h, color, title, subtitle) {
+        ctx.beginPath();
+        ctx.roundRect(x - w / 2, y - h / 2, w, h, 8);
+        ctx.fillStyle = 'rgba(28,31,46,0.96)';
+        ctx.fill();
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+
+        ctx.fillStyle = COLORS.text;
+        ctx.font = `600 ${FS(11)}px Inter`;
+        ctx.textAlign = 'center';
+        ctx.fillText(title, x, y - 4);
+
+        ctx.fillStyle = color;
+        ctx.font = `500 ${FS(9)}px JetBrains Mono`;
+        ctx.fillText(subtitle, x, y + 11);
+    }
+
+    function drawFrame() {
+        const { query, merge } = getAnchorPoints();
         ctx.fillStyle = COLORS.bg;
         ctx.fillRect(0, 0, W(), H());
-        
-        const w = W();
-        const h = H();
-        
-        // Title
-        ctx.font = 'bold 13px Inter';
-        ctx.fillStyle = COLORS.text;
-        ctx.textAlign = 'center';
-        ctx.fillText('6 Memory Pools (Parallel Search)', w / 2, h * 0.10);
-        
-        // Draw 2x3 grid of pools
-        const cols = 3;
-        const rows = 2;
-        const cellW = w / cols;
-        const cellH = (h - h * 0.18) / rows;
-        const startY = h * 0.18;
-        
-        pools.forEach((pool, i) => {
-            const col = i % cols;
-            const row = Math.floor(i / cols);
-            const x = col * cellW + cellW / 2;
-            const y = startY + row * cellH + cellH / 2;
-            
-            // Pool box
-            const boxW = cellW * 0.82;
-            const boxH = cellH * 0.72;
-            ctx.fillStyle = 'rgba(28,31,46,0.9)';
-            ctx.strokeStyle = pool.color;
-            ctx.lineWidth = 1.5;
-            ctx.beginPath();
-            ctx.roundRect(x - boxW/2, y - boxH/2, boxW, boxH, 6);
-            ctx.fill();
-            ctx.stroke();
-            
-            // Pool name
-            ctx.font = 'bold 11px Inter';
-            ctx.fillStyle = pool.color;
-            ctx.textAlign = 'center';
-            ctx.fillText(pool.name, x, y - 6);
-            
-            // Weight
-            ctx.font = '10px JetBrains Mono';
-            ctx.fillStyle = COLORS.muted;
-            ctx.fillText(pool.w, x, y + 12);
+
+        ctx.fillStyle = COLORS.muted;
+        ctx.font = `600 ${FS(10)}px Inter`;
+        ctx.textAlign = 'left';
+        ctx.fillText('Query fan-out →', W() * 0.03, H() * 0.08);
+        ctx.fillText('→ Weighted merge', W() * 0.55, H() * 0.08);
+
+        pools.forEach((pool) => {
+            drawPath(query, pool, COLORS.line, 0.55);
+            drawPath(pool, merge, pool.color, 0.32);
+            const nodeW = Math.max(100, Math.min(140, W() * 0.18));
+            const nodeH = Math.max(40, Math.min(50, H() * 0.12));
+            drawNode(pool.x, pool.y, nodeW, nodeH, pool.color, pool.name, pool.bm25 ? 'BM25' : `w ${pool.weight}`);
         });
-        
-        requestAnimationFrame(draw);
+
+        drawNode(query.x, query.y, 90, 46, COLORS.normal, 'Query', 'in');
+        drawNode(merge.x, merge.y, 100, 46, '#ffffff', 'Merge', 'results');
     }
-    
-    draw();
+
+    function spawnParallelCycle() {
+        cycleCounter += 1;
+        pools.forEach((pool) => {
+            particles.push(new PoolParticle(pool, 'out', cycleCounter));
+        });
+    }
+
+    let tick = 0;
+    function animate() {
+        drawFrame();
+        const { query, merge } = getAnchorPoints();
+
+        for (let i = particles.length - 1; i >= 0; i -= 1) {
+            if (!particles[i].update(query, merge)) {
+                particles.splice(i, 1);
+            } else {
+                particles[i].draw();
+            }
+        }
+
+        tick += 1;
+        if (tick % 48 === 0) {
+            spawnParallelCycle();
+        }
+        requestAnimationFrame(animate);
+    }
+
+    spawnParallelCycle();
+    animate();
 })();
 
-// Gate Deep Dive Animation - Simple working version
+// Gate Deep Dive Animation
 (function() {
     const canvas = document.getElementById('gate-canvas');
     if (!canvas) return;
@@ -1738,6 +1877,9 @@
     
     const W = () => canvas.offsetWidth;
     const H = () => canvas.offsetHeight;
+    
+    // Scale font size based on canvas height
+    const FS = (base) => Math.max(8, Math.floor(base * H() / 300));
 
     const COLORS = {
         confident: '#30d158',
@@ -1745,65 +1887,109 @@
         ambiguous: '#ff453a',
         text: '#f1f5f9',
         muted: '#94a3b8',
+        line: 'rgba(148,163,184,0.35)',
         card: 'rgba(28,31,46,0.88)'
     };
 
     const scenarios = [
-        { label: 'Confident', sigma: 0.11, decision: 'SKIP', color: COLORS.confident },
-        { label: 'Tied', sigma: 0.005, decision: 'SKIP', color: COLORS.tied },
-        { label: 'Ambiguous', sigma: 0.05, decision: 'RUN', color: COLORS.ambiguous }
+        {
+            label: 'Confident',
+            scores: [0.92, 0.81, 0.74],
+            decision: 'SKIP',
+            rule: 'σ > 0.08',
+            color: COLORS.confident,
+        },
+        {
+            label: 'Tied',
+            scores: [0.740, 0.735, 0.731],
+            decision: 'SKIP',
+            rule: 'σ < 0.02',
+            color: COLORS.tied,
+        },
+        {
+            label: 'Ambiguous',
+            scores: [0.82, 0.79, 0.77],
+            decision: 'RUN',
+            rule: '0.02-0.08',
+            color: COLORS.ambiguous,
+        }
     ];
 
-    let frame = 0;
-    const cycleMs = 3000;
+    const cycleDuration = 4000;
 
-    function draw() {
+    function drawFrame(ts) {
         ctx.clearRect(0, 0, W(), H());
         
-        const scenario = scenarios[Math.floor(frame / cycleMs) % scenarios.length];
-        const w = W();
-        const h = H();
+        const cycleIndex = Math.floor(ts / cycleDuration);
+        const scenario = scenarios[cycleIndex % scenarios.length];
         
-        // Title
-        ctx.font = 'bold 16px Inter';
+        // Title - smaller on mobile
+        ctx.font = `600 ${FS(13)}px Inter`;
         ctx.fillStyle = COLORS.text;
         ctx.textAlign = 'center';
-        ctx.fillText('Dynamic Gate: ' + scenario.label, w / 2, h * 0.15);
+        ctx.fillText(`Gate: ${scenario.label}`, W() / 2, H() * 0.15);
         
-        // Sigma display
-        ctx.font = 'bold 14px JetBrains Mono';
-        ctx.fillStyle = scenario.color;
-        ctx.fillText('σ = ' + scenario.sigma.toFixed(3), w / 2, h * 0.35);
+        // Scores - compact layout
+        const barStartY = H() * 0.30;
+        const barHeight = H() * 0.08;
+        const barSpacing = H() * 0.12;
+        const maxBarWidth = W() * 0.55;
         
-        // Rule
-        ctx.font = '12px Inter';
+        ctx.font = `500 ${FS(10)}px JetBrains Mono`;
         ctx.fillStyle = COLORS.muted;
-        if (scenario.sigma > 0.08) {
-            ctx.fillText('σ > 0.08 → Confident, skip reranker', w / 2, h * 0.50);
-        } else if (scenario.sigma < 0.02) {
-            ctx.fillText('σ < 0.02 → Tied, skip reranker', w / 2, h * 0.50);
-        } else {
-            ctx.fillText('0.02 ≤ σ ≤ 0.08 → Run reranker', w / 2, h * 0.50);
-        }
+        ctx.textAlign = 'left';
+        ctx.fillText('Scores:', W() * 0.08, H() * 0.25);
         
-        // Decision box
+        scenario.scores.forEach((score, i) => {
+            const y = barStartY + i * barSpacing;
+            const barWidth = (score - 0.6) / 0.35 * maxBarWidth;
+            
+            // Score bar
+            ctx.fillStyle = scenario.color;
+            ctx.globalAlpha = 0.7;
+            ctx.fillRect(W() * 0.08, y, barWidth, barHeight);
+            ctx.globalAlpha = 1;
+            
+            // Score label
+            ctx.font = `500 ${FS(9)}px JetBrains Mono`;
+            ctx.fillStyle = COLORS.text;
+            ctx.fillText(score.toFixed(2), W() * 0.08 + barWidth + 8, y + barHeight * 0.7);
+        });
+        
+        // Decision box - right side
+        const boxX = W() * 0.70;
+        const boxY = H() * 0.25;
+        const boxW = W() * 0.25;
+        const boxH = H() * 0.45;
+        
         ctx.fillStyle = COLORS.card;
         ctx.strokeStyle = scenario.color;
         ctx.lineWidth = 2;
         ctx.beginPath();
-        ctx.roundRect(w * 0.3, h * 0.60, w * 0.4, h * 0.30, 8);
+        ctx.roundRect(boxX, boxY, boxW, boxH, 8);
         ctx.fill();
         ctx.stroke();
         
-        ctx.font = 'bold 18px Inter';
+        ctx.font = `700 ${FS(14)}px Inter`;
         ctx.fillStyle = scenario.color;
-        ctx.fillText(scenario.decision, w / 2, h * 0.78);
+        ctx.textAlign = 'center';
+        ctx.fillText(scenario.decision, boxX + boxW / 2, boxY + H() * 0.15);
         
-        frame += 16;
-        requestAnimationFrame(draw);
+        ctx.font = `500 ${FS(9)}px JetBrains Mono`;
+        ctx.fillStyle = COLORS.muted;
+        ctx.fillText(scenario.rule, boxX + boxW / 2, boxY + H() * 0.25);
+        
+        // σ formula at bottom
+        const sigma = Math.max(...scenario.scores) - Math.min(...scenario.scores);
+        ctx.font = `500 ${FS(10)}px JetBrains Mono`;
+        ctx.fillStyle = scenario.color;
+        ctx.textAlign = 'left';
+        ctx.fillText(`σ = ${sigma.toFixed(3)}`, W() * 0.08, H() * 0.90);
+        
+        requestAnimationFrame(drawFrame);
     }
     
-    draw();
+    requestAnimationFrame(drawFrame);
 })();
 
 // Reranker Deep Dive Animation
