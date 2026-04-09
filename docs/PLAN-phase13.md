@@ -134,7 +134,7 @@ Run `npm audit fix --force` and review the breaking changes. The critical ones a
 
 ### P3-C: Integration Tests Always Fail in Dev (Spark ECONNREFUSED)
 
-Integration tests ping live Spark at `127.0.0.1` — which doesn't exist in dev. They're skipped via `SKIP_INTEGRATION=1` in CI, but running `npm test` locally always shows 4 failures. Add a Spark health check at test start that skips the suite gracefully when Spark is unreachable instead of failing with ECONNREFUSED.
+Integration tests ping the live Spark host (via `SPARK_HOST` env var) — which doesn't exist in dev. They're skipped via `SKIP_INTEGRATION=1` in CI, but running `npm test` locally always shows 4 failures. Add a Spark health check at test start that skips the suite gracefully when Spark is unreachable instead of failing with ECONNREFUSED.
 
 ### P3-D: Documentation Coverage Badge Mismatch
 

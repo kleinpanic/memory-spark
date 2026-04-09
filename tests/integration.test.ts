@@ -132,7 +132,7 @@ describe.skipIf(SKIP_SUITE)("Integration: Spark Connectivity", () => {
     const resp = await fetch(`http://${SPARK_HOST}:18112/v1/extract`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${SPARK_TOKEN}` },
-      body: JSON.stringify({ text: "Klein uses OpenClaw in Exampleville CA" }),
+      body: JSON.stringify({ text: "Alice uses ExampleApp in Exampleville CA" }),
       signal: AbortSignal.timeout(5000),
     });
     expect(resp.ok).toBe(true);

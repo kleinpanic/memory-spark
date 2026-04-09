@@ -95,7 +95,7 @@ The asymmetric formatting is fundamental to the model's architecture. During tra
 
 ### Evidence
 
-Empirical test on Spark endpoint (`127.0.0.1:18091`):
+Empirical test on Spark endpoint (port 18091):
 
 ```
 Input: "what is retrieval augmented generation"
@@ -263,7 +263,7 @@ The reranker returns `topN` results. MMR then runs on this already-limited set a
 ## Issue 7: Reranker Latency and Candidate Quality
 
 **Severity:** 🟡 Important
-**Component:** `src/rerank/reranker.ts` + Spark reranker endpoint (`127.0.0.1:18096`)
+**Component:** `src/rerank/reranker.ts` + Spark reranker endpoint (port 18096)
 **Impact:** 41-second p50 latency per query. Reranker can't fix garbage-in from hybrid.
 
 ### The Problem

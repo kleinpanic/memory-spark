@@ -1500,7 +1500,7 @@ describe("Quality Score Defaults", () => {
 
   it("Actual knowledge content still scores high", () => {
     const r = scoreChunkQuality(
-      "The DGX Spark node at 127.0.0.1 runs NVIDIA GH200 Grace Hopper architecture with 121.7 GB unified memory. The vLLM service handles Nemotron-Super 120B inference on port 18080.",
+      "The GPU inference node runs NVIDIA GH200 Grace Hopper architecture with 121.7 GB unified memory. The vLLM service handles Nemotron-Super 120B inference on port 18080.",
       "MEMORY.md",
       "memory",
     );
@@ -2093,7 +2093,7 @@ describe("Quality Score Defaults", () => {
   });
 
   it("Quality gate still allows real facts to pass", () => {
-    const text = `The DGX Spark node runs at 127.0.0.1 with Nemotron-Super-120B deployed on the GH200 GPU. Memory pressure is typically around 90% (111GiB used).`;
+    const text = `The GPU inference node runs Nemotron-Super-120B deployed on the GH200 GPU. Memory pressure is typically around 90% (111GiB used).`;
     const r = scoreChunkQuality(text, "capture/meta/2026-03-26", "capture");
     assert.ok(r.score > 0.5, `Real fact scored ${r.score}, should be >0.5`);
   });
