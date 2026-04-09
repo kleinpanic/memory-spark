@@ -36,22 +36,21 @@ Every claim this plugin, its docs, its website, and its research paper make must
 
 <!-- Current milestone scope. Hypotheses until shipped and validated. -->
 
-- [ ] **Read-only recon** — truth map of codebase vs. docs vs. plans; no code changes; produces authoritative state document before anything is touched
-- [ ] **Privacy foundation** — `.gitignore` audit, scrub policy for personal OpenClaw data, verification that no personal data is currently in the repo or planning docs
-- [ ] **Critical bug fixes** — all 11 criticals from `docs/ISSUES.md` + `docs/AUDIT-2026-04-02.md` (BM25 sigmoid saturation, Nemotron query instruction prefix, FTS WHERE filter data leakage, HyDE timeout/averaging, MMR recall destruction, reranker latency, MAP@k denominator, getState recovery path, dead eval code)
-- [ ] **High-severity audit fixes** — score clamping, unguarded embed calls, silent capture errors, test coverage gaps on capture/queue/dims-lock/classifiers, `return bool` → `expect()` tests
-- [ ] **Tool-calling injection feature** — implement semantic tool retrieval pool (content_type="tool") per `docs/RESEARCH-TOOLS-INJECTION-2026.md`
-- [ ] **Expanded plugin tool surface** — add 5 new tools per `docs/PLAN-v040-release.md` Phase C: `memory_recall_debug`, `memory_bulk_ingest`, `memory_temporal`, `memory_related`, `memory_gate_status` (9 → 14 tools)
-- [ ] **Spark v2 architecture migration** — swap HyDE LLM Nemotron-120B → Nemotron-Mini-4B (Phase A), migrate to multimodal VL embeddings (Phase B), upgrade reranker to bge-reranker-v2-m3 or equivalent (Phase C), retire EasyOCR, dedicate GLM-OCR to its own port
-- [ ] **Docker test environment restoration** — revive `<external>/openclaw-plugin-test/` as a reproducible test harness; fix C3 config mismatch; document bring-up
-- [ ] **Golden dataset generation** — use Nemotron-Super-3-122B on the NVIDIA DGX Spark to generate a QA golden dataset from scrubbed/synthetic OpenClaw agent data; commit only the scrubbed output
-- [ ] **Full BEIR benchmarks** — SciFact, FiQA, NFCorpus (and expand beyond if possible) against `testDbBEIR`; produce charts and report
-- [ ] **OCMemory benchmark** — run generated golden dataset against `testDbOCMemory`; produce results for paper
-- [ ] **2026 SOTA research validation** — verify every claim in `docs/RESEARCH-SOTA-2026.md`, `RESEARCH-SOTA-2026-VALIDATED.md`, `RESEARCH-TOOLS-INJECTION-2026.md` against current (2026) literature; kill stale citations
-- [ ] **Documentation overhaul** — bring every doc in sync with reality (README, ARCHITECTURE, CONFIGURATION, TOOLS, DEPLOYMENT, EVALUATION, TECHNICAL-REPORT, KNOWN-ISSUES); fix port numbers, version mismatches, coverage badges, drifted configuration examples
-- [ ] **Sexy educational website** — evolve `docs-site/` into a full site that explains RAG internals, shows benchmark results, embeds the paper, teaches readers, and looks impressive
-- [ ] **Research paper expansion** — add golden dataset methodology + results, full BEIR results, validated 2026 SOTA comparison, honest limitations section
-- [ ] **v1.0 release** — GitHub tag + release notes + green CI + privacy audit sign-off
+- [ ] **Read-only recon** — truth map of codebase vs. docs vs. plans; no code changes; produces authoritative state document before anything is touched. Must verify Phase C tools already shipped, confirm docs drift, map actual audit status.
+- [ ] **Privacy incident response + prevention** — **immediate fix first**: `git filter-repo` the leaked `evaluation/golden-dataset.json` from history, force-push to remove from public GitHub. Then prevention: pre-commit hook for PII patterns, gitleaks CI, canary PII seed test, `.gitignore` audit, scrub policy for all future benchmark/fixture data.
+- [ ] **Critical bug fixes** — all criticals from `docs/ISSUES.md` + `docs/AUDIT-2026-04-02.md`: BM25 sigmoid saturation, Nemotron query instruction prefix, FTS WHERE filter data leakage (C1), getState recovery path (C2), MAP@k denominator (C4), dead eval code (C5), HyDE timeout/averaging, MMR recall destruction, reranker latency. Must include `manager.search()` refactor to share `runRecallPipeline` with `auto/recall.ts` — otherwise benchmarks measure a fiction.
+- [ ] **High-severity audit fixes** — score clamping (H1), unguarded embed calls (H2), silent capture errors (H3), test coverage gaps on capture/queue/dims-lock/classifiers (H4-H8), ~20 `return bool` → `expect()` test conversions.
+- [ ] **Test harness restoration** — revive `<external>/openclaw-plugin-test/` as reproducible test harness, fix C3 config mismatch, probe-then-skip integration suite, `corpus-lock.json` enforcement, agent-isolation integration tests on every read path, ESLint `no-restricted-imports` boundary rule for `openclaw/plugin-sdk` in `src/**`.
+- [ ] **Logic upgrades** — swap HyDE LLM Nemotron-Super-120B → Nemotron-Mini-4B (frees 52GB VRAM, kills 100% HyDE timeout rate), retire EasyOCR, dedicate GLM-OCR to port 18081, parallelize per-pool search in recall.ts, implement tool-calling injection feature (content_type="tool" pool per `docs/RESEARCH-TOOLS-INJECTION-2026.md`). *Optional:* Qwen3-VL-Embedding-8B / Qwen3-VL-Reranker-2B swap if VL capabilities become wanted — not required for v1.0.
+- [ ] **Golden dataset generation** — use Nemotron-Super-3-122B on NVIDIA DGX Spark to generate QA golden dataset from scrubbed/synthetic OpenClaw agent data; commit only scrubbed output; canary PII test must pass before commit.
+- [ ] **LongMemEval benchmark** — run the 2026 standard agent-memory benchmark against `testDbLongMemEval`; the paper's headline scientific claim (puts memory-spark on the Zep / Mem0 / Supermemory / OMEGA / TiMem scoreboard).
+- [ ] **Full BEIR benchmarks** — SciFact, FiQA, NFCorpus against `testDbBEIR`; separate LanceDB dir; `corpus-lock.json` enforced.
+- [ ] **Custom OCMemory golden dataset benchmark** — supplementary eval on user's specific workload; proves plugin works for agent memory, not just text retrieval.
+- [ ] **2026 SOTA research validation** — verify every claim in `docs/RESEARCH-SOTA-2026.md`, `RESEARCH-SOTA-2026-VALIDATED.md`, `RESEARCH-TOOLS-INJECTION-2026.md` against current 2026 literature; kill stale citations (e.g., "voyage-3-large leads MTEB by 9.74%" is 2024 framing); correct the HyDE conclusion (was wrongly attributed).
+- [ ] **Documentation overhaul** — bring every doc in sync with reality (README, ARCHITECTURE, CONFIGURATION, TOOLS, DEPLOYMENT, EVALUATION, TECHNICAL-REPORT, KNOWN-ISSUES); fix port numbers (docs say 18081/18098, code uses 18091/18096), version mismatch (0.4.0/0.1.0), coverage badge (claims 91% real ~35%), drifted CONFIGURATION.md (missing Phase 8-12 features); add model attribution section crediting Nemotron embed/rerank/HyDE, GLM-OCR with their licenses; generate numerical claims from `src/config.ts` and `evaluation/results/*.json` via `scripts/gen-docs.ts` rather than hand-editing (prevents future drift).
+- [ ] **Sexy educational website** — evolve `docs-site/` into a full site that explains RAG internals, shows benchmark results with charts, embeds the paper, teaches readers the architecture; every public numerical claim must link to source (benchmark JSON / paper section / code); CLAIMS.md audit before ship.
+- [ ] **Research paper expansion** — add LongMemEval methodology + results, BEIR results, custom golden set results, validated 2026 SOTA comparison, honest limitations section (no bitemporal modeling, no LLM consolidation, no hierarchical reflection — cite Zep/Mem0/Generative Agents for alternatives), bootstrap confidence intervals on all headline numbers. arXiv target quality bar.
+- [ ] **v1.0 release** — GitHub tag, release notes, green CI, privacy re-audit gate (one more gitleaks + canary scan + CLAIMS.md walkthrough) before cutting the tag.
 
 ### Out of Scope
 
@@ -116,9 +115,13 @@ Every claim this plugin, its docs, its website, and its research paper make must
 | Privacy foundation phase early (before real data touches anything) | Project is heading to public release; personal OpenClaw data must never leak | — Pending |
 | Fix critical bugs BEFORE building new features | 11 critical audit items undermine every benchmark result; building on broken foundations wastes effort | — Pending |
 | Generate golden dataset with Nemotron-Super-3-122B on DGX Spark | Highest-quality LLM available locally for QA pair generation; avoids cloud API costs and data egress | — Pending |
-| Two separate benchmark databases (testDbBEIR, testDbOCMemory) | Per existing benchmark plan: BEIR queries against agent data yield garbage scores; mixing corpora is invalid | — Pending |
+| Three separate benchmark databases (testDbLongMemEval, testDbBEIR, testDbOCMemory) | Per architecture research: corpus mixing contaminates BM25 IDF, IVF_PQ tuning, and reranker score distributions. Each benchmark gets its own LanceDB dir with `corpus-lock.json` enforcement. | — Pending |
+| LongMemEval is the headline agent-memory benchmark | 2026 standard (Zep/Mem0/Supermemory/OMEGA/TiMem published scores). Custom OCMemory golden set is supplementary showing user's specific workload. | — Pending |
+| Keep current Nemotron embedder + reranker stack | Non-commercial licenses only bind weight redistribution; memory-spark calls models as HTTP services and ships no weights. Attribution added in README. Qwen3-VL stack swap deferred to optional future upgrade. | — Pending |
+| Privacy: `git filter-repo` the existing leak immediately | `evaluation/golden-dataset.json` already contains real PII on public GitHub. Rewrite history only (no contact rotation — treat as already scraped/forked). | — Pending |
 | Evolve existing `docs-site/` rather than rebuild | Assets (colors.css, diagrams, paper.pdf) already exist; rebuild would waste work | — Pending |
-| Defer RAGAS integration to stretch goal | Golden dataset + BEIR provides sufficient evaluation rigor for v1.0; RAGAS adds scope risk | — Pending |
+| Defer RAGAS integration to stretch goal | LongMemEval + BEIR + custom golden set provides sufficient evaluation rigor for v1.0 arXiv paper; RAGAS adds scope risk | — Pending |
+| Target venue: arXiv | Independent researcher, fast publication, no peer-review gate. Rigor bar: bootstrap CI on headline numbers, honest limitations section, not full SIGIR-grade statistical apparatus. | — Pending |
 
 ## Evolution
 
