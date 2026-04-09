@@ -33,7 +33,6 @@ export interface QueryExpansionConfig {
   apiKey?: string;
 }
 
-// eslint-disable-next-line sonarjs/no-hardcoded-ip -- local network fallback, configurable via SPARK_HOST env
 const DEFAULT_LLM_URL = `http://${process.env.SPARK_HOST ?? "127.0.0.1"}:18080/v1/chat/completions`;
 
 export const QUERY_EXPANSION_DEFAULTS: QueryExpansionConfig = {

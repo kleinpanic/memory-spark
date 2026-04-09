@@ -35,7 +35,7 @@ export interface HydeConfig {
 
 export const HYDE_DEFAULTS: HydeConfig = {
   enabled: true,
-  llmUrl: `http://${process.env.SPARK_HOST ?? "127.0.0.1"}:18080/v1/chat/completions`, // eslint-disable-line sonarjs/no-hardcoded-ip -- local network fallback, configurable via SPARK_HOST env
+  llmUrl: `http://${process.env.SPARK_HOST ?? "127.0.0.1"}:18080/v1/chat/completions`, // local loopback fallback; set SPARK_HOST env to point at your LLM host
   model: "nvidia/NVIDIA-Nemotron-3-Super-120B-A12B-NVFP4",
   maxTokens: 150,
   temperature: 0.3,

@@ -41,12 +41,12 @@ memory_recall_debug, memory_bulk_ingest, memory_temporal, memory_related, memory
 
 ### 3. PII Leak Already Occurred — Incident Response Required
 
-`evaluation/golden-dataset.json` is already on public GitHub containing: real emails (`user1@example.com`, `user2@example.com`, `user3@example.com`, `noreply@example.com`), WireGuard subnet `10.x.x.x`, LAN `10.0.0.x`, real family names ("Alice Example"), "Exampleville, CA" in ~13 docs, plus full production AGENTS.md / MEMORY.md / HEARTBEAT.md / TOOLS.md / cron schedules.
+The prior `evaluation/golden-dataset.json` leaked a set of real identifiers (personal emails, private subnets, a family name, hometown, full production AGENTS.md / MEMORY.md / HEARTBEAT.md / TOOLS.md / cron schedules) into public git history. The file has since been removed from all git history via `git filter-repo` (2026-04-09). Specific leaked tokens are maintained in an internal block-list outside the repo and are not reproduced in public docs.
 
 The privacy phase is not just "prevent future leaks." It requires incident response:
 
-1. **Immediate decision:** `git filter-repo` to rewrite history, or treat the tokens as burned and document the disclosure.
-2. **Pre-commit hook** that blocks staging files matching known PII patterns (email regex, `10.x.x`, `10.x.x`, `user`, `example.edu`, `Exampleville`).
+1. **Incident response (done 2026-04-09):** `git filter-repo` rewrote history to remove the leaked files; force-push to `origin/main` replaces the public ref.
+2. **Pre-commit hook** that blocks staging files matching the internal PII block-list (email regex, private subnets, personal usernames, hometown, university email domain).
 3. **Canary test:** seed 20 synthetic PII tokens into the input corpus, run the scrubber, assert zero canaries survive. This proves the scrubber catches the classes we care about.
 4. **`gitleaks` + custom pattern CI scan** on every push to main.
 5. **Double-scrub pipeline for golden dataset generation:** scrub corpus BEFORE Nemotron-Super sees it (LLMs paraphrase source PII into generated questions), then scrub Nemotron's output again.

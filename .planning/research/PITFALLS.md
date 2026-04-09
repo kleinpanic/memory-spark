@@ -58,7 +58,7 @@ There are already concrete examples where this would have happened if the paper 
 ### Pitfall 2: Golden dataset leaks Klein's personal data into the public repo (again)
 
 **What goes wrong:**
-The existing `evaluation/golden-dataset.json` on public GitHub already contains: real emails (`user1@example.com`, `user2@example.com`, `user3@example.com`, `noreply@example.com`), the WireGuard subnet `10.x.x.x`, the LAN `10.0.0.x`, a real family name ("Alice Example"), "Exampleville, CA" in ~13 docs, and the full contents of production AGENTS.md, MEMORY.md, HEARTBEAT.md, TOOLS.md, and a full cron audit with agent names and schedules. This has already happened once on this repo. Generating new QA pairs with Nemotron-Super-3-122B against OpenClaw agent data will do it again unless the input corpus is scrubbed first *and* the output is scrubbed again, because the LLM will happily copy identifiers from the source text into generated questions and synthesized answers.
+The prior `evaluation/golden-dataset.json` leaked real PII into public git history: personal emails, private WireGuard and LAN subnets, a family name, a hometown repeated across ~13 docs, and full contents of production AGENTS.md / MEMORY.md / HEARTBEAT.md / TOOLS.md plus a cron audit with agent names and schedules. That file has since been removed from all git history via `git filter-repo`, but the same category of leak will happen again if new QA pairs are generated with Nemotron-Super-3-122B against OpenClaw agent data unless the input corpus is scrubbed first *and* the output is scrubbed again — the LLM will happily copy identifiers from the source text into generated questions and synthesized answers.
 
 **Why it happens on this project specifically:**
 - Nemotron-Super runs locally on the DGX Spark, so there is no cloud egress guardrail to catch PII before it's written to disk.
@@ -70,22 +70,22 @@ The existing `evaluation/golden-dataset.json` on public GitHub already contains:
 1. **Scrub the input corpus, not just the output.** Build `evaluation/scrub.ts` that runs BEFORE Nemotron sees any chunk. Required replacements:
    - Emails → `user@example.com` (preserve only whether one existed)
    - IPv4s in `10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16` → `10.x.x.x`
-   - WireGuard subnets `10.x.x.x`, `10.x.x.x`, `127.0.0.1` → `10.x.x.x`
-   - Real person names (maintain an explicit block-list including "Klein", "Alice Example", "Collin", "Brok", and any name that appears in agent docs) → `Alice`, `Bob`, `Carol`
-   - Locations ("Exampleville", "VA", "Example University", "example.edu") → `Exampleville`
-   - Full file paths containing `~/codeWS/`, `~/`, agent workspace paths → relative anonymized paths
+   - Private WireGuard + LAN subnets (maintained in an internal block-list; not reproduced here) → `10.x.x.x`
+   - Real person names (maintain an internal block-list of names that appear in agent docs; not reproduced here) → `Alice`, `Bob`, `Carol`
+   - Hometown / state / university / university email domain (maintained in an internal block-list; not reproduced here) → `Exampleville`
+   - Full file paths containing real home directory, workspace prefixes, agent workspace paths → relative anonymized paths
    - `openclaw`, `workspace-dev`, `workspace-meta`, cron job names → generic `agent-a`, `agent-b`
    - Bearer tokens, API keys (any 32+ char hex, any string starting `nvapi-`, `sk-`, `ghp_`) → `<REDACTED>`
 2. **Gold-standard canary test.** Before declaring the scrubber ready, seed the input corpus with 20 synthetic canary PII tokens (fake emails, fake names, fake IPs generated with a seeded RNG). Run scrubber. Assert zero canaries survive. This is the only way to prove the scrubber actually caught the classes you care about.
 3. **Scrub the output again.** Run the same scrubber over Nemotron-generated questions AND over any retrieved chunk text that lands in the golden dataset. Assume the LLM smuggles things through.
 4. **`.gitignore` the raw pipeline.** Add to `.gitignore`: `testDbOCMemory/`, `evaluation/golden-dataset-raw.json`, `evaluation/ocmemory-source-chunks.json`, `bench-data/ocmemory-raw/`. Only the scrubbed `evaluation/golden-ocmemory-scrubbed.json` may be committed.
-5. **Pre-commit hook.** Add a `pre-commit` hook that greps staged files for the known-bad patterns (email regex, `10.x.x`, `10.x.x`, `Exampleville`, `user`, `example.edu`) and blocks the commit. The hook already has examples to pattern-match from the existing PII leak in golden-dataset.json.
+5. **Pre-commit hook.** Add a `pre-commit` hook that greps staged files against an internal block-list of known-bad patterns (email regex, private subnets, personal names, location strings, username) and blocks the commit. Block-list is stored outside the repo and referenced by the hook — never inlined into public docs.
 6. **Sanitize the currently-committed golden dataset.** Don't just stop adding PII — the existing leak is on public GitHub. Either `git filter-repo` the history, or treat the tokens as burned and continue but with mitigation (the emails and IPs should be considered publicly disclosed).
 7. **CI privacy scan.** Run a scheduled `gitleaks` + custom pattern scan on `main` every commit. Fail the build on any match.
 
 **Warning signs:**
 - A diff to `evaluation/` contains a string matching `\b[\w.+-]+@[\w-]+\.[\w.-]+\b` where the email isn't `user@example.com`
-- A diff contains `10.x.`, `10.x.`, `exampleville`, `user`, `example.edu`, `exampleuser` (in a body field, not a URL)
+- A diff matches any entry in the internal PII block-list (private subnet prefixes, hometown, personal usernames, university email domain) — block-list is maintained outside the repo
 - Any committed JSON file has `doc` names in the 000-350 range (the existing leaked golden-dataset.json structure)
 - Scrubber exists but isn't invoked in the benchmark pipeline
 - Golden dataset contains any file path under `workspace-` or `.claude/` or `.openclaw/`
@@ -477,8 +477,8 @@ The prior example on *this project*: README coverage badge claimed 91% when real
 | Mistake | Risk | Prevention |
 |---------|------|------------|
 | Committing real emails to the golden dataset | PII exposure, credibility loss, GDPR-like concerns, doxxing family | Input+output scrubber, canary test, pre-commit hook, gitleaks CI |
-| Committing internal IPs (10.x.x.x / 10.x.x.x) | Network topology disclosure; attack surface mapping | IP regex in scrubber + pre-commit |
-| Committing real person names ("Alice Example") | Doxxing; family members named | Explicit block-list in scrubber |
+| Committing private subnet IPs | Network topology disclosure; attack surface mapping | IP regex in scrubber + pre-commit |
+| Committing real person names | Doxxing; family members named | Internal block-list in scrubber (not reproduced in repo) |
 | Committing cron schedules + agent internals | Reveals operational patterns; infra fingerprinting | Exclude `.claude/`, `.openclaw/`, `AGENTS.md` content from any corpus |
 | Nemotron-generated QA pairs copying PII verbatim | Generative model smuggles source PII into "synthetic" output | Scrub output; canary PII in input with assertion it's absent from output |
 | Hardcoded API key or bearer token | Credential theft | `${VAR}` template with resolve-time check (M12); gitleaks in CI |
