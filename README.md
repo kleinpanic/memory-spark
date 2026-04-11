@@ -11,6 +11,8 @@
   <img src="https://img.shields.io/badge/Node.js-%3E%3D22-339933?logo=node.js&logoColor=white" alt="Node.js">
   <img src="https://img.shields.io/badge/License-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/Coverage-91%25-3fb950" alt="Coverage">
+  <a href="https://doi.org/10.5281/zenodo.19520739"><img src="https://zenodo.org/badge/doi/10.5281/zenodo.19520739.svg" alt="Zenodo"></a>
+  <a href="https://arxiv.org/submit/7468805"><img src="https://img.shields.io/badge/Paper-arXiv-blue" alt="arXiv Submission"></a>
 </p>
 
 <p align="center">
@@ -26,7 +28,7 @@
   <img src="https://img.shields.io/badge/Model-Nemotron--8B-orange" alt="Model">
   <img src="https://img.shields.io/badge/GPU-Required-9cf" alt="GPU Required">
   <a href="paper/memory-spark.pdf"><img src="https://img.shields.io/badge/Paper-PDF-red" alt="Paper"></a>
-  <a href="https://github.com/exampleuser/memory-spark/stargazers"><img src="https://img.shields.io/github/stars/exampleuser/memory-spark?style=social" alt="GitHub Stars"></a>
+  <a href="https://github.com/kleinpanic/memory-spark/stargazers"><img src="https://img.shields.io/github/stars/kleinpanic/memory-spark?style=social" alt="GitHub Stars"></a>
 </p>
 
 ---
@@ -341,7 +343,7 @@ All ML inference runs on a local NVIDIA DGX Spark — **zero cloud API calls**.
 ## Quick Start
 
 ```bash
-git clone https://github.com/exampleuser/memory-spark
+git clone https://github.com/kleinpanic/memory-spark
 cd memory-spark
 npm ci
 npm run build
@@ -727,7 +729,7 @@ docs/            # Architecture, config, benchmarks, tuning
   title   = {memory-spark: GPU-Accelerated Persistent Memory for Autonomous AI Agents},
   author  = {Panic, Klein and Contributors},
   year    = {2026},
-  url     = {https://github.com/exampleuser/memory-spark},
+  url     = {https://github.com/kleinpanic/memory-spark},
   version = {0.4.0}
 }
 ```
