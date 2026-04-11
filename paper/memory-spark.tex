@@ -497,6 +497,7 @@ discuss when it is likely to help.
 
 memory-spark implements a plugin for the OpenClaw autonomous agent framework. It hooks
 into the agent lifecycle at three insertion points:
+\texttt{index.ts}, \texttt{src/auto/recall.ts}, \texttt{src/auto/capture.ts}, \texttt{src/ingest/pipeline.ts}.
 
 \begin{itemize}[leftmargin=1.5em, itemsep=3pt]
   \item \textbf{\texttt{before\_prompt\_build}}: Auto-recall. Retrieves the top-$k$ most
@@ -604,7 +605,7 @@ The BM25 full-text search index on the \texttt{text} column is managed by LanceD
 tantivy. A key lesson: LanceDB FTS WHERE filters were broken in versions prior to
 0.27.1 (the \texttt{.where()} clause was silently dropped from combined FTS queries),
 causing cross-agent data leakage---a security vulnerability documented as failure mode
-F5 in Section~\ref{sec:failures}.
+F5 in Section~\ref{sec:failures} (\texttt{src/storage/lancedb.ts}).
 
 \subsection{Pool Architecture}
 \label{sec:arch:pools}
@@ -696,7 +697,7 @@ skipped on 78.7\% of SciFact queries, reducing mean latency from $\sim$1500ms to
 The raw query is constructed from the last $n_q$ agent messages (default $n_q=2$). A
 cleaning step strips previously injected memory blocks (to avoid the system querying for
 memories it already injected), system-level prefixes, and metadata tags. The clean query
-text is used for all subsequent embedding and FTS steps.
+text is used for all subsequent embedding and FTS steps (\texttt{src/auto/recall.ts}).
 
 \paragraph{Stage 2: HyDE (optional).}
 When enabled, an LLM generates a hypothetical answer document for the query. The
@@ -704,15 +705,18 @@ hypothetical is embedded as a document (not a query) to leverage document-subspa
 alignment. If the LLM times out, returns a refusal, or produces a document shorter than
 10 words, HyDE is skipped and the cleaned query embedding is used directly. A quality
 gate rejects hypothetical documents that contain hedging phrases (``I cannot provide'',
-``I don't know'') or are insufficiently factual.
+``I don't know'') or are insufficiently factual (\texttt{src/hyde/generator.ts},
+\texttt{src/auto/recall.ts}).
 
 \paragraph{Stage 3: Multi-Query Expansion.}
 An LLM generates 3 query reformulations. Each reformulation is embedded in parallel,
 producing 4 query vectors total (1 original + 3 expansions). All 4 are searched
-independently, and results are merged via RRF before pool fusion.
+independently, and results are merged via RRF before pool fusion
+(\texttt{src/query/expander.ts}, \texttt{src/auto/recall.ts}).
 
 \paragraph{Stage 4: Per-Pool Search.}
 Five pools are searched (reference library uses tool-call-only access):
+\texttt{src/auto/recall.ts}, \texttt{src/storage/pool.ts}.
 \begin{itemize}[leftmargin=2em, itemsep=2pt]
   \item \texttt{agent\_memory + agent\_tools}: $N_{\text{fetch}} = \text{maxResults} \times
   \text{overfetchMultiplier}$ results (default: $5 \times 4 = 20$). Filtered by
@@ -724,12 +728,13 @@ Five pools are searched (reference library uses tool-call-only access):
   \item \texttt{shared\_rules}: Limit 5, lower threshold.
 \end{itemize}
 Each pool search runs hybrid (vector + FTS), with FTS results merged via RRF (Stage 5).
+\texttt{src/storage/lancedb.ts}, \texttt{src/auto/recall.ts}.
 
 \paragraph{Stages 5--7: Merging and Deduplication.}
 Within each pool, vector and FTS results are merged via RRF (Stage 5). Pool results are
 then merged by removing duplicate chunk IDs (Stage 6). Near-identical chunks from the
 same source (Jaccard similarity $> 0.85$ on 4+ character tokens) are deduplicated, keeping
-the highest-scoring copy (Stage 7).
+the highest-scoring copy (Stage 7) (\texttt{src/auto/recall.ts}).
 
 \paragraph{Stages 8--10: Weighting, Decay, Normalization.}
 Source weights are applied multiplicatively (Stage 8): mistake chunks $1.6\times$,
@@ -745,21 +750,24 @@ where $t$ is the chunk age in days. This provides a floor of 0.8 (recent content
 is at most $1/0.8 = 1.25\times$ more weighted than very old content) with an exponential
 approach. Score normalization (Stage 10) rescales the result set so the maximum score
 equals 1.0, preserving relative ordering while ensuring gate spread computation is
-accurate.
+accurate (\texttt{src/auto/recall.ts}).
 
 \paragraph{Stages 11--12: Dynamic Reranker Gate and Cross-Encoder Reranking.}
-Described in detail in Section~\ref{sec:gate}.
+Described in detail in Section~\ref{sec:gate} (\texttt{src/rerank/reranker.ts},
+\texttt{src/auto/recall.ts}).
 
 \paragraph{Stage 13: MMR Diversity.}
 MMR ($\lambda=0.9$) is applied to the reranked (or gate-bypassed) candidate set.
 The Arrow Vector type issue (failure mode F1) required an explicit \texttt{.toArray()}
-conversion before cosine similarity computation.
+conversion before cosine similarity computation (\texttt{src/auto/recall.ts},
+\texttt{src/storage/lancedb.ts}).
 
 \paragraph{Stage 14: Parent-Child Expansion.}
 The search index stores fine-grained ``child'' chunks for precise retrieval, but injects
 the broader ``parent'' text into the prompt for richer context. A chunk from line
 200--250 of a file retrieves the surrounding 400-token window from the parent for
-injection.
+injection (\texttt{src/auto/recall.ts}, \texttt{src/ingest/pipeline.ts},
+\texttt{src/embed/chunker.ts}).
 
 \paragraph{Stage 15: Context Dedup, Security Filter, and Token Budget.}
 \begin{itemize}[leftmargin=2em, itemsep=2pt]
@@ -771,12 +779,13 @@ injection.
   \item \textbf{Token budget}: Chunks are admitted greedily in score order until the
   2000-token budget is exhausted, using a word-count $\times$ 1.3 token estimate.
 \end{itemize}
+(\texttt{src/auto/recall.ts}, \texttt{src/security.ts}).
 
 \subsection{Auto-Capture Pipeline}
 \label{sec:arch:capture}
 
 After each agent turn, the auto-capture pipeline processes the agent's output to extract
-memorable information:
+memorable information (\texttt{src/auto/capture.ts}):
 
 \begin{enumerate}[leftmargin=2em, itemsep=3pt]
   \item \textbf{Segmentation}: Split turn output into candidate text segments at sentence
@@ -805,13 +814,15 @@ Captures from agent outputs are subject to stricter quality gates than workspace
 chunks, because agents can and do produce incorrect outputs. The quality scorer penalizes
 hedging language (``I think'', ``I'm not sure''), refusals, and generic advice. The
 0.92 cosine deduplication threshold prevents repeated captures of the same incorrect
-information from accumulating.
+information from accumulating (\texttt{src/auto/capture.ts},
+\texttt{src/classify/quality.ts}, \texttt{src/security.ts}).
 
 \subsection{Indexing Pipeline}
 \label{sec:arch:ingest}
 
 New and modified workspace files are indexed via a file watcher (chokidar-based) and an
-on-boot full scan. The pipeline:
+on-boot full scan (\texttt{src/ingest/watcher.ts}). The pipeline
+(\texttt{src/ingest/pipeline.ts}):
 
 \begin{enumerate}[leftmargin=2em, itemsep=3pt]
   \item \textbf{Format dispatch}: Route by file extension to the appropriate parser
@@ -836,7 +847,8 @@ on-boot full scan. The pipeline:
 \paragraph{Embed Cache.}
 Query embeddings are cached (LRU, 256 entries, 30-minute TTL) since the same query
 context often appears across multiple turns in a conversation. Document embeddings are
-never cached (they change when files change).
+never cached (they change when files change) (\texttt{src/embed/cache.ts},
+\texttt{src/embed/cached-provider.ts}).
 
 % ══════════════════════════════════════════════════════════════════════════════
 \section{Dynamic Reranker Gate}
@@ -2592,4 +2604,3 @@ if (hydeConfig?.enabled) {
 \end{lstlisting}
 
 Note the critical distinction: \texttt{embedDocument()} not \texttt{embedQuery()}. The hypothetical must land in document embedding space, with no instruction prefix. This is the correct implementation per Gao et al.\ (2023).
-
