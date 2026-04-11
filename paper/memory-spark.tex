@@ -2378,23 +2378,21 @@ or precisely specified below.
     corresponding paper tables.
 
   \item[\textbf{Model versions.}]
-    All embedding and reranking models are pinned to specific Hugging Face
-    revision hashes in \texttt{config/models.yaml}:
+    All embedding and reranking models are served via vLLM on the DGX Spark node.
+    Configurations are pinned in \texttt{config/openclaw.json} under the
+    \texttt{plugins.memory-spark.embed} and \texttt{plugins.memory-spark.spark} keys:
     \begin{itemize}[leftmargin=2em, itemsep=2pt]
-      \item \textbf{M1} (primary dense): \texttt{BAAI/bge-large-en-v1.5}
-            (\texttt{rev: 8e10fce})
-      \item \textbf{M2} (secondary dense): \texttt{sentence-transformers/all-MiniLM-L6-v2}
-            (\texttt{rev: 8b3219a})
-      \item \textbf{M3} (vision-language): \texttt{BAAI/bge-visualized}
-            (\texttt{rev: 3d3b27c})
-      \item \textbf{R1} (cross-encoder reranker): \texttt{cross-encoder/ms-marco-MiniLM-L-6-v2}
-            (\texttt{rev: d9f8254})
-      \item \textbf{HyDE generator}: \texttt{mistralai/Mistral-7B-Instruct-v0.2}
-            (\texttt{rev: b70aa86}), accessed via local \texttt{llama.cpp} server
+      \item \textbf{M1} (primary dense): \texttt{nvidia/llama-embed-nemotron-8b}
+            (4096-dim, asymmetric instruction encoding), served via vLLM on port 18091.
+      \item \textbf{R1} (cross-encoder reranker): \texttt{nvidia/llama-nemotron-rerank-1b-v2}
+            (1B parameters, MS-MARCO + BEIR-trained), served via vLLM on port 18096.
+      \item \textbf{HyDE generator}: \texttt{nvidia/NVIDIA-Nemotron-Super-120B-A12B-NVFP4}
+            (120B parameters), served via vLLM on port 18080.
     \end{itemize}
-    The LanceDB vector store version is \texttt{0.6.3} (pinned in
-    \texttt{requirements.txt}).
-    BM25 is provided by \texttt{rank\_bm25==0.2.2}.
+    The LanceDB JavaScript client version is \texttt{@lancedb/lancedb 0.27.1} (pinned in
+    \texttt{package.json}).
+    BM25 is provided by LanceDB's built-in full-text search (FTS); no external
+    BM25 library is required.
 \end{description}
 
 \subsection{Docker Reproducibility Harness}
