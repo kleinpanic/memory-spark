@@ -385,8 +385,7 @@ Use this for all recall queries.
   });
 
   it("fact about infrastructure: heuristic=fact, quality>0.4", () => {
-    const text =
-      "The OpenClaw gateway runs on user at 192.168.1.100 and listens on port 18789.";
+    const text = "The OpenClaw gateway runs on user at 192.168.1.100 and listens on port 18789.";
     const classify = heuristicClassify(text);
     const quality = scoreChunkQuality(text, FILE, SRC);
 
