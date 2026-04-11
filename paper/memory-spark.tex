@@ -530,6 +530,19 @@ Seven design principles govern the system:
   corresponding BEIR benchmark measurement.
 \end{description}
 
+\clearpage
+
+% ── Figure: System Architecture Overview ──────────────────────────────────────
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.98\textwidth]{figures/fig_architecture.pdf}
+  \caption{System architecture of memory-spark. An AI agent (left) issues a query;
+    memory-spark's 15-stage pipeline (center) processes it through HyDE, hybrid search,
+    dynamic gate routing, and reranking; LanceDB (right) stores vectors and metadata;
+    all GPU inference runs locally on the DGX Spark node (bottom).}
+  \label{fig:system_architecture}
+\end{figure}
+
 \subsection{Infrastructure}
 
 All ML inference runs on a local NVIDIA DGX Spark node with no cloud API dependencies:
@@ -691,6 +704,17 @@ red = query preparation, orange = weighting and gating, blue = retrieval and fus
 green = post-processing and security. The gate at Stage~11 causes Stages~11--12 to be
 skipped on 78.7\% of SciFact queries, reducing mean latency from $\sim$1500ms to 626ms.}
 \label{fig:pipeline}
+\end{figure}
+
+% ── Figure: Per-Stage Latency Breakdown ───────────────────────────────────────
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.98\textwidth]{figures/fig_latency_breakdown.pdf}
+  \caption{Per-stage latency breakdown (p50 and p99) for the 15-stage retrieval pipeline.
+    HyDE generation (Stage 2) and cross-encoder reranking (Stage 8) dominate p99 latency.
+    The dynamic gate skips both on most queries, reducing median end-to-end latency from
+    $\sim$1500ms to 626ms. Measurements on DGX Spark, 500-query evaluation run.}
+  \label{fig:latency_breakdown}
 \end{figure}
 
 \paragraph{Stage 1: Query Cleaning.}
@@ -1281,8 +1305,21 @@ F8 & Data quality & Incorrect beliefs reinforced & Self-poisoning via capture & 
 \caption{Production failure mode taxonomy. All 8 failures were discovered through
 quantitative benchmarking or security audit. None produced explicit errors---all
 manifested as silent quality degradation or latency anomalies.}
-\label{tab:failures}
+\label{tab:failure_taxonomy}
 \end{table}
+
+\clearpage
+
+% ── Figure: Failure Taxonomy Diagram ──────────────────────────────────────────
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.95\textwidth]{figures/fig_failure_taxonomy.pdf}
+  \caption{Failure taxonomy organized by category: retrieval quality failures (F1--F3),
+    infrastructure failures (F4--F6), and pipeline/data failures (F7--F8).
+    Severity ranges from subtle silent degradation (yellow) to critical unavailability or
+    data leakage (red).}
+  \label{fig:failure_taxonomy}
+\end{figure}
 
 \subsection{F1: Apache Arrow Vector Type Mismatch}
 \label{sec:failures:F1}
@@ -1485,6 +1522,22 @@ not for idealized factual text.
 % ══════════════════════════════════════════════════════════════════════════════
 
 \subsection{Experimental Setup}
+
+We evaluate on three BEIR \citep{thakur2021beir} datasets selected for their
+structural diversity:
+
+% ── Figure: BEIR Benchmark Results Bar Chart ──────────────────────────────────
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=0.92\textwidth]{figures/fig_beir_results.pdf}
+  \caption{BEIR NDCG@10 across 5 datasets for Vector-Only, Hybrid (RRF), and GATE-A
+    configurations. Improvements from gate routing and RRF fusion are consistent across all
+    datasets. All differences are statistically significant at $p<0.05$ (paired bootstrap,
+    1000 iterations).}
+  \label{fig:beir_results}
+\end{figure}
+
+\clearpage
 
 We evaluate on three BEIR \citep{thakur2021beir} datasets selected for their
 structural diversity:
