@@ -86,7 +86,7 @@
 }
 
 \author[1]{Klein Panic}
-\affil[1]{Independent Researcher, \texttt{klein@exampleuser.com}}
+\affil[1]{Virginia Tech, Department of Computer Science, \texttt{kleinpanic@vt.edu}}
 
 \date{April 2026}
 
@@ -124,7 +124,7 @@ On SciFact (300 queries), our production configuration GATE-A achieves NDCG@10 o
 0.7802, Recall@10 of 0.9137, and mean latency of 626ms while invoking the cross-encoder
 on only 21\% of queries. Our best configuration (Config~U, logit blend $\alpha=0.4$)
 achieves NDCG@10 of 0.7889 and Recall@10 of 0.9099. On FiQA (648 queries, financial
-Q\&A), GATE-A achieves 0.5479 NDCG@10 (+66\% over BM25, +68\% over Contriever). On
+Q\&A), GATE-A achieves 0.5479 NDCG@10 (+132\% over BM25, +66\% over Contriever). On
 NFCorpus (323 queries, cross-domain medical retrieval), Vector-Only achieves 0.4443
 NDCG@10 (+35.5\% over Contriever), while reranking \emph{hurts} performance due to the
 cross-domain query format mismatch.
@@ -139,7 +139,7 @@ quantitative evaluation (not intuition) is the only reliable guide to system imp
 The complete system is validated in an isolated Docker harness with 18 self-service
 memory tools, 37,000+ indexed chunks, and a 483-test validation suite. All code,
 benchmarks, and evaluation scripts are open-source at
-\url{https://github.com/exampleuser/memory-spark}.
+\url{https://github.com/kleinpanic/memory-spark}.
 \end{abstract}
 
 % ══════════════════════════════════════════════════════════════════════════════
@@ -1047,7 +1047,7 @@ An alternative approach would train a lightweight classifier to predict whether 
 reranker will improve results. We opted for the analytical threshold approach because:
 (1) it requires no labeled training data; (2) it is interpretable; (3) it generalizes
 to new query distributions without retraining; and (4) the analytical formulation
-matches our intuitions about when the reranker is useful (Section~\ref{sec:gate:motivation}).
+matches our intuitions about when the reranker is useful (Section~\ref{sec:gate}).
 A learned gate might outperform our threshold on in-distribution queries but may
 generalize poorly to new agent workspaces.
 
@@ -2515,7 +2515,7 @@ cloud APIs that introduce both cost and failure surface.
 
 The system is deployed in production serving 6 autonomous agents with 37,000+ indexed
 chunks, 18 memory tools, and 483 validation tests. All code, benchmarks, and evaluation
-scripts are available at \url{https://github.com/exampleuser/memory-spark}.
+scripts are available at \url{https://github.com/kleinpanic/memory-spark}.
 
 \paragraph{Reproducibility statement.}
 All BEIR evaluations were conducted with fixed random seeds, deterministic IVF\_PQ
