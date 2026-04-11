@@ -94,9 +94,9 @@
 \maketitle
 
 \begin{abstract}
-We present \textbf{memory-spark}, a production memory substrate for autonomous AI agents
-that continuously ingests workspace knowledge, indexes it with hybrid dense--sparse
-retrieval, and injects high-relevance context before each conversational turn.
+We present \textbf{memory-spark}, a production-grade persistent memory substrate for
+autonomous AI agents that continuously captures, indexes, and retrieves heterogeneous
+workspace knowledge---injecting high-relevance context before every conversational turn.
 Unlike standard Retrieval-Augmented Generation (RAG) systems designed for single-turn
 question answering, memory-spark is engineered for the fundamentally harder problem of
 persistent agentic memory: heterogeneous source types (workspace files, tool schemas,
@@ -2230,6 +2230,17 @@ several common assumptions in RAG system design:
   but still meaningful role.
 
 \end{enumerate}
+
+% ══════════════════════════════════════════════════════════════════════════════
+
+The implications extend beyond any single system: as AI agents grow more capable and
+pervasive, their memory architectures determine not just performance but \emph{reliability
+and safety}. A memory system that silently degrades---producing confident but wrong
+retrieval, accumulating unvetted self-generated errors, or failing open during service
+outages---poses systemic risks as agents take on consequential tasks. memory-spark
+demonstrates that production-grade agentic memory is tractable with rigorous evaluation,
+dynamic routing, and local infrastructure, without sacrificing latency or depending on
+cloud APIs that introduce both cost and failure surface.
 
 The system is deployed in production serving 6 autonomous agents with 37,000+ indexed
 chunks, 18 memory tools, and 483 validation tests. All code, benchmarks, and evaluation
