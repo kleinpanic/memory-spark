@@ -55,8 +55,13 @@ const KNOWN_DATASETS = new Set([
   "mrtydi", "germanquad", "msmarco-v2", "mmarco",
 ]);
 
-const ALL_INDEXABLE = ["scifact", "nfcorpus", "fiqa", "arguana", "webis-touche2020",
-  "scidocs", "fever", "climate-fever", "dbpedia-entity", "nq", "quora"];
+// All datasets supported for indexing (see download-beir.sh for full list of 19 available)
+const ALL_INDEXABLE = [
+  "scifact", "nfcorpus", "fiqa",
+  "nq", "hotpotqa", "arguana",
+  "trec-covid-beir", "dbpedia-entity", "fever", "climate-fever",
+  "cqadupstack", "quora", "scidocs", "msmarco", "webis-touche2020",
+];
 
 const DATASETS = datasetArg ? [datasetArg] : ALL_INDEXABLE;
 
@@ -120,7 +125,7 @@ async function indexDataset(
   let skipped = 0;
   let failed = 0;
   const startTime = Date.now();
-  const batchSize = 25;
+  const batchSize = 500;
 
   for (let i = 0; i < total; i += batchSize) {
     const batch = corpus.slice(i, i + batchSize);
