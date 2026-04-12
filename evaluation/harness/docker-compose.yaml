@@ -1,0 +1,99 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# memory-spark eval harness — docker-compose
+#
+# Usage:
+#   1. Download BEIR datasets to a local directory:
+#      ./download-beir.sh --core
+#
+#   2. Build the harness:
+#      docker compose build
+#
+#   3. Run the benchmark:
+#      # Option A: against spark vLLM endpoints (GPU, recommended)
+#      SPARK_EMBED_URL=http://host.docker.internal:18091/v1 \
+#      SPARK_RERANK_URL=http://host.docker.internal:18096/v1 \
+#      SPARK_HYDE_URL=http://host.docker.internal:18080/v1 \
+#        docker compose run --rm benchmark
+#
+#      # Option B: NFCorpus smoke test
+#      docker compose run --rm benchmark ncf
+#
+#      # Option C: drop into shell
+#      docker compose run --rm benchmark shell
+#
+#   4. Results are written to ./results/
+# ═══════════════════════════════════════════════════════════════════════════════
+
+name: memory-spark-eval
+
+services:
+  # ── Main benchmark runner ───────────────────────────────────────────────────
+  benchmark:
+    build:
+      context: ../..
+      dockerfile: evaluation/harness/Dockerfile
+      args:
+        SPARK_EMBED_MODEL: nvidia/llama-embed-nemotron-8b
+        SPARK_RERANK_MODEL: nvidia/llama-nemotron-rerank-1b-v2
+        SPARK_HYDE_MODEL: nvidia/NVIDIA-Nemotron-Super-120B-A12B-NVFP4
+    volumes:
+      # Mount local BEIR datasets into container
+      - ${BEIR_DATA_DIR:-./beir-data}:/data/beir-datasets:ro
+      # Mount results output directory
+      - ./results:/data/results
+      # Ephemeral eval DB (fresh each run — never touches production)
+      - eval-db-data:/data/eval-lancedb
+    environment:
+      # vLLM endpoints — change these to point at your spark/GPU machine
+      # host.docker.internal resolves to the Docker host machine
+      SPARK_EMBED_URL: ${SPARK_EMBED_URL:-http://host.docker.internal:18091/v1}
+      SPARK_RERANK_URL: ${SPARK_RERANK_URL:-http://host.docker.internal:18096/v1}
+      SPARK_HYDE_URL: ${SPARK_HYDE_URL:-http://host.docker.internal:18080/v1/chat/completions}
+      # Benchmark config
+      BEIR_DATASETS: ${BEIR_DATASETS:-scifact,nfcorpus,fiqa}
+      BEIR_CONFIGS: ${BEIR_CONFIGS:-all}
+      # Disable OCR everywhere
+      DISABLE_OCR: "true"
+      # Skip GPU configs if vLLM is unavailable
+      SKIP_GPU_CONFIGS: ${SKIP_GPU_CONFIGS:-false}
+      # Optional: specify which configs to run (A=vector-only, B=fts-only, C=hybrid, D=hybrid+rerank, E=hybrid+MMR, F=hybrid+HyDE, G=full)
+      # BEIR_CONFIGS: A,B,C,D  (skip HyDE configs if no GPU LLM available)
+    networks:
+      - eval-net
+
+  # ── GPU-enabled benchmark runner ─────────────────────────────────────────────
+  # Use this service on a machine with an NVIDIA GPU
+  # Requires nvidia-container-toolkit and nvidia-docker
+  # Uncomment if running on a GPU machine:
+  #
+  # benchmark-gpu:
+  #   build:
+  #     context: ../..
+  #     dockerfile: evaluation/harness/Dockerfile.gpu
+  #   runtime: nvidia
+  #   volumes:
+  #     - ${BEIR_DATA_DIR:-./beir-data}:/data/beir-datasets:ro
+  #     - ./results:/data/results
+  #     - eval-db-data:/data/eval-lancedb
+  #   environment:
+  #     SPARK_EMBED_URL: http://localhost:18091/v1
+  #     SPARK_RERANK_URL: http://localhost:18096/v1
+  #     SPARK_HYDE_URL: http://localhost:18080/v1/chat/completions
+  #     BEIR_DATASETS: ${BEIR_DATASETS:-scifact,nfcorpus,fiqa}
+  #     BEIR_CONFIGS: ${BEIR_CONFIGS:-all}
+  #     DISABLE_OCR: "true"
+  #   deploy:
+  #     resources:
+  #       reservations:
+  #         devices:
+  #           - driver: nvidia
+  #             count: 1
+  #             capabilities: [gpu]
+
+networks:
+  eval-net:
+    driver: bridge
+
+volumes:
+  # Ephemeral eval database — always fresh, never touches production
+  eval-db-data:

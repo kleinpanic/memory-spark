@@ -652,7 +652,7 @@ async function loadQrels(dataset: string): Promise<Qrels> {
 }
 
 function stripBeirPrefix(id: string): string {
-  return id.replace(/^beir-(scifact|nfcorpus|fiqa)-/, "");
+  return id.replace(/^beir-[^-]+-/, "");
 }
 
 async function runRetrieval(

@@ -13,6 +13,9 @@
 #   --all           # scifact + nfcorpus + fiqa (66,454 docs)
 #   --without-fiqa  # scifact + nfcorpus (8,816 docs)
 #   --fiqa-only     # fiqa only (57,638 docs)
+#   --arguana       # arguana only (1,406 docs)
+#   --touche        # webis-touche2020 only (382,545 docs)
+#   --adversarial   # arguana + webis-touche2020 (383,951 docs)
 #
 
 set -uo pipefail
@@ -36,14 +39,20 @@ mkdir -p "$LOGDIR"
 
 MODE="all"
 case "${1:-}" in
-    --without-fiqa) MODE="without-fiqa" ;;
-    --fiqa-only)    MODE="fiqa-only" ;;
+    --without-fiqa)  MODE="without-fiqa" ;;
+    --fiqa-only)     MODE="fiqa-only" ;;
+    --arguana)       MODE="arguana" ;;
+    --touche)        MODE="touche" ;;
+    --adversarial)   MODE="adversarial" ;;
 esac
 
 case "$MODE" in
-    all)           DATASETS="scifact nfcorpus fiqa";    TOTAL_DOCS=66454 ;;
-    without-fiqa)  DATASETS="scifact nfcorpus";        TOTAL_DOCS=8816 ;;
-    fiqa-only)     DATASETS="fiqa";                    TOTAL_DOCS=57638 ;;
+    all)           DATASETS="scifact nfcorpus fiqa";              TOTAL_DOCS=66454 ;;
+    without-fiqa)  DATASETS="scifact nfcorpus";                  TOTAL_DOCS=8816 ;;
+    fiqa-only)     DATASETS="fiqa";                              TOTAL_DOCS=57638 ;;
+    arguana)       DATASETS="arguana";                           TOTAL_DOCS=1406 ;;
+    touche)        DATASETS="webis-touche2020";                  TOTAL_DOCS=382545 ;;
+    adversarial)   DATASETS="arguana webis-touche2020";          TOTAL_DOCS=383951 ;;
 esac
 
 # ── Helpers ───────────────────────────────────────────────────────────────

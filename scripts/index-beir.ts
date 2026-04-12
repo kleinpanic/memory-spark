@@ -48,7 +48,17 @@ const resume = args.includes("--resume");
 const datasetsDir = path.join(import.meta.dirname!, "..", "evaluation", "beir-datasets");
 const checkpointDir = path.join(import.meta.dirname!, "../evaluation/.checkpoints");
 
-const DATASETS = datasetArg ? [datasetArg] : ["scifact", "nfcorpus", "fiqa"];
+const KNOWN_DATASETS = new Set([
+  "scifact", "nfcorpus", "fiqa", "nq", "hotpotqa", "arguana",
+  "trec-covid-beir", "dbpedia-entity", "fever", "climate-fever",
+  "cqadupstack", "quora", "scidocs", "msmarco", "webis-touche2020",
+  "mrtydi", "germanquad", "msmarco-v2", "mmarco",
+]);
+
+const ALL_INDEXABLE = ["scifact", "nfcorpus", "fiqa", "arguana", "webis-touche2020",
+  "scidocs", "fever", "climate-fever", "dbpedia-entity", "nq", "quora"];
+
+const DATASETS = datasetArg ? [datasetArg] : ALL_INDEXABLE;
 
 const logger = {
   info: (m: string) => console.log(`[INFO] ${m}`),
@@ -233,8 +243,8 @@ async function main() {
   // Index each dataset
   const results: Record<string, { indexed: number; skipped: number; failed: number }> = {};
   for (const dataset of DATASETS) {
-    if (!["scifact", "nfcorpus", "fiqa"].includes(dataset)) {
-      logger.warn(`Unknown dataset: ${dataset}, skipping`);
+    if (!KNOWN_DATASETS.has(dataset)) {
+      logger.warn(`Unknown dataset: ${dataset} — skipping. Available: ${[...KNOWN_DATASETS].join(", ")}`);
       continue;
     }
     results[dataset] = await indexDataset(dataset, backend, embed);

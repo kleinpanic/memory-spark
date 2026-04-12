@@ -1,0 +1,50 @@
+# BEIR datasets — mounted at runtime
+beir-data/
+evaluation/beir-datasets/
+
+# Eval outputs
+results/
+*.log
+
+# Build artifacts
+node_modules/
+dist/
+coverage/
+
+# Git
+.git/
+.gitignore
+
+# CI/CD
+.github/
+
+# Paper
+paper/
+*.pdf
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+*.synctex.gz
+
+# Docs
+README.md
+CHANGELOG.md
+
+# Archives and backups
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
