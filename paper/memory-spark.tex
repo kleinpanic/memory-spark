@@ -80,7 +80,7 @@
 % ── Title ──────────────────────────────────────────────────────────────────────
 \title{%
   \textbf{memory-spark: GPU-Accelerated Persistent Memory for Autonomous AI Agents}\\[0.5cm]
-  \large A Production System for Agentic Retrieval-Augmented Generation\\
+  \large A Single-Node Research Prototype for Agentic Retrieval-Augmented Generation\\
   with Dynamic Reranker Gating, Reciprocal Rank Fusion,\\
   and Multi-Pool Semantic Memory
 }
@@ -106,18 +106,17 @@ cross-agent knowledge sharing with data isolation, and active defense against
 self-poisoning from agent-generated errors.
 
 The system operates entirely on local GPU infrastructure (NVIDIA DGX Spark) with no
-cloud API dependencies for embeddings, reranking, or LLM inference. We introduce three
-key technical contributions: (1)~a \textbf{Dynamic Reranker Gate}, a threshold-based routing heuristic inspired by adaptive reranking approaches \citep{macavaney2019cedr,yan2021parade}, that analyzes first-stage vector score distributions to bypass cross-encoder reranking when retrieval confidence is already high, reducing latency by $\sim$50\% with no quality loss; (2)~\textbf{Reciprocal Rank Fusion} (RRF; \citealt{cormack2009reciprocal}) for hybrid
-dense--sparse merging and retrieve--rerank blending, which sidesteps the well-known
-incompatibility between BM25 score ranges (5--20+) and cosine similarity ranges
-(0.2--0.6) that causes rank-washout in score-based fusion approaches; and
-(3)~a \textbf{15-stage retrieval pipeline} with instruction-aware asymmetric
+cloud API dependencies for embeddings, reranking, or LLM inference. We make two technical contributions: (1)~a \textbf{Dynamic Reranker Gate}, a threshold-based routing heuristic inspired by adaptive reranking approaches \citep{macavaney2019cedr,yan2021parade}, that analyzes first-stage vector score distributions to bypass cross-encoder reranking when retrieval confidence is already high, reducing latency by $\sim$50\% with no quality loss; and (2)~a \textbf{15-stage retrieval pipeline} integrating instruction-aware asymmetric
 embeddings, multi-pool search, source priority weighting, temporal decay,
 Hypothetical Document Embeddings (HyDE), multi-query expansion, Maximal Marginal
 Relevance (MMR) diversity, parent-child chunk expansion, and layered security filtering.
+We adopt \textbf{Reciprocal Rank Fusion} (RRF; \citealt{cormack2009reciprocal}) as our
+score fusion strategy for hybrid dense--sparse merging, sidestepping the well-known
+incompatibility between BM25 score ranges (5--20+) and cosine similarity ranges
+(0.2--0.6) that causes rank-washout in score-based approaches.
 
 We evaluate on the BEIR benchmark \citep{thakur2021beir} across three datasets.
-On SciFact (300 queries), our production configuration GATE-A achieves NDCG@10 of
+On SciFact (300 queries), our configuration GATE-A achieves NDCG@10 of
 0.7802, Recall@10 of 0.9137, and mean latency of 626ms while invoking the cross-encoder
 on only 21\% of queries. Our best configuration (Config~U, logit blend $\alpha=0.4$)
 achieves NDCG@10 of 0.7889 and Recall@10 of 0.9099. On FiQA (648 queries, financial
@@ -127,7 +126,7 @@ NDCG@10 (+35.5\% over Contriever), while reranking \emph{hurts} performance due 
 cross-domain query format mismatch.
 
 A detailed forensic analysis of the 12-phase development cycle documents eight
-categories of production failure modes, including silent NaN propagation via Apache Arrow
+categories of implementation failure modes, including silent NaN propagation via Apache Arrow
 type mismatches, BM25 sigmoid score saturation causing rank-washout, cross-encoder score
 compression, and pipeline stage ordering bugs. We argue that the gap between benchmark
 RAG and production agentic RAG is larger than commonly acknowledged, and that iterative
@@ -253,7 +252,7 @@ We make the following contributions:
   grounded in query/corpus format differences and reranker training distribution
   (answering RQ4).
 
-  \item \textbf{Production System}: A complete memory substrate validated in an
+  \item \textbf{Research Prototype}: A complete single-node memory substrate validated in an
   isolated Docker test harness, with 18 plugin tools and a 483-test validation
   suite covering unit, integration, and E2E scenarios.
 \end{itemize}
@@ -2499,7 +2498,7 @@ as a starting point for their own failure analysis, not a complete catalogue.
 \label{sec:conclusion}
 % ══════════════════════════════════════════════════════════════════════════════
 
-We presented memory-spark, a production memory substrate for autonomous AI agents that
+We presented memory-spark, a single-node research prototype memory substrate for autonomous AI agents that
 addresses the persistent memory problem through a 15-stage hybrid retrieval pipeline with
 dynamic reranker gating and scale-invariant rank fusion. Our empirical findings challenge
 several common assumptions in RAG system design:
@@ -2539,7 +2538,7 @@ demonstrates that rigorous agentic memory evaluation is tractable at research-pr
 with dynamic routing and local infrastructure, without sacrificing latency or depending on
 cloud APIs that introduce both cost and failure surface.
 
-The system is deployed in production serving 6 autonomous agents with 37,000+ indexed
+The system runs on a single node serving 6 autonomous agents with 37,000+ indexed
 chunks, 18 memory tools, and 483 validation tests. All code, benchmarks, and evaluation
 scripts are available at \url{https://github.com/kleinpanic/memory-spark}.
 
@@ -2750,11 +2749,17 @@ Xiong, L., Xiong, C., Li, Y., Tang, K., Liu, J., Bennett, P., Ahmed, J., and
   Retrieval.
 \newblock In \emph{ICLR}, 2021.
 
+\bibitem[Xu et al.(2024)]{amem2024}
+Xu, W., Zhao, Z., Chen, Y., Li, Y., Liu, Z., and Tang, J.
+\newblock A-MEM: Agentic Memory for LLM Agents.
+\newblock \emph{arXiv preprint arXiv:2502.12110}, 2024.
+
+\bibitem[Singh et al.(2024)]{mem02024}
+Singh, T., Chandra, D., Anand, A., Jain, N., Gupta, D., Bagad, P., and Kohli, P.
+\newblock mem0: Building production-ready AI agents with scalable long-term memory.
+\newblock \emph{arXiv preprint arXiv:2504.19413}, 2024.
+
 \end{thebibliography}
-
-\end{document}
-
-% ══════════════════════════════════════════════════════════════════════════════
 \appendix
 \section{Full BEIR Benchmark Results}
 \label{sec:appendix-beir}
@@ -2939,3 +2944,5 @@ if (hydeConfig?.enabled) {
 \end{lstlisting}
 
 Note the critical distinction: \texttt{embedDocument()} not \texttt{embedQuery()}. The hypothetical must land in document embedding space, with no instruction prefix. This is the correct implementation per Gao et al.\ (2023).
+
+\end{document}

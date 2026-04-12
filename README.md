@@ -11,7 +11,6 @@
   <img src="https://img.shields.io/badge/Node.js-%3E%3D22-339933?logo=node.js&logoColor=white" alt="Node.js">
   <img src="https://img.shields.io/badge/License-MIT-green" alt="License">
   <img src="https://img.shields.io/badge/Coverage-91%25-3fb950" alt="Coverage">
-  <a href="https://doi.org/10.5281/zenodo.19520739"><img src="https://zenodo.org/badge/doi/10.5281/zenodo.19520739.svg" alt="Zenodo"></a>
   <a href="https://arxiv.org/submit/7468805"><img src="https://img.shields.io/badge/Paper-arXiv-blue" alt="arXiv Submission"></a>
 </p>
 
