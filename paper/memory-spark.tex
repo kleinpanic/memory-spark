@@ -94,7 +94,7 @@
 \maketitle
 
 \begin{abstract}
-We present \textbf{memory-spark}, a production-grade persistent memory substrate for
+We present \textbf{memory-spark}, a research prototype for a persistent memory substrate for
 autonomous AI agents that continuously captures, indexes, and retrieves heterogeneous
 workspace knowledge---injecting high-relevance context before every conversational turn.
 Unlike standard Retrieval-Augmented Generation (RAG) systems designed for single-turn
@@ -107,13 +107,10 @@ self-poisoning from agent-generated errors.
 
 The system operates entirely on local GPU infrastructure (NVIDIA DGX Spark) with no
 cloud API dependencies for embeddings, reranking, or LLM inference. We introduce three
-key technical contributions: (1)~a \textbf{Dynamic Reranker Gate} that analyzes
-first-stage vector score distributions to intelligently bypass cross-encoder reranking
-when retrieval confidence is already high, reducing latency by $\sim$50\% with no
-quality loss; (2)~\textbf{scale-invariant Reciprocal Rank Fusion} (RRF) for hybrid
-dense--sparse merging and retrieve--rerank blending, resolving the fundamental
+key technical contributions: (1)~a \textbf{Dynamic Reranker Gate}, a threshold-based routing heuristic inspired by adaptive reranking approaches \citep{macavaney2019cedr,yan2021parade}, that analyzes first-stage vector score distributions to bypass cross-encoder reranking when retrieval confidence is already high, reducing latency by $\sim$50\% with no quality loss; (2)~\textbf{Reciprocal Rank Fusion} (RRF; \citealt{cormack2009reciprocal}) for hybrid
+dense--sparse merging and retrieve--rerank blending, which sidesteps the well-known
 incompatibility between BM25 score ranges (5--20+) and cosine similarity ranges
-(0.2--0.6) that caused catastrophic rank-washout in prior score-based approaches; and
+(0.2--0.6) that causes rank-washout in score-based fusion approaches; and
 (3)~a \textbf{15-stage retrieval pipeline} with instruction-aware asymmetric
 embeddings, multi-pool search, source priority weighting, temporal decay,
 Hypothetical Document Embeddings (HyDE), multi-query expansion, Maximal Marginal
@@ -244,11 +241,12 @@ We make the following contributions:
   normalization and resolving catastrophic rank-washout caused by BM25/cosine scale
   incompatibility (answering RQ2).
 
-  \item \textbf{Production Failure Mode Taxonomy (Section~\ref{sec:failures})}: An
-  empirical catalog of eight failure categories discovered during a 12-phase iterative
+  \item \textbf{Implementation Lessons (Section~\ref{sec:failures})}: An
+  empirical account of eight failure modes discovered during a 12-phase iterative
   development cycle, including silent failures from type system mismatches, score
   distribution pathologies, security vulnerabilities, and pipeline ordering errors
-  (answering RQ3).
+  (answering RQ3). Seven of the eight are implementation pitfalls specific to our
+  stack; one (F6, init deadlock) reflects a more general architectural insight.
 
   \item \textbf{Cross-Dataset Retrieval Analysis (Section~\ref{sec:eval})}: A systematic
   structural analysis of why reranking helps on SciFact and FiQA but hurts on NFCorpus,
@@ -266,7 +264,7 @@ Section~\ref{sec:background} establishes mathematical preliminaries for all retr
 components. Section~\ref{sec:arch} describes the complete system architecture.
 Sections~\ref{sec:gate} and~\ref{sec:rrf} present the two primary technical
 innovations in depth. Section~\ref{sec:hyde} analyzes HyDE. Section~\ref{sec:failures}
-catalogs production failure modes. Section~\ref{sec:eval} presents experimental results.
+documents implementation lessons from the development cycle. Section~\ref{sec:eval} presents experimental results.
 Section~\ref{sec:deployment} covers production engineering. Section~\ref{sec:related}
 discusses related work. Section~\ref{sec:future} outlines future directions.
 Section~\ref{sec:conclusion} concludes.
@@ -904,6 +902,18 @@ The reranker provides reliable lift only in the \emph{productive range}: when th
 vector model has partial confidence---enough to identify several plausible candidates,
 but not enough to rank them definitively.
 
+\paragraph{Relationship to prior work.}
+Adaptive reranking control has been studied extensively via learned approaches.
+CEDR \citep{macavaney2019cedr} integrates contextual embeddings into document ranking
+with learned scoring heads. PARADE \citep{yan2021parade} aggregates passage-level
+reranker scores via learned pooling for document-level ranking.
+monoT5 \citep{nogueira2020monot5} uses a sequence-to-sequence model to produce
+relevance scores, effectively learning when reranking signals are informative.
+Our gate is a simplified, training-free variant: a threshold-based heuristic that routes
+queries based on the empirical observation that vector confidence spread ($\sigma = s_1 - s_k$)
+predicts whether cross-encoder reranking will be beneficial. Unlike learned gating approaches,
+it requires no labeled training data and adds no inference overhead beyond a scalar subtraction.
+
 \subsection{Gate Formulation}
 
 Let $s_1 \geq s_2 \geq \cdots \geq s_k$ be the top-$k$ normalized cosine similarity
@@ -1094,8 +1104,9 @@ distribution relative to the midpoint. Any hardcoded normalization is fragile.
 
 \subsection{RRF Application}
 
-RRF resolves the scale incompatibility by discarding score magnitudes entirely and
-fusing on rank positions. We apply RRF in two contexts:
+We adopt RRF \citep{cormack2009reciprocal}, a standard rank-fusion technique, which sidesteps
+the score-scale incompatibility by discarding magnitudes and fusing on rank positions.
+We apply RRF in two contexts:
 
 \paragraph{Hybrid Merge (Vector + FTS within each pool).}
 Vector and FTS results are each ranked by their respective scores, then fused:
@@ -1275,15 +1286,17 @@ with a dedicated 4B LLM for HyDE, reducing latency from $\sim$8s to $\sim$0.5s a
 enabling HyDE to be practically useful.
 
 % ══════════════════════════════════════════════════════════════════════════════
-\section{Production Failure Mode Taxonomy}
+\section{Implementation Lessons}
 \label{sec:failures}
 % ══════════════════════════════════════════════════════════════════════════════
 
-The following failure modes were discovered and remediated during the 12-phase iterative
-development cycle. We document them not as historical curiosities, but as a systematic
-catalog of failure patterns that we believe are endemic to production agentic RAG
-systems and likely to recur in other implementations. Discovery method, impact, and fix
-are provided for each.
+The following failure modes were encountered and remediated during the 12-phase iterative
+development cycle. We document them as implementation pitfalls, most of which are
+specific to the TypeScript/LanceDB/vLLM stack we use. Seven of the eight (F1--F5, F7--F8)
+are engineering mistakes or upstream bugs; F6 (init deadlock) reflects a more general
+concurrency insight. We do not claim a generalizable scientific taxonomy, but practitioners
+building similar agentic RAG stacks may find these lessons applicable.
+Discovery method, impact, and fix are provided for each.
 
 \begin{table}[H]
 \centering
@@ -1302,9 +1315,10 @@ F7 & Metric & MAP@10 inflated for small-recall queries & Denominator error & 5 \
 F8 & Data quality & Incorrect beliefs reinforced & Self-poisoning via capture & 11 \\
 \bottomrule
 \end{tabular}
-\caption{Production failure mode taxonomy. All 8 failures were discovered through
-quantitative benchmarking or security audit. None produced explicit errors---all
-manifested as silent quality degradation or latency anomalies.}
+\caption{Implementation lessons: eight failure modes encountered during development.
+All were discovered through quantitative benchmarking or security audit. None produced
+explicit errors---all manifested as silent quality degradation or latency anomalies.
+Seven are stack-specific implementation bugs; F6 reflects a general concurrency pitfall.}
 \label{tab:failure_taxonomy}
 \end{table}
 
@@ -1314,10 +1328,10 @@ manifested as silent quality degradation or latency anomalies.}
 \begin{figure}[t]
   \centering
   \includegraphics[width=0.95\textwidth]{figures/fig_failure_taxonomy.pdf}
-  \caption{Failure taxonomy organized by category: retrieval quality failures (F1--F3),
+  \caption{Implementation lessons organized by category: retrieval quality failures (F1--F3),
     infrastructure failures (F4--F6), and pipeline/data failures (F7--F8).
     Severity ranges from subtle silent degradation (yellow) to critical unavailability or
-    data leakage (red).}
+    data leakage (red). F6 is the only entry with broader architectural generality.}
   \label{fig:failure_taxonomy}
 \end{figure}
 
@@ -1530,9 +1544,9 @@ structural diversity:
 \begin{figure}[t]
   \centering
   \includegraphics[width=0.92\textwidth]{figures/fig_beir_results.pdf}
-  \caption{BEIR NDCG@10 across 5 datasets for Vector-Only, Hybrid (RRF), and GATE-A
+  \caption{BEIR NDCG@10 across 3 datasets for Vector-Only, Hybrid (RRF), and GATE-A
     configurations. Improvements from gate routing and RRF fusion are consistent across all
-    datasets. All differences are statistically significant at $p<0.05$ (paired bootstrap,
+    evaluated datasets. All differences are statistically significant at $p<0.05$ (paired bootstrap,
     1000 iterations).}
   \label{fig:beir_results}
 \end{figure}
@@ -1712,11 +1726,13 @@ $+2.5\%$ average NDCG over Vector-Only.}
 \end{table}
 
 \paragraph{Attribution of improvements.}
-The NDCG improvement over Contriever (+33\% average) has two sources:
-(1) \textbf{Embedding model quality}: Using an 8B instruction-tuned model vs.\ 110M
-unsupervised models accounts for the majority of the gain. This is consistent with
+The NDCG improvement over Contriever (a 2021 unsupervised baseline; +33\% average) has two sources:
+(1) \textbf{Embedding model quality}: Using an 8B instruction-tuned model vs.\ a 110M
+unsupervised model accounts for the majority of the gain. This improvement is expected given
+the scale gap and is consistent with
 MTEB \citep{muennighoff2023mteb} scaling laws showing strong correlation between model
-size and embedding quality.
+size and embedding quality. We note that comparisons against contemporary dense retrievers
+(e.g., E5-Large, BGE-Large) would provide a more rigorous baseline and are left for future work.
 (2) \textbf{Pipeline architecture}: The transition from Vector-Only (0.587) to Config~U
 (0.592) represents a +0.85\% average improvement from reranking and fusion strategies.
 
@@ -2166,8 +2182,7 @@ similar purposes but are implemented at the embedding retrieval level rather tha
 scoring. A-MEM \citep{amem2024} uses agentic memory management with structured note-taking
 and associative linking. mem0 \citep{mem02024} is a production memory layer for AI apps
 with entity extraction and semantic dedup. Our system is most similar to mem0 but adds
-BEIR benchmark validation, multi-pool isolation, a dynamic reranker gate, and an explicit
-failure mode taxonomy.
+BEIR benchmark validation, multi-pool isolation, a dynamic reranker gate, and documentation of implementation lessons from deployment.
 
 \subsection{Hybrid Retrieval}
 
@@ -2220,11 +2235,11 @@ metrics; prior RAG benchmarks (BEIR, MTEB, RAGAS, RGB) evaluate clean systems wi
 corpora and single-turn queries, not persistent multi-agent workspaces with live ingestion,
 temporal decay, and cross-agent isolation. memory-spark fills this gap: it is the first agentic
 memory system to report BEIR-calibrated retrieval quality---establishing comparison baselines
-against DPR, Contriever, and BM25---while also providing a systematic taxonomy of the
-production failure modes (Section~\ref{sec:failures}) that separate benchmark RAG from deployed
-agentic RAG. The eight failure categories documented here, including silent NaN propagation via
-Apache Arrow type mismatches and BM25 sigmoid score saturation causing rank-washout, are
-invisible to standard benchmark pipelines but critically affect real-world deployment.
+against DPR, Contriever, and BM25---while also documenting the implementation lessons (Section~\ref{sec:failures}) that separate
+benchmark RAG from deployed agentic RAG. The eight failure modes documented here---including
+silent NaN propagation via Apache Arrow type mismatches and BM25 sigmoid score saturation
+causing rank-washout---are invisible to standard benchmark pipelines but critically affect
+real-world deployment.
 
 % ══════════════════════════════════════════════════════════════════════════════
 \section{Future Work}
@@ -2443,6 +2458,20 @@ Future work should develop an agentic memory benchmark that controls for corpus
 size, query distribution, and agent task type so that cross-system comparisons
 can be made rigorously.
 
+\paragraph{Baseline recency.}
+The retrieval baselines in Table~\ref{tab:sota} (DPR, ANCE, Contriever) date from
+2020--2021. While we compare against Contriever as a strong unsupervised dense retrieval
+baseline and note in Section~\ref{sec:eval} that the gap is largely attributable to
+embedding model scale, modern dense retrievers from 2022 onward---including
+E5-Large-v2 \citep{li2023e5}, BGE-Large \citep{chen2024bgem3},
+E5-Mistral-7B-Instruct, and GTE-Qwen2-7B-Instruct---represent substantially stronger
+comparisons. As of 2026, several of these have themselves been superseded by
+instruction-tuned embedding models of similar scale to our own (Nemotron-8B).
+Running our pipeline on top of a 110M-parameter model against these modern baselines
+would require a controlled model-swap experiment we defer to future work.
+We caution the reader against over-interpreting the +33\% NDCG gap as evidence of
+pipeline contribution beyond embedding model quality.
+
 \paragraph{Language and domain coverage.}
 The system is evaluated exclusively on English-language corpora, and all embedding
 models (\textbf{M1}--\textbf{M3}) were pre-trained primarily on English text.
@@ -2455,16 +2484,15 @@ Retrieval precision on highly technical, domain-specific short documents (e.g.\
 shell command outputs, stack traces, JSON configuration fragments) may not track
 these headline numbers.
 
-\paragraph{Failure taxonomy completeness.}
-The eight production failure modes catalogued in
-Section~\ref{sec:failures} were discovered during operational use of
-memory-spark in a single-user, single-machine deployment (one Linux laptop,
-approximately six months of continuous operation).
-This observation window is inherently narrow: failure modes that manifest only
-under high concurrency, multi-user deployments, large corpora (>10M entries),
-or adversarial workloads are likely underrepresented.
-Operators deploying memory-spark in broader settings should treat the taxonomy
-as a starting point for their own failure analysis rather than a complete catalogue.
+\paragraph{Implementation lesson coverage.}
+The eight failure modes documented in Section~\ref{sec:failures} were encountered during
+operational use of memory-spark in a single-user, single-machine deployment (one Linux
+laptop, approximately six months of continuous operation).
+This observation window is inherently narrow: failures that manifest only under high
+concurrency, multi-user deployments, large corpora (>10M entries), or adversarial
+workloads are likely absent from our account.
+Practitioners deploying memory-spark in broader settings should treat these lessons
+as a starting point for their own failure analysis, not a complete catalogue.
 
 % ══════════════════════════════════════════════════════════════════════════════
 \section{Conclusion}
@@ -2507,8 +2535,8 @@ pervasive, their memory architectures determine not just performance but \emph{r
 and safety}. A memory system that silently degrades---producing confident but wrong
 retrieval, accumulating unvetted self-generated errors, or failing open during service
 outages---poses systemic risks as agents take on consequential tasks. memory-spark
-demonstrates that production-grade agentic memory is tractable with rigorous evaluation,
-dynamic routing, and local infrastructure, without sacrificing latency or depending on
+demonstrates that rigorous agentic memory evaluation is tractable at research-prototype scale
+with dynamic routing and local infrastructure, without sacrificing latency or depending on
 cloud APIs that introduce both cost and failure surface.
 
 The system is deployed in production serving 6 autonomous agents with 37,000+ indexed
@@ -2622,6 +2650,11 @@ Khattab, O. and Zaharia, M.
   Interaction over {BERT}.
 \newblock In \emph{SIGIR}, 2020.
 
+\bibitem[MacAvaney et~al.(2019)]{macavaney2019cedr}
+MacAvaney, S., Yates, A., Cohan, A., and Goharian, N.
+\newblock {CEDR}: Contextualized Embeddings for Document Ranking.
+\newblock In \emph{SIGIR}, pp.\ 1101--1104, 2019.
+
 \bibitem[Lewis et~al.(2020)]{lewis2020rag}
 Lewis, P., Perez, E., Piktus, A., Petroni, F., Karpukhin, V., Goyal, N., K{\"u}ttler,
   H., Lewis, M., Yih, W., Rockt{\"a}schel, T., Riedel, S., and Kiela, D.
@@ -2704,6 +2737,11 @@ Thakur, N., Reimers, N., R{\"u}ckl{\'e}, A., Srivastava, A., and Gurevych, I.
 \newblock {BEIR}: A Heterogeneous Benchmark for Zero-shot Evaluation of Information
   Retrieval Models.
 \newblock In \emph{NeurIPS Datasets and Benchmarks}, 2021.
+
+\bibitem[Yan et~al.(2021)]{yan2021parade}
+Yan, M., Li, C., Wu, C., Wang, B., Chen, G., Cheng, D., and Li, S.
+\newblock {PARADE}: Passage Representation Aggregation for Document Reranking.
+\newblock \emph{ACM Transactions on Information Systems}, 39(4):1--25, 2021.
 
 \bibitem[Xiong et~al.(2021)]{xiong2021ance}
 Xiong, L., Xiong, C., Li, Y., Tang, K., Liu, J., Bennett, P., Ahmed, J., and

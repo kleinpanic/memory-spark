@@ -1,0 +1,21 @@
+# Skip heavy deps and build artifacts — these are installed inside the image
+node_modules/
+dist/
+coverage/
+.git/
+.github/
+paper/
+bench-data/
+evaluation/beir-datasets/
+results/
+*.pdf
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.toc
+*.synctex.gz
+.DS_Store
+*.zip
+*.tar.gz

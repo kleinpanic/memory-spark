@@ -1,11 +1,23 @@
 # ISSUES.md — memory-spark BEIR Benchmark Root Cause Analysis
 
-> **Date:** 2026-03-30
+> **Date:** 2026-03-30 (last updated 2026-04-12)
 > **Benchmark:** BEIR (SciFact, NFCorpus, FiQA partial)
 > **Embedding Model:** nvidia/llama-embed-nemotron-8b (4096-dim, instruction-aware)
 > **Reranker:** nvidia/llama-nemotron-rerank-1b-v2
 > **Vector DB:** LanceDB 0.27+
 > **FTS:** LanceDB built-in Tantivy BM25
+
+## Fix Status
+
+| Issue | Status | Notes |
+|-------|--------|-------|
+| 1. BM25 Sigmoid Saturation | ✅ Fixed | `sigmoidMidpoint: 10.0` in config.ts |
+| 2. Missing Instruction Prefix | ✅ Fixed | `queryInstruction` added to config; query format corrected |
+| 3. Hybrid Merge Bug in Runner | ✅ Fixed | Vector and FTS results now kept separate until fusion |
+| 4. HyDE Never Activated | ✅ Fixed | HyDE fires when `cfg.hyde.enabled: true`; `--hyde` CLI flag available |
+| 5. HyDE Vector Averaging | ✅ Fixed | Replaced with Gao et al. (2022) replacement approach |
+| 6. MMR Destroys Recall | ✅ Fixed | `useMmr: false` for all benchmark configs |
+| 7. Reranker Latency | ⚠️ Spark GPU | 41s p50 — needs GPU-enabled vLLM on Spark |
 
 ---
 

@@ -22,14 +22,18 @@ The following table compares our best configurations against published NDCG@10 n
 | Contriever (Izacard et al. 2021) | 0.677 | 0.329 | 0.328 | 0.445 |
 | **memory-spark: Vector-Only (Config A)** | **0.7709** | **0.5469** | **0.4443** | **0.5874** |
 | **memory-spark: Best (Config U)** | **0.7889** | **0.5526** | 0.4344 | **0.5920** |
-| **memory-spark: GATE-A (Production)** | **0.7802** | **0.5479** | 0.4256 | **0.5846** |
+| **memory-spark: GATE-A (Default)** | **0.7802** | **0.5479** | 0.4256 | **0.5846** |
+
+**Context:** All baselines above are from Thakur et al. (2021). Our evaluation uses 3 datasets (SciFact, FiQA, NFCorpus) — not the full 18-dataset BEIR benchmark. Modern dense retrievers (E5-Large-v2: ~56% avg, BGE-Large-EN-v1.5: ~54% avg on full BEIR) outperform these 2021 baselines significantly. Our relative improvements are against the 2021 SOTA for comparability; a full BEIR 2.0 comparison is planned.
 
 **Our embedding model:** `llama-embed-nemotron-8b` (8B parameter, instruction-tuned, 4096-dim) — a modern large model vs the 2021-era 110M–330M parameter baselines above.
 
-### Relative Improvement vs. Contriever (strongest 2021 SOTA)
+### Relative Improvement vs. Contriever (2021-era strongest baseline)
 
-| Dataset | Contriever | Our Best | Improvement |
-|---------|-----------|----------|-------------|
+> **⚠️ Caveat:** These improvements are against 2021-era baselines. E5-Large-v2 and BGE-Large-EN-v1.5 achieve ~56% and ~54% average NDCG@10 on full 18-dataset BEIR. Our 59.2% average on 3 favorable datasets is not directly comparable.
+
+| Dataset | Contriever (2021) | Our Best (3 datasets) | Improvement |
+|---------|------------------|----------------------|-------------|
 | SciFact | 0.677 | **0.7889** | **+16.5%** |
 | FiQA | 0.329 | **0.5526** | **+68.0%** |
 | NFCorpus | 0.328 | **0.4443** (Vec-A) | **+35.5%** |

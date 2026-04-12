@@ -33,18 +33,18 @@
 
 ---
 
-memory-spark is a production memory substrate for [OpenClaw](https://github.com/openclaw/openclaw) agents: it continuously ingests workspace knowledge, indexes it in LanceDB with hybrid dense+sparse retrieval, reranks candidates with a cross-encoder, and injects high-value context before each turn. The result is materially better recall of deployment-specific facts, safety constraints, and historical incidents while staying within low-latency budgets.
+memory-spark is a **research prototype** memory substrate for [OpenClaw](https://github.com/openclaw/openclaw) agents: it continuously ingests workspace knowledge, indexes it in LanceDB with hybrid dense+sparse retrieval, reranks candidates with a cross-encoder, and injects high-value context before each turn. Deployed on a single workstation with a DGX Spark GPU node for inference. The result is materially better recall of deployment-specific facts, safety constraints, and historical incidents while staying within low-latency budgets.
 
 > **Paper:** See [`paper/memory-spark.pdf`](paper/memory-spark.pdf) for the full technical report.
 
 ## Benchmark Results
 
-Results from `evaluation/results/` generated via `scripts/run-beir-bench.ts` across 36 configurations on 3 BEIR datasets.
+Results from `evaluation/results/` generated via `scripts/run-beir-bench.ts` across 36 configurations on 3 BEIR datasets (SciFact, FiQA, NFCorpus).
 
 ### BEIR SciFact (300 queries, scientific claim verification)
 
-| Metric | Best Overall (U) | GATE-A (Production) | Vector-Only | 
-|--------|------------------|---------------------|-------------|
+| Metric | Best Overall (U) | GATE-A (Default) | Vector-Only | 
+|--------|------------------|-------------------|-------------|
 | **NDCG@10** | **0.7889** | 0.7802 | 0.7709 |
 | **MRR** | **0.7572** | 0.7455 | 0.7365 |
 | **Recall@10** | 0.9099 | 0.9137 | 0.9037 |
@@ -63,7 +63,7 @@ All results are zero-shot — no dataset-specific fine-tuning. Modern benchmarks
 | **OpenAI text-3-large** | 51.9% | Commercial API |
 | **BM25** | 41.2% | Sparse baseline |
 | **memory-spark: Config U** | **78.89%** | SciFact (single dataset) |
-| **memory-spark: GATE-A** | **78.02%** | SciFact (production default) |
+| **memory-spark: GATE-A** | **78.02%** | SciFact (default config) |
 
 **Important context:** Our 78%+ scores are on SciFact only (scientific claim verification). BEIR averages include 18 datasets across diverse domains. We outperform on specialized scientific retrieval; full BEIR 2.0 comparison is planned future work.
 
@@ -77,7 +77,7 @@ All results are zero-shot — no dataset-specific fine-tuning. Modern benchmarks
 | V: Logit α=0.6 | 0.7885 | **0.9243** | 0.7527 | **Best Recall** — reranker on every query |
 | N: Logit α=0.5 | 0.7863 | 0.9143 | 0.7522 | Balanced blend |
 | MQ-C: Multi-Query | 0.7853 | 0.9177 | 0.7500 | 3 LLM reformulations |
-| **GATE-A** ★ | **0.7802** | **0.9137** | 0.7455 | **Production** — 78% skip, best latency |
+| **GATE-A** ★ | **0.7802** | **0.9137** | 0.7455 | **Default** — 78% skip, best latency |
 | GATE-D | 0.7803 | 0.8924 | 0.7525 | Soft gate + RRF k=20 |
 | RRF-D | 0.7798 | 0.8924 | 0.7514 | RRF k=20 |
 | P: Full Adaptive | 0.7797 | 0.9129 | 0.7440 | Adaptive RRF + conditional rerank |
@@ -659,21 +659,21 @@ xychart-beta
 
 ### Dynamic Reranker Gate (§5 in paper)
 
-The gate analyzes vector score distribution *before* calling the expensive cross-encoder:
+A lightweight threshold-based router that decides whether to invoke the cross-encoder based on vector score distribution. The insight is to only pay the reranker cost when the vector ranking is uncertain:
 
 - **σ > 0.08** (confident): Skip reranker → trust vector ranking
-- **σ < 0.02** (tied set): Skip reranker → it's gambling on noise
-- **0.02 ≤ σ ≤ 0.08** (ambiguous): Fire reranker → this is where it helps
+- **σ < 0.02** (tied set): Skip reranker → marginal candidates, low reranker value
+- **0.02 ≤ σ ≤ 0.08** (ambiguous): Fire reranker → where cross-encoding helps
 
-Result: **78% of queries skip reranking** with no NDCG loss and **+1.1% recall improvement**.
+This is a simplified heuristic variant of adaptive reranking approaches studied in the literature (e.g., PARADE, CEDR, monoT5). Result: **78% of queries skip reranking** with no NDCG loss and **+1.1% recall improvement**.
 
 ### Reciprocal Rank Fusion (§6 in paper)
 
-Replaces score-based hybrid merging. BM25 scores (5–20+) and cosine similarities (0.2–0.6) are on incompatible scales. RRF fuses by rank position only:
+We adopt Reciprocal Rank Fusion (RRF) as our score fusion strategy. RRF was introduced by Cormack et al. (SIGIR 2009) as a robust rank-aggregation method that is insensitive to score scale differences between retrieval methods — making it well-suited for combining BM25 (sparse) and dense vector similarity (semantic) scores, which operate on fundamentally different ranges.
 
 $$\text{RRF}(d) = \sum_{r \in R} \frac{w_r}{k + \text{rank}_r(d)}$$
 
-Scale-invariant, no normalization needed.
+Where $k=60$ (standard default) and $w_r$ is the per-source weight. This is an engineering integration decision, not a novel contribution; the insight is applying RRF specifically to the dense+sparse hybrid case with per-source weight tuning.
 
 ## Project Structure
 
