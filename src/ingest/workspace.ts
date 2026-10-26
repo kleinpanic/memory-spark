@@ -142,16 +142,26 @@ export async function discoverAllAgents(): Promise<string[]> {
  */
 export function toRelativePath(absPath: string, workspaceDir: string): string {
   // Try workspace-relative first
-  if (absPath.startsWith(workspaceDir)) {
+  if (isPathInside(absPath, workspaceDir)) {
     return path.relative(workspaceDir, absPath);
   }
   // Fall back to openclaw-root-relative
   const ocDir = path.join(os.homedir(), ".openclaw");
-  if (absPath.startsWith(ocDir)) {
+  if (isPathInside(absPath, ocDir)) {
     return path.relative(ocDir, absPath);
   }
   // External file — store absolute
   return absPath;
+}
+
+/**
+ * True when `target` is `root` itself or a descendant of it.
+ * Unlike a string prefix check, "/a/ws-dev2" is not inside "/a/ws-dev",
+ * and "/a/ws/../secret" is not inside "/a/ws".
+ */
+export function isPathInside(target: string, root: string): boolean {
+  const rel = path.relative(path.resolve(root), path.resolve(target));
+  return rel === "" || (rel !== ".." && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
 }
 
 /**
