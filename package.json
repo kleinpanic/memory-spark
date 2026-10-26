@@ -45,6 +45,7 @@
     "eslint-plugin-sonarjs": "^4.0.2",
     "eslint-plugin-unused-imports": "^4.4.1",
     "knip": "^6.0.5",
+    "openclaw": "~2026.6.11",
     "prettier": "^3.8.1",
     "tsx": "^4.7.2",
     "typescript": "^5.7.0",
