@@ -1006,13 +1006,33 @@ const memorySpark = {
           execute: async (_toolCallId: string, params: { path?: string }) => {
             const s = await getState(cfg, api.logger);
             if (params.path) {
-              // Single file re-index
+              // Single file re-index — restricted to the roots the watcher indexes,
+              // so a tool call can't pull arbitrary files (e.g. ~/.ssh) into memory.
+              const { isPathInside, toAbsolutePath, toRelativePath } =
+                await import("./src/ingest/workspace.js");
+              const absPath = toAbsolutePath(params.path, workspaceDir);
+              const allowedRoots = [
+                workspaceDir,
+                ...cfg.reference.paths,
+                ...cfg.watch.paths.map((w) => w.path),
+              ];
+              if (!allowedRoots.some((root) => isPathInside(absPath, root))) {
+                return {
+                  content: [
+                    {
+                      type: "text" as const,
+                      text: `Refusing to re-index ${params.path}: outside the workspace and configured watch/reference paths.`,
+                    },
+                  ],
+                  details: {},
+                };
+              }
               try {
                 const { ingestFile } = await import("./src/ingest/pipeline.js");
                 // Delete existing chunks first to force a fresh re-index
-                await s.backend.deleteByPath(params.path, agentId);
+                await s.backend.deleteByPath(toRelativePath(absPath, workspaceDir), agentId);
                 const result = await ingestFile({
-                  filePath: params.path,
+                  filePath: absPath,
                   backend: s.backend,
                   embed: s.queue,
                   cfg,
@@ -1493,11 +1513,21 @@ const memorySpark = {
           ) => {
             const s = await getState(cfg, api.logger);
             const nodesCrypto = await import("node:crypto");
+            const { looksLikePromptInjection } = await import("./src/security.js");
             const results: Array<{ index: number; status: string; id?: string; error?: string }> =
               [];
 
             for (let i = 0; i < params.items.length; i++) {
               const item = params.items[i]!;
+              // Same guard as memory_store — bulk ingest must not be a bypass.
+              if (looksLikePromptInjection(item.text)) {
+                results.push({
+                  index: i,
+                  status: "error",
+                  error: "rejected: text looks like a prompt injection attempt",
+                });
+                continue;
+              }
               try {
                 const vector = await s.queue.embedDocument(item.text);
                 const chunk = {
