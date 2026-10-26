@@ -395,7 +395,8 @@ function loadSparkToken(): string | undefined {
   try {
     const envPath = path.join(os.homedir(), ".openclaw", ".env");
     const content = fs.readFileSync(envPath, "utf-8");
-    const match = content.match(/SPARK_BEARER_TOKEN=["']?([^"'\s\n]+)/); // eslint-disable-line sonarjs/duplicates-in-character-class -- " and ' are distinct chars
+    // Anchor to line start so commented-out (#) or prefixed (OLD_SPARK_...) keys don't match
+    const match = content.match(/^(?:export )?SPARK_BEARER_TOKEN=["']?([^"'\s\n]+)/m); // eslint-disable-line sonarjs/duplicates-in-character-class -- " and ' are distinct chars
     return match?.[1];
   } catch {
     return undefined;
