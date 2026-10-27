@@ -20,7 +20,10 @@ import os from "node:os";
 import path from "node:path";
 
 import { Type } from "@sinclair/typebox";
-import type { OpenClawPluginApi, OpenClawPluginConfigSchema } from "openclaw/plugin-sdk";
+import type {
+  OpenClawPluginApi,
+  OpenClawPluginConfigSchema,
+} from "openclaw/plugin-sdk/plugin-entry";
 
 import { createAutoCaptureHandler } from "./src/auto/capture.js";
 import { createAutoRecallHandler } from "./src/auto/recall.js";
