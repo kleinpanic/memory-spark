@@ -9,7 +9,7 @@ import { hybridMerge, applySourceWeighting, applyTemporalDecay, mmrRerank } from
 import type { MemorySparkConfig } from "./config.js";
 import type { EmbedProvider } from "./embed/provider.js";
 import { EmbedQueue } from "./embed/queue.js";
-import { toAbsolutePath } from "./ingest/workspace.js";
+import { isPathInside, toAbsolutePath } from "./ingest/workspace.js";
 import type { Reranker } from "./rerank/reranker.js";
 import type { StorageBackend, SearchResult } from "./storage/backend.js";
 
@@ -150,8 +150,12 @@ export class MemorySparkManager {
 
     if (fromStorage.text.trim()) return fromStorage;
 
-    // Fallback: read from disk
+    // Fallback: read from disk — only inside the agent's workspace, so a tool
+    // call can't use absolute paths or "../" to read arbitrary files.
     const absPath = toAbsolutePath(params.relPath, this.workspaceDir);
+    if (!isPathInside(absPath, this.workspaceDir)) {
+      return { text: "", path: params.relPath };
+    }
     try {
       const text = await fs.readFile(absPath, "utf-8");
       const lines = text.split("\n");

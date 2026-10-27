@@ -532,14 +532,13 @@ export class LanceDBBackend implements StorageBackend {
   }): Promise<{ text: string; path: string }> {
     if (!this.table) return { text: "", path: params.path };
 
-    let q = this.table
-      .query()
-      .where(`path = '${escapeSql(params.path)}'`)
-      .select(["text", "start_line", "end_line"]);
-
+    // Build a single predicate: a second .where() call replaces the first
+    // rather than ANDing with it, which silently dropped the path filter.
+    let predicate = `path = '${escapeSql(params.path)}'`;
     if (params.agentId) {
-      q = q.where(`agent_id = '${escapeSql(params.agentId)}'`);
+      predicate += ` AND agent_id = '${escapeSql(params.agentId)}'`;
     }
+    const q = this.table.query().where(predicate).select(["text", "start_line", "end_line"]);
 
     const rows = await q.toArray();
     // Sort by start_line and reconstruct
