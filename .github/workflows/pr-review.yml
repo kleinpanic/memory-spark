@@ -161,7 +161,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "22"
+          node-version: "24"
 
       - name: Quick type check
         run: npm ci && npx tsc --noEmit --pretty 2>&1 | head -50 || true
