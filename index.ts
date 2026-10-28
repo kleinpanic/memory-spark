@@ -1538,7 +1538,10 @@ const memorySpark = {
                   text: item.text,
                   path: item.path ?? `capture/bulk-${Date.now()}`,
                   source: (item.source ?? "capture") as
-                    "memory" | "ingest" | "capture" | "sessions",
+                    | "memory"
+                    | "ingest"
+                    | "capture"
+                    | "sessions",
                   agent_id: agentId,
                   pool: "agent_memory",
                   updated_at: new Date().toISOString(),
