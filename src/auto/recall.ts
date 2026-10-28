@@ -149,7 +149,12 @@ export function createAutoRecallHandler(deps: AutoRecallDeps) {
       pools: string[],
       filterAgentId?: string,
       limit = fetchN,
-      minScore = cfg.minScore,
+      // Vector pre-filter uses lowThreshold (0.7x minScore), not raw minScore:
+      // cosine similarity for relevant docs typically lands 0.2-0.6 (ISSUES.md),
+      // so the raw 0.75 default silently drops nearly all vector hits while
+      // sigmoid-saturated FTS (>0.98) always passes — hybrid collapses to
+      // BM25-only. Same floor the mistakes/shared pools already use.
+      minScore = lowThreshold,
     ): Promise<SearchResult[]> => {
       const searchOpts = {
         query: queryText,

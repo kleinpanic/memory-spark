@@ -69,6 +69,15 @@ export class MemorySparkManager {
   ): Promise<MemorySearchResult[]> {
     const maxResults = opts?.maxResults ?? 10;
     const minScore = opts?.minScore ?? this.cfg.autoRecall.minScore;
+    // Vector pre-filter floor. The two retrievers score on incompatible
+    // scales: vector = cosine similarity (relevant docs typically land
+    // 0.2-0.6 per ISSUES.md), FTS = sigmoid(BM25) which saturates to >0.98.
+    // A single 0.75 threshold applied to both lets FTS always pass while
+    // silently dropping nearly every vector hit — the "hybrid" degrades to
+    // BM25-only and semantic recall dies. Use the same 0.7x floor that
+    // recall.ts applies (lowThreshold) so the tool path and the auto-recall
+    // path filter identically.
+    const vectorFloor = Math.max(minScore * 0.7, 0.05);
 
     // Try to embed the query for vector search. If Spark is temporarily down,
     // degrade gracefully to FTS-only recall — same dims, no provider switch.
@@ -92,7 +101,7 @@ export class MemorySparkManager {
           .vectorSearch(queryVector, {
             query,
             maxResults: fetchN,
-            minScore,
+            minScore: vectorFloor,
             agentId: this.agentId,
             pools: [...agentPools, ...sharedPools],
           })
@@ -108,16 +117,22 @@ export class MemorySparkManager {
       })
       .catch(() => [] as SearchResult[]);
 
-    // Filter FTS: exclude sessions source, apply minScore (matches recall.ts)
-    const ftsResults = rawFtsResults.filter(
-      (r) => r.chunk.source !== "sessions" && r.score >= minScore,
-    );
+    // Filter FTS: exclude sessions source only.
+    // Do NOT apply minScore to FTS results — BM25 scores are sigmoid-normalized
+    // and nearly all map to >0.98, making minScore non-discriminative (this
+    // matches the documented decision in recall.ts). RRF ranks FTS by
+    // position, not score magnitude.
+    const ftsResults = rawFtsResults.filter((r) => r.chunk.source !== "sessions");
 
     // Full pipeline: hybridMerge → sourceWeighting → temporalDecay → MMR → rerank
     const merged = hybridMerge(vectorResults, ftsResults, fetchN);
     applySourceWeighting(merged);
     applyTemporalDecay(merged);
-    const diverse = mmrRerank(merged, maxResults * 2, 0.7);
+    // Adaptive λ (not fixed 0.7): ISSUES.md Issue 6 measured λ=0.7 destroying
+    // 28% of recall, and this MMR runs BEFORE the reranker — an over-aggressive
+    // λ prunes candidates the cross-encoder never gets to score. recall.ts
+    // already moved off fixed 0.7 for the same reason.
+    const diverse = mmrRerank(merged, maxResults * 2, "adaptive");
     const reranked = await this.reranker.rerank(query, diverse, maxResults);
 
     return reranked.map((r) => ({
