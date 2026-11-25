@@ -52,6 +52,7 @@ export function chunkDocument(input: ChunkInput, opts: ChunkerOptions = {}): Raw
   // Step 2: Split oversized sections + merge tiny ones
   const chunks: RawChunk[] = [];
   let lineOffset = 0;
+  let searchFrom = 0;
   let lastHeading: string | undefined;
 
   for (const section of sections) {
@@ -61,6 +62,15 @@ export function chunkDocument(input: ChunkInput, opts: ChunkerOptions = {}): Raw
     if (isMarkdown) {
       const heading = extractSectionHeading(section);
       if (heading) lastHeading = heading;
+    }
+
+    // Each section is a contiguous slice of the source text, so its line
+    // offset comes from where the slice actually starts. Counting only the
+    // surviving sections loses the blank lines that splitParagraphs() drops.
+    const charStart = input.text.indexOf(section, searchFrom);
+    if (charStart >= 0) {
+      lineOffset = input.text.slice(0, charStart).split("\n").length - 1;
+      searchFrom = charStart + section.length;
     }
 
     if (section.length <= maxChars) {
